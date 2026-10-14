@@ -159,3 +159,36 @@ class TestImportedFarxRuleLive:
             assert "<!doctype html>" in out.stdout.lower()
         finally:
             proxy.stop()
+
+
+class TestStopReleasesPort:
+    def test_stop_releases_listening_port(self):
+        """stop() 后端口必须真正释放（mitmproxy ProxyServer 无 done 钩子，
+        master.run() 返回不关监听 socket——ProxyService._amain 兜底关闭）。
+        释放失败的话「停止代理→再启动同端口」会 EADDRINUSE。"""
+        import socket
+
+        # 找一个空闲端口
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+
+        proxy = ProxyService(host="127.0.0.1", port=port)
+        proxy.start()
+        deadline = time.monotonic() + 5.0
+        while not proxy.running and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert proxy.running
+
+        proxy.stop(timeout=5.0)
+        assert not proxy.running
+
+        # 端口必须能立刻重新绑定（旧实现 stop 后 socket 仍 LISTEN，此处失败）
+        rebind = socket.socket()
+        try:
+            rebind.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            rebind.bind(("127.0.0.1", port))
+            rebind.listen(1)
+        finally:
+            rebind.close()

@@ -302,7 +302,14 @@ class TestPortChange:
     def test_change_restarts_running_proxy_and_retakes_sysproxy(
         self, window, monkeypatch
     ):
-        """运行中改端口：代理立刻换端口重监听，系统代理先还原再按新端口重接管。"""
+        """运行中改端口并确认重启：代理立刻换端口重监听，系统代理先还原再按新端口重接管。"""
+        import sys as _sys
+
+        monkeypatch.setattr(
+            "app.ui.main_window.QMessageBox.question",
+            staticmethod(lambda *a, **k: _sys.modules[
+                "PySide6.QtWidgets"].QMessageBox.StandardButton.Yes),
+        )
         calls = []
         monkeypatch.setattr(
             "app.sysproxy.takeover",
@@ -336,6 +343,42 @@ class TestPortChange:
         while not window.proxy.running and _time.monotonic() < deadline:
             _time.sleep(0.05)
         assert window.proxy.running
+        window.stop_proxy()
+
+    def test_change_decline_keeps_old_proxy(self, window, monkeypatch):
+        """运行中改端口但选「否」：只保存设置，旧代理继续在原端口跑。"""
+        import sys as _sys
+
+        monkeypatch.setattr(
+            "app.ui.main_window.QMessageBox.question",
+            staticmethod(lambda *a, **k: _sys.modules[
+                "PySide6.QtWidgets"].QMessageBox.StandardButton.No),
+        )
+        calls = []
+        monkeypatch.setattr(
+            "app.sysproxy.takeover",
+            lambda port, run=None, elevate=False:
+                calls.append(("takeover", port)) or (True, "ok"),
+        )
+        monkeypatch.setattr(
+            "app.sysproxy.restore",
+            lambda run=None: calls.append(("restore",)) or (True, "已还原"),
+        )
+        monkeypatch.setattr(
+            "app.sysproxy.recover_if_needed", lambda run=None: False
+        )
+        window.start_proxy()
+        old_port = window.settings.proxy_port
+        calls.clear()
+
+        new_port = old_port + 91
+        window.port_spin.setValue(new_port)
+        window._on_port_changed()
+
+        assert window.settings.proxy_port == new_port   # 设置已保存
+        assert window.proxy.port == old_port            # 代理还在旧端口
+        assert window.proxy.running
+        assert calls == []                              # 没碰系统代理
         window.stop_proxy()
 
     def test_change_while_stopped_only_saves(self, window, monkeypatch):
