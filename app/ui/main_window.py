@@ -1407,19 +1407,29 @@ class MainWindow(QMainWindow):
             # 用户明确不要 → 归档，避免每次启动都弹
             archive_autosave()
 
-    def _autosave_on_exit(self) -> None:
-        """退出时把当前会话快照到 last-session.jsonl（有体积预算，秒级完成）。"""
+    def _autosave_on_exit(self) -> threading.Thread | None:
+        """采集当前会话快照并**后台写盘**（返回写盘线程，调用方 join）。
+
+        采集必须在主线程同步做（此时代理 addon 的 flow 数据还完整可读）；
+        纯文件 IO 挪后台——与停代理、还原系统代理三路并行，退出提速。
+        """
         if not self.settings.auto_save_session:
-            return
+            return None
         flows = self._session_flows()
         if not flows:
             clear_autosave()            # 列表已空 → 别留旧快照下次误导
-            return
-        result = save_autosave(flows)
-        if result.ok:
-            log.info("退出快照：%s 条 → %s", result.count, result.path)
-        else:
-            log.warning("退出快照保存失败：%s", result.error)
+            return None
+
+        def work():
+            result = save_autosave(flows)
+            if result.ok:
+                log.info("退出快照：%s 条 → %s", result.count, result.path)
+            else:
+                log.warning("退出快照保存失败：%s", result.error)
+
+        return threading.Thread(
+            target=work, daemon=True, name="autosave-exit"
+        )
 
     # ================================================================ 网络模拟
 
@@ -1603,11 +1613,15 @@ class MainWindow(QMainWindow):
     # ================================================================ 关闭
 
     def closeEvent(self, event):  # noqa: N802
-        # 先做退出快照：此时列表与缓存都还是完整状态
-        self._autosave_on_exit()
-        self._stop_cert_server()
+        # 先把窗口藏起来——用户感知层面立即退出，清理在后台并行收尾
+        # （进程会多存活零点几秒，但没有任何可见窗口）
+        self.hide()
+        self._stop_cert_server()             # 进程内 HTTP 服务，停止是毫秒级
+        autosaver = self._autosave_on_exit()   # 采集同步（数据须完整），写盘后台
+        if autosaver is not None:
+            autosaver.start()
         # 停代理与还原系统代理互不依赖（还原读的是落盘状态，不需要代理先停），
-        # 并行执行：退出耗时 = 两者较慢者，而不是相加（Windows 上尤其明显）
+        # 加上快照写盘共三路并行：退出耗时 = 最慢一路，而不是相加
         restorer = threading.Thread(
             target=self._restore_sysproxy_sync,
             daemon=True,
@@ -1615,6 +1629,8 @@ class MainWindow(QMainWindow):
         )
         restorer.start()
         self.proxy.stop()
-        restorer.join(10.0)              # 必须等还原完再关（有锁保护竞态）
+        for worker in (autosaver, restorer):
+            if worker is not None:
+                worker.join(10.0)    # 快照没写完就退出会丢；还原没完成会断网
         self._save_geometry()
         super().closeEvent(event)
