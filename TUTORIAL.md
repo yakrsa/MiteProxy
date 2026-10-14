@@ -7,7 +7,10 @@
 
 ## 1. 五分钟上手
 
-1. **启动**：打开 MiteProxy.app（Windows 为 `MiteProxy.exe`）。
+1. **启动**：到 [Releases](https://github.com/yakrsa/MiteProxy/releases) 下载打包版
+   （免装 Python），解压得到 `MiteProxy.app`（Windows 为 `MiteProxy.exe`）。
+   **macOS 首次运行：右键 → 打开**——未经 Apple 公证，直接双击会被 Gatekeeper 拦下，
+   右键打开一次后即可正常双击启动。
    启动后代理**自动开启**，底部状态栏显示 `127.0.0.1:8080`（端口可在设置里改）。
 2. **让流量走代理**：
    - **macOS**：系统设置 → 网络 → 详细信息 → 代理 → 勾选「网页代理 (HTTP)」和「安全网页代理 (HTTPS)」，
