@@ -18,3 +18,9 @@ certs/
 
 # 打包产物压缩包（进 GitHub Release，不进 git）
 *.zip
+
+# WorkBuddy 工作记忆（含私人背景，不进仓库）
+.workbuddy/
+
+# 构建/打包日志
+*.log
