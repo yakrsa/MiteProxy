@@ -223,6 +223,13 @@ def window(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
     monkeypatch.setattr(settings_mod, "SETTINGS_PATH", tmp_path / "settings.json")
+    # 固定测试端口：默认 8888 与真实运行的 app 冲突（真实代理线程绑定失败
+    # 会 SystemExit，running=False，整个 TestPortChange 全体崩）
+    import json as _json
+
+    (tmp_path / "settings.json").write_text(
+        _json.dumps({"proxy_port": 18888, "auto_system_proxy": True})
+    )
     # 只替换 main_window 命名空间里的 threading，别动全局 stdlib——
     # 全局替换会把代理线程也变成同步执行，asyncio 在主线程跑直接崩
     import threading as _real_threading

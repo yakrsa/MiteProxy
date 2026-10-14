@@ -728,10 +728,16 @@ class MainWindow(QMainWindow):
 
     def _restart_proxy_on_port(self, port: int) -> None:
         """运行中按新端口重启代理 + 系统代理重接管 + 证书服务静默重启。"""
+        self.status_bar.showMessage(f"正在重启代理，切换到 127.0.0.1:{port} …", 4000)
         self.proxy.stop(timeout=2.0)
         self.proxy = self._make_proxy(port)
         self.proxy.start()
         self._update_status()
+        # 重启成功要有可见反馈：按钮文字不变、流量列表不清空，用户无从
+        # 判断是否真的重启了（之前被当成「点了 Yes 没反应」）
+        self.status_bar.showMessage(
+            f"代理已重启，监听 127.0.0.1:{port}；系统代理切换中…", 8000
+        )
         # 系统代理还挂在旧端口上：后台先还原再按新端口重接管。顺序不能反——
         # 直接重接管会把「127.0.0.1:旧端口」当成原始设置存进状态文件，还原就错了
         if self._sysproxy_enabled():
