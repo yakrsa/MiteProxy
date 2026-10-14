@@ -28,6 +28,43 @@ from app.ui.import_dialog import (
 from app.ui.rule_editor import RuleEditorDialog
 
 
+class RuleTable(QTableWidget):
+    """规则表：支持整行拖拽调整顺序（拖到目标行上半=插到其前，下半=插到其后）。
+
+    QTableWidget 自带的 InternalMove 是按单元格移动，行会乱；这里覆盖
+    dropEvent 自己算插入位置，只发信号，重排由 RulesPanel 走 store.reorder。
+    """
+
+    row_dropped = Signal(int, int)  # (源行, 目标插入位置-原始列表语义)
+
+    def __init__(self, parent=None):
+        super().__init__(0, 6, parent)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+
+    def dropEvent(self, event) -> None:
+        if event.source() is not self:
+            event.ignore()
+            return
+        src = self.currentRow()
+        if src < 0:
+            event.ignore()
+            return
+        pos = event.position().toPoint()
+        idx = self.indexAt(pos)
+        if not idx.isValid():
+            dst = self.rowCount()  # 拖到表尾
+        else:
+            dst = idx.row()
+            rect = self.visualItemRect(self.item(idx.row(), 0))
+            if pos.y() > rect.center().y():
+                dst += 1  # 落在下半行 → 插到目标行之后
+        event.accept()
+        self.row_dropped.emit(src, dst)
+
+
 class RulesPanel(QWidget):
     """规则列表 + CRUD + Fiddler 导入入口。"""
 
@@ -64,9 +101,9 @@ class RulesPanel(QWidget):
         toolbar.addStretch(1)
         layout.addLayout(toolbar)
 
-        self.table = QTableWidget(0, 6)
+        self.table = RuleTable(self)
         self.table.setHorizontalHeaderLabels(
-            ["启用", "名称", "匹配", "动作", "来源", "命中"]
+            ["名称", "启用", "匹配", "动作", "来源", "命中"]
         )
         self.table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
@@ -85,6 +122,7 @@ class RulesPanel(QWidget):
         self.import_btn.clicked.connect(self._on_import)
         self.up_btn.clicked.connect(lambda: self._on_move(-1))
         self.down_btn.clicked.connect(lambda: self._on_move(1))
+        self.table.row_dropped.connect(self._on_row_dropped)
         self.table.cellDoubleClicked.connect(lambda r, c: self._on_edit())
 
     # ------------------------------------------------------------ 刷新
@@ -96,8 +134,8 @@ class RulesPanel(QWidget):
             enabled_item = QTableWidgetItem("✔" if rule.enabled else "—")
             enabled_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             name = rule.name + (" ⚠" if rule.error else "")
-            self.table.setItem(i, 0, enabled_item)
-            self.table.setItem(i, 1, QTableWidgetItem(name))
+            self.table.setItem(i, 0, QTableWidgetItem(name))
+            self.table.setItem(i, 1, enabled_item)
             self.table.setItem(i, 2, QTableWidgetItem(_match_summary(rule)))
             self.table.setItem(i, 3, QTableWidgetItem(_action_summary(rule)))
             self.table.setItem(
@@ -105,7 +143,7 @@ class RulesPanel(QWidget):
             )
             self._fill_hits(i, rule)
             if rule.error:
-                self.table.item(i, 1).setToolTip(rule.error)
+                self.table.item(i, 0).setToolTip(rule.error)
 
     def _fill_hits(self, row: int, rule) -> None:
         """命中列：0 次显示「—」（没干活过），有次数显示数字 + 最近命中时间提示。"""
@@ -134,7 +172,7 @@ class RulesPanel(QWidget):
         for i, rule in enumerate(self.store.all()):
             if rule.id != rule_id:
                 continue
-            item = self.table.item(i, 1)
+            item = self.table.item(i, 0)
             if item is None:
                 return
             if message:
@@ -192,6 +230,21 @@ class RulesPanel(QWidget):
         self.store.reorder(ids)
         self.refresh()
         self.table.selectRow(target)
+
+    def _on_row_dropped(self, src: int, dst: int) -> None:
+        """拖拽落点 → store.reorder（dst 为拖放前的列表索引语义）。"""
+        rules = self.store.all()
+        ids = [r.id for r in rules]
+        if not (0 <= src < len(ids)):
+            return
+        insert_at = dst - 1 if dst > src else dst
+        if insert_at == src or not (0 <= insert_at <= len(ids) - 1):
+            return
+        moved = ids.pop(src)
+        ids.insert(insert_at, moved)
+        self.store.reorder(ids)
+        self.refresh()
+        self.table.selectRow(insert_at)
 
     # ------------------------------------------------------------ Fiddler 导入
 
