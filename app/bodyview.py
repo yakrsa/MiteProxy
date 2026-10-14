@@ -77,7 +77,7 @@ _PLUS_JSON_RE = re.compile(r"^(?:application|text)/[\w.\-]+\+json$")
 
 
 def view_mode_items() -> list[tuple[str, str]]:
-    """[(key, 显示名)]，UI 下拉直接用。"""
+    """[(key, 显示名)]，UI 视图按钮栏直接用。"""
     return list(VIEW_MODE_ITEMS)
 
 

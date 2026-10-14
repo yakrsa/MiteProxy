@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 from app import httpclient
 from app.httpclient import ApiResponse
 from app.ui.detail_panel import BodyPane
+from app.ui import theme
 from app.textutil import decode_body
 
 METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
@@ -133,7 +134,9 @@ class ApiPanel(QWidget):
         resp_layout.setSpacing(3)
 
         self.resp_label = QLabel("尚未发送")
-        self.resp_label.setStyleSheet("color: #6b6b6b;")
+        self.resp_label.setStyleSheet(f"color: {theme.css('hint')};")
+        self._resp_kind = "hint"        # 主题切换时按最近一次结果重染
+        theme.add_listener(self._retheme)
         resp_layout.addWidget(self.resp_label)
         self.resp_pane = BodyPane(wrap_default=True)
         resp_layout.addWidget(self.resp_pane, stretch=1)
@@ -235,19 +238,24 @@ class ApiPanel(QWidget):
 
     def _show_response(self, result: ApiResponse) -> None:
         if not result.ok:
+            self._resp_kind = "error"
             self.resp_label.setText(f"✗ {result.error}（{result.elapsed_ms}ms）")
-            self.resp_label.setStyleSheet("color: #cf222e;")
+            self.resp_label.setStyleSheet(f"color: {theme.css('error')};")
             self.resp_pane.clear()
             return
         headers = dict(result.headers)  # dict 即可满足 BodyPane 的 .get 需求
         size = len(result.body)
-        color = "#1a7f37" if 200 <= result.status < 400 else "#cf222e"
-        self.resp_label.setStyleSheet(f"color: {color};")
+        self._resp_kind = "ok" if 200 <= result.status < 400 else "error"
+        self.resp_label.setStyleSheet(f"color: {theme.css(self._resp_kind)};")
         self.resp_label.setText(
             f"HTTP {result.status} {result.reason} · {result.elapsed_ms}ms · "
             f"{size} 字节 · {len(result.headers)} 个响应头"
         )
         self.resp_pane.show_body(headers, result.body, raw_len=size)
+
+    def _retheme(self) -> None:
+        """主题切换：响应状态行按最近一次结果重染。"""
+        self.resp_label.setStyleSheet(f"color: {theme.css(self._resp_kind)};")
 
     def _delete_header_row(self) -> None:
         for idx in sorted(

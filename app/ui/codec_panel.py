@@ -30,9 +30,7 @@ from app.codec import (
     groups,
     run,
 )
-
-HINT_COLOR = "#6b6b6b"
-ERROR_COLOR = "#e5534b"
+from app.ui import theme
 
 
 def _mono_font() -> QFont:
@@ -48,6 +46,7 @@ class CodecPanel(QWidget):
         super().__init__(parent)
         self._font = _mono_font()
         self._last_result = None
+        self._status_is_error = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -121,7 +120,7 @@ class CodecPanel(QWidget):
         in_count = QHBoxLayout()
         in_count.addStretch(1)
         self.input_count = QLabel("")
-        self.input_count.setStyleSheet(f"color: {HINT_COLOR};")
+        self.input_count.setStyleSheet(f"color: {theme.css('hint')};")
         in_count.addWidget(self.input_count)
         in_layout.addLayout(in_count)
 
@@ -135,7 +134,7 @@ class CodecPanel(QWidget):
         out_count = QHBoxLayout()
         out_count.addStretch(1)
         self.output_count = QLabel("")
-        self.output_count.setStyleSheet(f"color: {HINT_COLOR};")
+        self.output_count.setStyleSheet(f"color: {theme.css('hint')};")
         out_count.addWidget(self.output_count)
         out_layout.addLayout(out_count)
 
@@ -174,8 +173,9 @@ class CodecPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        self.status_label.setStyleSheet(f"color: {HINT_COLOR};")
+        self.status_label.setStyleSheet(f"color: {theme.css('hint')};")
         layout.addWidget(self.status_label)
+        theme.add_listener(self._retheme)
         return box
 
     # ------------------------------------------------------------ 对外
@@ -286,11 +286,20 @@ class CodecPanel(QWidget):
         self.reverse_btn.setEnabled(current in REVERSE)
 
     def _set_status(self, text: str, *, is_error: bool) -> None:
+        self._status_is_error = is_error
         self.status_label.setText(text)
         self.status_label.setStyleSheet(
-            f"color: {ERROR_COLOR};" if is_error else f"color: {HINT_COLOR};"
+            f"color: {theme.css('error' if is_error else 'hint')};"
         )
         self.status_label.setToolTip(text if is_error else "")
+
+    def _retheme(self) -> None:
+        """主题切换：字符计数与状态区按最近一次语义重新染色。"""
+        self.input_count.setStyleSheet(f"color: {theme.css('hint')};")
+        self.output_count.setStyleSheet(f"color: {theme.css('hint')};")
+        self.status_label.setStyleSheet(
+            f"color: {theme.css('error' if self._status_is_error else 'hint')};"
+        )
 
     def _update_counts(self) -> None:
         def describe(text: str) -> str:

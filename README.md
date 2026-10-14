@@ -48,7 +48,7 @@ macOS 与 Windows 双平台支持。
   - `.farx` 规则包（AutoResponder / Rules 导出）完整导入
   - `CustomRules.js` 启发式导入（典型 mock 模式，导入前可预览、可勾选）
 - **body 结构化视图**（对齐 Fiddler 的 JSON / WebForm / ImageView inspector）：请求与响应各有  
-  `自动 / 原文 / JSON / 表单 / 图片 / 十六进制` 六种模式，默认「自动」按 content-type 挑最合适的
+  `自动 / 原文 / JSON / 表单 / 图片 / 十六进制` 一排切换按钮（Fiddler 风格，非下拉），默认「自动」按 content-type 挑最合适的
   - **JSON**：缩进 2 空格 + 语法着色（key / 字符串 / 数字 / 布尔分色，深浅主题各一套）；中文原样显示不转义成 `\uXXXX`；key 顺序保持服务端返回顺序，便于和线上逐行对照
   - **WebForm**：`application/x-www-form-urlencoded` 自动展开成 key / value 表，**URL 已解码**（中文、空格、特殊字符直接可读），空值字段 `flag=` 也保留
   - **图片**：`image/*`（含 SVG）直接预览，显示格式 / 像素尺寸 / 体积，可切「适应窗口 / 25% / 50% / 100% / 200%」
@@ -92,7 +92,10 @@ macOS 与 Windows 双平台支持。
   - `Ctrl+E` 导出：**HAR 1.2** / **原始 HTTP 报文**（请求+响应全文）/ **完整响应**（Headers+Body）/ **仅响应 Body**（二进制原样）
   - `Ctrl+Shift+E` 或右键「导出完整响应（Headers+Body）…」直接导出响应报文，省掉选格式那一步
   - 多选时菜单项标注 `（N 条）`，文件内逐条分段；「仅响应 Body」一个文件装不下多条，多选时会被拦住
-- **双平台打包**：macOS `.app` / Windows `.exe`，构建脚本随项目提供
+- **深浅色主题**：默认**跟随系统**深浅模式（macOS / Windows 原生切换即时生效），
+  菜单「外观」可强制**浅色**或**深色**；JSON 着色、mock 命中行、搜索高亮等
+  语义色两套配色自动切换，选择会记住
+- **双平台打包**：macOS `.app` / Windows zip（exe + 依赖文件夹，解压即用），构建脚本随项目提供
 
 ## 快速开始
 
@@ -109,7 +112,9 @@ macOS 与 Windows 双平台支持。
    （详见[使用教程](TUTORIAL.md)第 2 节）
 
 > 当前 Release 产物为 **arm64**（Apple Silicon M1~M4）。Intel Mac 与 Windows 用户
-> 请走下面的源码路线自行构建；Windows 版将由 `build_windows.ps1` 产出 `MiteProxy.exe`。
+> 请走下面的源码路线自行构建；Windows 版由 `build_windows.ps1` 产出
+> `MiteProxy-v<版本>-windows-x64.zip`，解压得到 `MiteProxy` 文件夹，双击其中的
+> `MiteProxy.exe` 直接使用（免安装）。
 
 ### 开发模式
 
@@ -155,8 +160,8 @@ python -m app.main
 # macOS
 ./packaging/build_mac.sh          # 产物 dist/MiteProxy.app
 
-# Windows（PowerShell）
-.\packaging\build_windows.ps1     # 产物 dist\MiteProxy\MiteProxy.exe
+# Windows（PowerShell，可加 -Version 1.14 指定版本号）
+.\packaging\build_windows.ps1     # 产物 dist\MiteProxy-v1.14-windows-x64.zip
 ```
 
 > PyInstaller 不能交叉打包：Windows 包必须在 Windows 机器上构建。  
@@ -169,7 +174,7 @@ python -m app.main
 | -------------------- | ---------------------------------------------- | ----------------------------------- |
 | macOS（Apple Silicon） | `dist/MiteProxy.app`（ad-hoc 签名，arm64，~146M）    | 本机已验证：自动开代理、mock、FARX、HTTPS 全通过     |
 | macOS（Intel）         | 需在 Intel Mac 上用 universal2/Intel 版 Python 重新构建 | 当前 Python 为 arm64，产物不含 x86_64       |
-| Windows              | `dist\MiteProxy\MiteProxy.exe`                 | 由 `build_windows.ps1` 在 Windows 上产出 |
+| Windows              | `dist\MiteProxy-v<版本>-windows-x64.zip`（内含 `MiteProxy.exe` + `_internal\` 依赖目录，解压即用） | 由 `build_windows.ps1` 在 Windows 上产出 |
 
 > 图标随包提供：`packaging/icon.icns`（macOS）、`packaging/icon.ico`（Windows）。
 
@@ -193,7 +198,7 @@ python -m app.main
 
 ## body 视图
 
-详情面板（请求/响应各有）的 body 区有个「body 视图」下拉：  
+详情面板（请求/响应各有）的 body 区顶部是一排 Fiddler 式切换按钮：  
 `自动 / 原文 / JSON / 表单 / 图片 / 十六进制`，旁边是「换行」开关。
 
 **自动**按 content-type 挑：`application/json`（含 `vnd.api+json`、`ld+json` 等 `+json` 变体）→ JSON 视图；  

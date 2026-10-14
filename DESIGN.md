@@ -5,8 +5,8 @@
 | 产品名 | MiteProxy（类 Fiddler 抓包 + Mock 工具） |
 | 交付形态 | macOS + Windows 双平台桌面客户端（PySide6 + PyInstaller 本地构建） |
 | 内核 | mitmproxy（`DumpMaster` 内嵌，同进程运行） |
-| 文档版本 | v1.12（2026-10-14） |
-| 修订 | v1.1：交付范围扩展为 macOS + Windows 双平台（方案 A 本地构建）；新增流量过滤设计（域名过滤 / 隐藏 CONNECT / 隐藏 Image）<br>v1.2：域名过滤支持黑名单/白名单双模式（空白名单不过滤、模式切换保留关键词）<br>v1.3：新增流量搜索设计（Ctrl+F、URL/Headers/Body 范围、大小写切换、命中高亮、大 body 索引策略）<br>v1.4：Mock 支持本地文件响应（请求时读取）、模拟延迟、异常状态码预设；FARX 映射补充 x-replywithfile 与 latency<br>v1.5：①body 解码统一默认 UTF-8（弃用 mitmproxy latin-1 默认，`app/textutil.py`，文本类 mock 响应自动补 charset）；②新增请求重放（3.6：副本 + ClientPlayback，Ctrl+R / 右键菜单 / 编辑并重放对话框，REPLAY 徽标），重放从非目标移入范围<br>v1.6：①修正代理归属——仅 MainWindow 持有一个 ProxyService，入口不再自建（此前入口的裸代理会抢占端口，导致打包后 mock/捕获全失效，已加防回归测试）；②启动即自动开代理，端口占用时弹窗并复位按钮；③窗口几何持久化；④图标（icon.icns/icon.ico）与 Info.plist 落地；⑤补 macOS 冻结产物验收记录<br>v1.7：①导出加「完整响应（Headers+Body）」格式（3.2.3）；②列表支持列排序 + 多选批量复制/导出（3.2.4）；③会话保存与恢复（3.7，JSONL + 退出自动快照）；④网络模拟（3.8，弱网限速档位 + 域名映射到本地）<br>v1.8：body 结构化视图（3.2.5）——JSON 缩进 + 语法着色、WebForm 表单表格、自动/原文/JSON/表单/十六进制五模式；顺带修正 3.2 中"body 支持十六进制/文本切换"的表述（此前代码是自动判定、无手动切换控件）<br>v1.9：①列表顺序（到达顺序 / 新的在顶部）+ 自动滚动（3.2.6）；②body 视图加图片预览与换行开关，并补三道大内容闸门（深嵌套崩溃、大 JSON 因截断丢格式化、超长单行换行卡死，3.2.5）；③压缩 body 的"已解压"提示与兜底解压（3.2.7）；④WebSocket 抓包与消息列表（3.9）<br>v1.10：新增**工具页**（3.10）——编码转换（对齐 Fiddler TextWizard，27 种转换）+ JSON 格式化（对齐 json.cn，精确错误定位 + 树形浏览 + JSONPath 提取）；JSON 着色器从 detail_panel 抽出为 `app/ui/highlight.py` 供两处共用<br>v1.11：①Mock 命中计数 + 会话标记/备注（3.3.4）；②Map Local 本地目录映射 + 证书页二维码（3.8.3）；③**重放并对比**（3.6.1——副本 id 精确关联，JSON 键级 diff + 文本行级 diff 双轨，`app/jsondiff.py` 纯函数引擎）；④工具页加**JSON 比对**子页（3.10.3，复用同一 diff 引擎）；⑤JSONPath 补聚合函数 `length()`/`min()`/`max()`（3.10.2，对整个结果集生效）；⑥**WS 消息写入会话文件并可恢复**（3.9——`ws_messages` 随记录落盘，条数 2000 / 预算双闸，旧文件兼容，summary 计数按实际存储数回填）<br>v1.13：**系统代理自动接管**（3.1.1，对齐 Fiddler「Act as System Proxy」——启动代理自动把系统 HTTP/HTTPS 代理指向本应用，停止/退出/崩溃恢复全路径还原，原始配置逐项记录写回；macOS networksetup + 提权重试，Windows 注册表路径未实机回归）<br>v1.12：①Mock 规则支持**按请求方法匹配**（3.3.5，任意/GET/POST/… 下拉，比 Fiddler 免拼正则）；②Mock 支持**重定向到其他 URL**（3.3.6，规则级 Map Remote，支持 $1 替换，防指回代理自身死循环）；③JSON 树视图**懒加载**（3.10.2，展开才构建子节点，单层 5000 / 全局 5000 双上限）；④工具页新增**API 调试**子页（3.10.4，构建请求直发 + 右键从流量带入完整请求，响应复用 BodyPane 六模式渲染）；⑤**bug 排查修复 12 项**（settings 数字崩溃、流式响应丢行、非 UTF-8 会话字节篡改、代理 stop/start 竞态、规则重载行号错位、规则错误不可见、POST 空 body 无 Content-Length、WS 溢出保留最旧、窗口几何死路径、保存 tmp 残留、CA 损坏未捕获、导入信号误发）；⑥新增使用教程 TUTORIAL.md |
+| 文档版本 | v1.14（2026-10-14） |
+| 修订 | v1.1：交付范围扩展为 macOS + Windows 双平台（方案 A 本地构建）；新增流量过滤设计（域名过滤 / 隐藏 CONNECT / 隐藏 Image）<br>v1.2：域名过滤支持黑名单/白名单双模式（空白名单不过滤、模式切换保留关键词）<br>v1.3：新增流量搜索设计（Ctrl+F、URL/Headers/Body 范围、大小写切换、命中高亮、大 body 索引策略）<br>v1.4：Mock 支持本地文件响应（请求时读取）、模拟延迟、异常状态码预设；FARX 映射补充 x-replywithfile 与 latency<br>v1.5：①body 解码统一默认 UTF-8（弃用 mitmproxy latin-1 默认，`app/textutil.py`，文本类 mock 响应自动补 charset）；②新增请求重放（3.6：副本 + ClientPlayback，Ctrl+R / 右键菜单 / 编辑并重放对话框，REPLAY 徽标），重放从非目标移入范围<br>v1.6：①修正代理归属——仅 MainWindow 持有一个 ProxyService，入口不再自建（此前入口的裸代理会抢占端口，导致打包后 mock/捕获全失效，已加防回归测试）；②启动即自动开代理，端口占用时弹窗并复位按钮；③窗口几何持久化；④图标（icon.icns/icon.ico）与 Info.plist 落地；⑤补 macOS 冻结产物验收记录<br>v1.7：①导出加「完整响应（Headers+Body）」格式（3.2.3）；②列表支持列排序 + 多选批量复制/导出（3.2.4）；③会话保存与恢复（3.7，JSONL + 退出自动快照）；④网络模拟（3.8，弱网限速档位 + 域名映射到本地）<br>v1.8：body 结构化视图（3.2.5）——JSON 缩进 + 语法着色、WebForm 表单表格、自动/原文/JSON/表单/十六进制五模式；顺带修正 3.2 中"body 支持十六进制/文本切换"的表述（此前代码是自动判定、无手动切换控件）<br>v1.9：①列表顺序（到达顺序 / 新的在顶部）+ 自动滚动（3.2.6）；②body 视图加图片预览与换行开关，并补三道大内容闸门（深嵌套崩溃、大 JSON 因截断丢格式化、超长单行换行卡死，3.2.5）；③压缩 body 的"已解压"提示与兜底解压（3.2.7）；④WebSocket 抓包与消息列表（3.9）<br>v1.10：新增**工具页**（3.10）——编码转换（对齐 Fiddler TextWizard，27 种转换）+ JSON 格式化（对齐 json.cn，精确错误定位 + 树形浏览 + JSONPath 提取）；JSON 着色器从 detail_panel 抽出为 `app/ui/highlight.py` 供两处共用<br>v1.11：①Mock 命中计数 + 会话标记/备注（3.3.4）；②Map Local 本地目录映射 + 证书页二维码（3.8.3）；③**重放并对比**（3.6.1——副本 id 精确关联，JSON 键级 diff + 文本行级 diff 双轨，`app/jsondiff.py` 纯函数引擎）；④工具页加**JSON 比对**子页（3.10.3，复用同一 diff 引擎）；⑤JSONPath 补聚合函数 `length()`/`min()`/`max()`（3.10.2，对整个结果集生效）；⑥**WS 消息写入会话文件并可恢复**（3.9——`ws_messages` 随记录落盘，条数 2000 / 预算双闸，旧文件兼容，summary 计数按实际存储数回填）<br>v1.13：**系统代理自动接管**（3.1.1，对齐 Fiddler「Act as System Proxy」——启动代理自动把系统 HTTP/HTTPS 代理指向本应用，停止/退出/崩溃恢复全路径还原，原始配置逐项记录写回；macOS networksetup + 提权重试，Windows 注册表路径未实机回归）<br>v1.12：①Mock 规则支持**按请求方法匹配**（3.3.5，任意/GET/POST/… 下拉，比 Fiddler 免拼正则）；②Mock 支持**重定向到其他 URL**（3.3.6，规则级 Map Remote，支持 $1 替换，防指回代理自身死循环）；③JSON 树视图**懒加载**（3.10.2，展开才构建子节点，单层 5000 / 全局 5000 双上限）；④工具页新增**API 调试**子页（3.10.4，构建请求直发 + 右键从流量带入完整请求，响应复用 BodyPane 六模式渲染）；⑤**bug 排查修复 12 项**（settings 数字崩溃、流式响应丢行、非 UTF-8 会话字节篡改、代理 stop/start 竞态、规则重载行号错位、规则错误不可见、POST 空 body 无 Content-Length、WS 溢出保留最旧、窗口几何死路径、保存 tmp 残留、CA 损坏未捕获、导入信号误发）；⑥新增使用教程 TUTORIAL.md<br>v1.13b：①body 视图改 Fiddler 式**互斥按钮条**（去下拉）；②流量页**左右/上下布局可切换**（默认左右，工具栏「布局」下拉，比例换算 + splitter_state 持久化）；③Windows 打包输出改 **zip**（exe + `_internal\` 依赖目录，解压即用）<br>v1.14：**主题深浅色**（3.11，`app/ui/theme.py`）——默认跟随系统，菜单「外观」可切浅色/深色；语义色 token 收拢 + `theme.dynamic` 就地更新 + `_retheme` 监听广播；JSON 着色双配色已有 |
 
 ---
 
@@ -23,7 +23,7 @@
 - **G2 Mock**：可视化规则管理（增删改、启用/禁用）；支持精确、通配符、正则三种 URL 匹配；命中后直接返回自定义响应——**内联内容或本地文件**、**任意状态码**（含 4xx/5xx 异常码，预设快捷键）、**可设模拟延迟**；命中即造 response，请求不发给真实服务器。
 - **G3 请求重放**：原样重发已捕获请求；或编辑 method/URL/headers/body 后重发（对齐 Fiddler Replay / Edit and Replay）；**重放并对比**——重放响应到达后自动弹出对比视图，旧响应 vs 新响应一键看差异（3.6.1）。
 - **G4 规则迁移**：支持导入 Fiddler 的 `.farx` 规则包与 `CustomRules.js` 脚本规则，导入前可预览、可勾选。
-- **G5 交付形态**：PyInstaller 打包为 macOS `.app` + Windows `.exe`，双击即用（本地构建，脚本随项目提供）。
+- **G5 交付形态**：PyInstaller 打包为 macOS `.app` + Windows zip（onedir 目录整体压缩：`MiteProxy.exe` + `_internal\` 依赖文件夹，解压即用免安装，脚本自动产出 `MiteProxy-v<版本>-windows-x64.zip`；本地构建，脚本随项目提供）。
 - **G6 会话保存与恢复**：把当前抓到的会话存成文件、下次打开继续用（对齐 Fiddler Save All Sessions / Load Sessions）；退出时自动快照，下次启动可一键恢复。恢复后仍是**活会话**，可查看、导出、重放。
 - **G7 网络模拟**：弱网限速（档位 / 自定义延迟与速率）复现 loading 态与超时；域名映射把线上域名转发到本地服务，用于「线上前端 + 本地后端」联调。
 
@@ -170,7 +170,8 @@ mitmproxy 的 DumpMaster 跑在自己的 asyncio 事件循环里，**不能**直
 - **服务器 IP**：上游服务端的实际 IP。取值顺序 `server_conn.peername`（已建连的真实对端，一定是解析后的 IP）→ `server_conn.address`（未建连时可能是原始域名，仅当形如 IP 才采用）。CONNECT 隧道请求、以及被 mock 直接短路（从未连上游）的请求取不到，显示 `-`。`Ctrl+F` 的 URL 范围把该列一并纳入匹配。
 - **标记**：命中 mock 规则的请求显示 `MOCK` 徽标 + 规则名（加粗）；HTTPS 显示锁图标。
 - **mock 命中整行着色**：背景 `#fff4d6`、文字 `#412402`，行内一眼可辨。**同时设底色与字色**——只换底色在深色主题下会让默认浅色文字落在浅底上，反而看不清。状态列保留绿/蓝/橙/红语义色（优先级高于行色），「标记」列仍显示规则名。只重放未命中 mock 的行（`REPLAY`）**不着色**，避免与 mock 命中混淆。
-- **详情面板**：上下两分栏——请求（方法/URL/headers/body）与响应（状态码/headers/body）。body 默认按 content-type 自动挑视图（JSON 格式化 / 表单表格 / 原文 / 十六进制），也可手动切换（见 3.2.5）。
+- **详情面板**：请求与响应两分栏（方法/URL/headers/body）。body 默认按 content-type 自动挑视图（JSON 格式化 / 表单表格 / 原文 / 十六进制），也可用视图按钮条手动切换（见 3.2.5）。
+- **布局方向**：流量列表与详情区之间是 `QSplitter`，默认**左右**（Fiddler 风格，列表在左、body 在右），工具栏「布局」下拉可切**上下**。切换时按当前比例换算到新方向，不会把某一边挤没；方向与分隔条位置随 `settings.json` 持久化，重启保持（见 4.3）。分隔条手柄加宽到 6px，好抓。
 - **body 解码策略**（`app/textutil.py`）：按 content-type 声明的 charset 解码；**未声明时默认 UTF-8**——不使用 mitmproxy `get_text()` 的 latin-1 默认（中文内容会变乱码）；解码失败走十六进制视图。mock 引擎对文本类响应自动补 `charset=utf-8`，保证往返一致。
 - **保存条数**：工具栏下拉选择 `100 / 200 / 500 / 1000 / 2000 / 3000 / 5000`（上限 5000），随 `settings.json` 持久化（见 4.3），启动即恢复。超出上限后 FIFO 丢弃最旧一条，并**精确停在上限**（旧实现批量淘汰 10% 会掉到上限以下，与用户设定的数字不符）。
   - 改小上限时列表立即从最旧一端裁剪，给即时反馈；
@@ -276,7 +277,7 @@ mitmproxy 的 DumpMaster 跑在自己的 asyncio 事件循环里，**不能**直
 
 #### 3.2.5 body 结构化视图（对齐 Fiddler 的 JSON / WebForm inspector）
 
-body 区有五种模式，默认「自动」按 content-type 挑最合适的那个：
+body 区顶部是一排互斥按钮（Fiddler inspector 风格，非下拉）：`自动 / 原文 / JSON / 表单 / 图片 / 十六进制`，默认「自动」按 content-type 挑最合适的那个：
 
 | 模式 | 触发（自动） | 展示 |
 |---|---|---|
@@ -775,6 +776,28 @@ JSON 工具页共用——两处各写一份迟早不一致（改了深色配色
 不能破：只改前景不碰背景（否则盖掉搜索高亮的背景色）、数字/关键字染色跳过
 字符串内部（否则 `"13800138000"` 里的数字会被染成数字色）。
 
+### 3.11 主题：深浅色（v1.14，`app/ui/theme.py`）
+
+- **档位**：`system`（默认，完全跟随系统深浅）/ `light` / `dark`；菜单「外观」
+  三选一，选择随 `settings.json` 的 `theme` 字段持久化，启动即应用。
+- **基础控件**底色/文字由 Qt 原生跟随系统，不做样式表全铺；需要处理的是散落
+  各文件的**语义色**——统一收拢为 token（`hint/ok/error/warn/info` +
+  mock 命中行、搜索命中底色、无效配置行等），每个 token 浅色、深色各一套，
+  深色组保证深底对比度。
+- **两种接入方式**：①`theme.dynamic(key)`——模块级 QColor 常量（如
+  `MOCK_ROW_BG`）在主题切换时**就地更新**，模型 `data()` 每次重绘重新取值，
+  持有方零改动；②`theme.add_listener(self._retheme)`——静态样式表（提示文字、
+  状态行等）由各面板的 `_retheme` 重设，WeakMethod 持有、控件销毁自动清理，
+  单个回调抛异常不影响其他监听者。
+- **切换链路**：手动切档走 `QStyleHints.setColorScheme`（Qt 6.8+ 原生深浅，
+  保真度最高，不支持的平台回落 Fusion + 手工调色板）；系统深浅变化由
+  MainWindow 的全局 `PaletteChange` 事件过滤器捕获，`singleShot(0)` 等调色板
+  落位后 `theme.notify()` 统一广播。JSON 语法着色沿用 3.10.5 的双配色 +
+  `is_dark()`，切主题时 BodyPane 重渲染一次即换色。
+- 测试：`test_theme.py`（12 例）——token 完整性、动态色就地更新、监听者生命周期
+  与异常隔离、settings 往返与坏值回落、主窗口外观菜单接线；主题冒烟 7 项
+  （启动→深→浅→跟随系统往返，动态色与状态栏存活）。
+
 ---
 
 ## 4. 数据设计
@@ -815,6 +838,9 @@ JSON 工具页共用——两处各写一份迟早不一致（改了深色配色
   "auto_scroll": true,
   "newest_first": false,
   "body_wrap": true,
+  "traffic_side_by_side": true,
+  "theme": "system",
+  "splitter_state": null,
   "window_geometry": null
 }
 ```
@@ -825,7 +851,9 @@ JSON 工具页共用——两处各写一份迟早不一致（改了深色配色
 - `map_remote` 见 3.8.2：脏数据（`null` / 字符串 / 缺字段）整条忽略而不是让加载失败。
 - `auto_save_session` / `last_session_dir` 见 3.7：前者是退出快照开关，后者记住会话文件对话框的上次目录。
 - `auto_scroll` / `newest_first` 见 3.2.6；`body_wrap` 见 3.2.5（换行开关，超长单行会被闸门临时关掉）。三者缺失时取默认值，**旧版 settings.json 不能被判成损坏而丢掉全部设置**（已加回归用例）。
-- `window_geometry` 是 **bytes**（`saveGeometry()` 结果），不适合 JSON，所以只在内存里用、不落盘——每次启动用默认尺寸。列表里保留该键仅为说明字段存在。
+- `window_geometry` / `splitter_state` 是 **bytes**（`saveGeometry()` / `saveState()` 结果），落盘为 base64 文本，启动时恢复窗口尺寸与流量页分隔条位置；损坏时回落默认不阻断启动。
+- `traffic_side_by_side`：流量页布局方向（3.2）——`true` 左右（Fiddler 风格，默认）、`false` 上下，工具栏「布局」下拉切换，切换即写回。
+- `theme`：主题档位（3.11）——`system` / `light` / `dark`，坏值回落 `system`；菜单「外观」切换即写回。
 - 与 `rules.json` 分离：规则是可迁移资产（可导出分享），设置是本机偏好。
 
 ### 4.4 会话文件
@@ -1002,7 +1030,7 @@ miteproxy/
 |---|---|---|---|---|
 | T6.1 | 编写 `packaging/miteproxy.spec`：macOS/Windows 分支（bundle、图标格式）、hidden imports、剔除无用大包 | spec 文件 | 构建无模块缺失警告 | ✅ 已完成 |
 | T6.2 | `packaging/build_mac.sh`：venv → 装依赖 → pyinstaller → 产出 `.app` | macOS 构建脚本 | 双击启动，功能回归通过 | ✅ 脚本就绪 |
-| T6.3 | `packaging/build_windows.ps1`：同上，Windows 版 | Windows 构建脚本 | 用户在 Windows 上执行，产出 exe | ✅ 脚本就绪，待 Windows 上执行 |
+| T6.3 | `packaging/build_windows.ps1`：venv → 装依赖 → pyinstaller（onedir）→ `Compress-Archive` 整体压成 `dist\MiteProxy-v<版本>-windows-x64.zip`（`-Version` 可指定版本号；脚本带 UTF-8 BOM，兼容 Windows PowerShell 5.1） | Windows 构建脚本 | 用户在 Windows 上执行，解压 zip 后双击 `MiteProxy.exe` 直接使用 | ✅ 脚本就绪，待 Windows 上执行 |
 | T6.4 | 图标适配（`.icns` / `.ico`）+ Info.plist 元信息 | 成品感 | Dock/任务栏显示自定义图标 | ✅ 已完成 |
 | T6.5 | 冻结产物验收：启动、自动开代理、mock、FARX、HTTPS | 验收记录 | 与源码版行为一致 | ✅ macOS 已通过 |
 
@@ -1020,6 +1048,7 @@ miteproxy/
 
 **Windows 平台注意事项**（写入手册）：
 
+- 下载 zip 解压到任意目录，进入 `MiteProxy` 文件夹双击 `MiteProxy.exe` 即可（exe 与 `_internal\` 依赖目录必须放在一起，别单独挪走 exe）；
 - 首次启动监听端口时系统弹防火墙对话框 → 勾选"专用网络"允许；
 - 部分杀毒软件会误报 PyInstaller 解包行为 → 需加白名单；
 - 建议解包到非系统目录运行。

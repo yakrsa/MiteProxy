@@ -5,6 +5,8 @@ from __future__ import annotations
 from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex
 from PySide6.QtGui import QColor, QFont
 
+from app.ui import theme
+
 COLUMNS = [
     "#",
     "方法",
@@ -28,12 +30,13 @@ SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 MAX_ROWS = 5000  # 硬上限（Fiddler 对齐：最大 5000 条）
 DEFAULT_MAX_ROWS = 5000
 
-# mock 命中行整行着色（除「标记」列文字外，背景与文字都变）——浅琥珀底 + 深琥珀字，
-# 深浅主题下都保证对比度（不能只换背景，深色主题下默认浅色文字会看不清）。
+# mock 命中行整行着色（除「标记」列文字外，背景与文字都变）——琥珀底 + 琥珀字，
+# 深浅主题各一套（theme.dynamic：主题切换时这两个 QColor 就地更新，
+# 模型 data() 每次重绘重新取值，天然生效）。
 # 只认 MOCK: 前缀：MapLocal 也会写 flow.marked（LOCAL:xxx），那不是 mock，
 # 不该染成同一个颜色——否则"哪些是造数据"一眼看不出来。
-MOCK_ROW_BG = QColor("#fff4d6")
-MOCK_ROW_FG = QColor("#412402")
+MOCK_ROW_BG = theme.dynamic("mock_row_bg")
+MOCK_ROW_FG = theme.dynamic("mock_row_fg")
 MOCK_MARK_PREFIX = "MOCK:"
 
 
@@ -51,13 +54,13 @@ def format_size(n: int) -> str:
 
 def status_color(status: int) -> QColor | None:
     if 200 <= status < 300:
-        return QColor("#1a7f37")  # 绿
+        return theme.color("ok")      # 绿
     if 300 <= status < 400:
-        return QColor("#0969da")  # 蓝
+        return theme.color("info")    # 蓝
     if 400 <= status < 500:
-        return QColor("#bf8700")  # 橙
+        return theme.color("warn")    # 橙
     if status >= 500:
-        return QColor("#cf222e")  # 红
+        return theme.color("error")   # 红
     return None
 
 

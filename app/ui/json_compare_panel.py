@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QGroupBox,
@@ -30,17 +30,14 @@ from PySide6.QtWidgets import (
 
 from app.jsondiff import diff_json, format_diff_report, render_value
 from app.jsonutil import count_nodes, parse_json
+from app.ui import theme
 
 #: 差异表最多显示多少行（diff 本身仍会算完，只是不全部渲染）
 TABLE_ROW_LIMIT = 500
 
 KIND_LABELS = {"added": "新增", "removed": "删除", "changed": "修改"}
-KIND_COLORS = {"added": "#2f7d32", "removed": "#c0392b", "changed": "#bf8700"}
-
-HINT_COLOR = "#6b6b6b"
-ERROR_COLOR = "#e5534b"
-OK_COLOR = "#2f7d32"
-DIFF_COLOR = "#bf8700"
+#: 类型列文字色走语义 token（新增=ok / 删除=error / 修改=warn），随主题换色
+KIND_KEYS = {"added": "ok", "removed": "error", "changed": "warn"}
 
 
 def _mono_font() -> QFont:
@@ -56,6 +53,8 @@ class JsonComparePanel(QWidget):
         super().__init__(parent)
         self._font = _mono_font()
         self._report_text = ""
+        self._status_key = "hint"       # 主题切换时按最近一次语义重染
+        self._row_kinds: list[str] = [] # 与差异表行一一对应（重染类型列用）
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -129,6 +128,7 @@ class JsonComparePanel(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table)
+        theme.add_listener(self._retheme)
 
         self.status_label = QLabel("两边都贴上 JSON 后自动比对")
         self.status_label.setWordWrap(True)
@@ -140,9 +140,20 @@ class JsonComparePanel(QWidget):
 
     # ------------------------------------------------------------ 状态栏
 
-    def _set_status(self, text: str, color: str = HINT_COLOR) -> None:
+    def _set_status(self, text: str, key: str = "hint") -> None:
+        self._status_key = key
         self.status_label.setText(text)
-        self.status_label.setStyleSheet(f"color: {color};")
+        self.status_label.setStyleSheet(f"color: {theme.css(key)};")
+
+    def _retheme(self) -> None:
+        """主题切换：状态区重染 + 差异表类型列整列重染（item 存的是色值快照）。"""
+        self.status_label.setStyleSheet(f"color: {theme.css(self._status_key)};")
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 1)
+            if item is not None and row < len(self._row_kinds):
+                item.setForeground(theme.color(KIND_KEYS.get(
+                    self._row_kinds[row], "hint"
+                )))
 
     # ------------------------------------------------------------ 动作
 
@@ -196,12 +207,12 @@ class JsonComparePanel(QWidget):
         results = []
         for side, text in (("原 JSON", left_text), ("新 JSON", right_text)):
             if not text.strip():
-                self._set_status(f"「{side}」还是空的", ERROR_COLOR)
+                self._set_status(f"「{side}」还是空的", "error")
                 return
             result = parse_json(text)
             if not result.ok:
                 self._set_status(
-                    f"「{side}」不合法：{result.error.report()}", ERROR_COLOR
+                    f"「{side}」不合法：{result.error.report()}", "error"
                 )
                 return
             results.append(result)
@@ -214,15 +225,16 @@ class JsonComparePanel(QWidget):
 
         if result.identical:
             self._report_text = "两个 JSON 完全一致"
-            self._set_status(f"{nodes_text} · 完全一致", OK_COLOR)
+            self._set_status(f"{nodes_text} · 完全一致", "ok")
             return
 
         shown = result.entries[:TABLE_ROW_LIMIT]
         self.table.setRowCount(len(shown))
+        self._row_kinds = [entry.kind for entry in shown]
         for row, entry in enumerate(shown):
             self.table.setItem(row, 0, QTableWidgetItem(entry.path))
             kind_item = QTableWidgetItem(KIND_LABELS.get(entry.kind, entry.kind))
-            kind_item.setForeground(QColor(KIND_COLORS.get(entry.kind, "#000000")))
+            kind_item.setForeground(theme.color(KIND_KEYS.get(entry.kind, "hint")))
             self.table.setItem(row, 1, kind_item)
             self.table.setItem(row, 2, QTableWidgetItem(render_value(entry.old)))
             self.table.setItem(row, 3, QTableWidgetItem(render_value(entry.new)))
@@ -235,7 +247,7 @@ class JsonComparePanel(QWidget):
         )
         trunc = "（差异过多，结构化对比已提前停止）" if result.truncated else ""
         self._set_status(
-            f"{nodes_text} · 共 {result.count} 处差异{more}{trunc}", DIFF_COLOR
+            f"{nodes_text} · 共 {result.count} 处差异{more}{trunc}", "warn"
         )
         self.copy_btn.setEnabled(True)
 
