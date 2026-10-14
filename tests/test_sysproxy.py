@@ -306,10 +306,8 @@ class TestMainWindowWiring:
 # ====================================================================== 端口即时生效（v1.14）
 
 class TestPortChange:
-    def test_change_restarts_running_proxy_and_retakes_sysproxy(
-        self, window, monkeypatch
-    ):
-        """运行中改端口并确认重启：代理立刻换端口重监听，系统代理先还原再按新端口重接管。"""
+    def test_change_yes_restarts_app(self, window, monkeypatch):
+        """运行中改端口并确认：拉起新实例 + 标记重启 + 走 close 退出。"""
         import sys as _sys
 
         monkeypatch.setattr(
@@ -317,6 +315,56 @@ class TestPortChange:
             staticmethod(lambda *a, **k: _sys.modules[
                 "PySide6.QtWidgets"].QMessageBox.StandardButton.Yes),
         )
+        pops = []
+        monkeypatch.setattr(
+            "app.ui.main_window.subprocess.Popen",
+            staticmethod(lambda cmd, **k: (pops.append(list(cmd)), object())[1]),
+        )
+        # sysproxy 层一并 stub 掉：main_window 里的 subprocess 是全局模块，
+        # patch Popen 会影响 sysproxy._run 的 subprocess.run
+        monkeypatch.setattr(
+            "app.sysproxy.takeover",
+            lambda port, run=None, elevate=False: (True, "ok"),
+        )
+        monkeypatch.setattr(
+            "app.sysproxy.restore",
+            lambda run=None: (True, "已还原"),
+        )
+        monkeypatch.setattr(
+            "app.sysproxy.recover_if_needed", lambda run=None: False
+        )
+        monkeypatch.setattr(
+            window, "_app_restart_command", lambda: ["/fake/MiteProxy.app"]
+        )
+        closes = []
+        monkeypatch.setattr(window, "close", lambda: closes.append(1))
+
+        window.start_proxy()
+        old_port = window.settings.proxy_port
+        new_port = old_port + 73
+        window.port_spin.setValue(new_port)
+        window._on_port_changed()
+
+        assert window.settings.proxy_port == new_port
+        assert window._restarting is True
+        assert pops == [["/fake/MiteProxy.app"]]
+        assert closes == [1]
+        # 窗口 fixture teardown 会调 win.proxy.stop()——重启路径下未真停，
+        # 手动清掉避免 FakeThread 状态残留
+        window._restarting = False
+
+    def test_restart_command_unavailable_falls_back_to_proxy_restart(
+        self, window, monkeypatch
+    ):
+        """构造不出重启命令时退回「仅重启代理」：换端口重监听+先还原再接管。"""
+        import sys as _sys
+
+        monkeypatch.setattr(
+            "app.ui.main_window.QMessageBox.question",
+            staticmethod(lambda *a, **k: _sys.modules[
+                "PySide6.QtWidgets"].QMessageBox.StandardButton.Yes),
+        )
+        monkeypatch.setattr(window, "_app_restart_command", lambda: None)
         calls = []
         monkeypatch.setattr(
             "app.sysproxy.takeover",
