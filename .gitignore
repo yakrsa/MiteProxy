@@ -1,0 +1,17 @@
+# 构建产物
+build/
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# 测试
+.pytest_cache/
+
+# 本地 CA 私钥：绝不能进仓库（首次运行自动重新生成）
+certs/
+*.pem
+.DS_Store
