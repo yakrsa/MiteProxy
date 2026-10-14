@@ -18,6 +18,8 @@ class FlowBridge(QObject):
     #: Mock 规则运行时错误（rule_id, message）——代理线程 → 规则页 ⚠ 标记
     rule_error = Signal(str, object)
     proxy_state_changed = Signal(bool)  # True=运行中
+    #: 系统代理接管/还原结果（后台线程 → 主线程状态栏提示）
+    sysproxy_done = Signal(bool, str)
 
     def emit_flow(self, summary: dict) -> None:
         self.flow_arrived.emit(summary)
