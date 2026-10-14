@@ -15,3 +15,6 @@ __pycache__/
 certs/
 *.pem
 .DS_Store
+
+# 打包产物压缩包（进 GitHub Release，不进 git）
+*.zip
