@@ -146,3 +146,62 @@ class TestButtonReorder:
         panel.table.selectRow(0)
         panel._on_move(-1)  # 已在顶部
         assert [r.name for r in three_rules.all()] == ["规则甲", "规则乙", "规则丙"]
+
+
+# ---------------------------------------------------------------- 右键菜单
+
+
+class TestContextMenu:
+    def _texts(self, menu):
+        return [a.text() for a in menu.actions() if not a.isSeparator()]
+
+    def _action(self, menu, text):
+        return next(a for a in menu.actions() if a.text() == text)
+
+    def test_row_menu_has_rule_operations(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        menu = panel._build_context_menu(0)
+        texts = self._texts(menu)
+        assert texts == ["编辑", "停用", "上移", "下移", "删除"]
+
+    def test_row_menu_boundary_actions_disabled(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        top = panel._build_context_menu(0)
+        assert self._action(top, "上移").isEnabled() is False
+        assert self._action(top, "下移").isEnabled() is True
+        bottom = panel._build_context_menu(2)
+        assert self._action(bottom, "上移").isEnabled() is True
+        assert self._action(bottom, "下移").isEnabled() is False
+
+    def test_toggle_enable_text_and_effect(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        rule = three_rules.all()[0]
+        assert rule.enabled is True
+        # 菜单文字按当前状态显示「停用」
+        assert self._action(panel._build_context_menu(0), "停用") is not None
+        panel._toggle_enable(rule.id)
+        assert three_rules.all()[0].enabled is False
+        # 停用后菜单变「启用」
+        menu = panel._build_context_menu(0)
+        assert self._action(menu, "启用") is not None
+        panel._toggle_enable(rule.id)
+        assert three_rules.all()[0].enabled is True
+
+    def test_toggle_persisted(self, qapp, three_rules, tmp_path):
+        panel = RulesPanel(three_rules)
+        rule_id = three_rules.all()[1].id
+        panel._toggle_enable(rule_id)
+        reloaded = RuleStore(path=tmp_path / "rules.json")
+        reloaded.load()
+        assert reloaded.all()[1].enabled is False
+
+    def test_blank_menu_has_add_and_import(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        menu = panel._build_context_menu(-1)
+        assert self._texts(menu) == ["新增", "导入 Fiddler 规则"]
+
+    def test_row_menu_selects_row(self, qapp, three_rules):
+        """右键某行后 currentRow 应指向该行（编辑/删除基于当前行）。"""
+        panel = RulesPanel(three_rules)
+        panel._build_context_menu(2)
+        assert panel.table.currentRow() == 2

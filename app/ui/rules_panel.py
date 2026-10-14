@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QMenu,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -114,6 +115,7 @@ class RulesPanel(QWidget):
             QAbstractItemView.SelectionBehavior.SelectRows
         )
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         layout.addWidget(self.table)
 
         self.add_btn.clicked.connect(self._on_add)
@@ -123,6 +125,7 @@ class RulesPanel(QWidget):
         self.up_btn.clicked.connect(lambda: self._on_move(-1))
         self.down_btn.clicked.connect(lambda: self._on_move(1))
         self.table.row_dropped.connect(self._on_row_dropped)
+        self.table.customContextMenuRequested.connect(self._show_context_menu)
         self.table.cellDoubleClicked.connect(lambda r, c: self._on_edit())
 
     # ------------------------------------------------------------ 刷新
@@ -191,6 +194,44 @@ class RulesPanel(QWidget):
         if row < len(rules):
             return rules[row]
         return None
+
+    # ------------------------------------------------------------ 右键菜单
+
+    def _show_context_menu(self, pos) -> None:
+        row = self.table.rowAt(pos.y())
+        menu = self._build_context_menu(row)
+        menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _build_context_menu(self, row: int) -> QMenu:
+        """构建右键菜单：选中行 → 规则操作；空白处 → 新增/导入。"""
+        menu = QMenu(self)
+        rules = self.store.all()
+        if 0 <= row < len(rules):
+            self.table.selectRow(row)
+            rule = rules[row]
+            menu.addAction("编辑", self._on_edit)
+            menu.addAction(
+                "停用" if rule.enabled else "启用",
+                lambda: self._toggle_enable(rule.id),
+            )
+            menu.addSeparator()
+            act_up = menu.addAction("上移", lambda: self._on_move(-1))
+            act_down = menu.addAction("下移", lambda: self._on_move(1))
+            act_up.setEnabled(row > 0)
+            act_down.setEnabled(row < len(rules) - 1)
+            menu.addSeparator()
+            menu.addAction("删除", self._on_delete)
+        else:
+            menu.addAction("新增", self._on_add)
+            menu.addAction("导入 Fiddler 规则", self._on_import)
+        return menu
+
+    def _toggle_enable(self, rule_id: str) -> None:
+        rule = self.store.get(rule_id)
+        if rule is None:
+            return
+        self.store.update(rule_id, enabled=not rule.enabled)
+        self.refresh()
 
     # ------------------------------------------------------------ 事件
 
