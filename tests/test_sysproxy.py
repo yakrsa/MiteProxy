@@ -214,6 +214,10 @@ class FakeThread:
         self.target()
 
 
+    def join(self, timeout=None):
+        pass                     # start() 已同步执行完，join 无事可做
+
+
 @pytest.fixture()
 def window(tmp_path, monkeypatch):
     from types import SimpleNamespace
