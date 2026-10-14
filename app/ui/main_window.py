@@ -700,19 +700,34 @@ class MainWindow(QMainWindow):
         self._update_status()
 
     def _on_port_changed(self) -> None:
-        """端口变更（回车/失焦提交）：保存并即时生效。
+        """端口变更（回车/失焦提交）：保存设置；运行中弹窗询问是否立即重启。
 
-        运行中改端口 = 重启代理 + 系统代理重接管 + 证书服务静默重启，
-        不需要手动停止再启动。新端口被占用时由 _verify_proxy_started 兜底提示。
+        对齐 Fiddler 心智：改端口需要重启代理才生效，让用户自己决定——
+        选「是」立即重启（系统代理同步切到新端口），选「否」下次启动生效。
         """
         port = self.port_spin.value()
         if port == self.settings.proxy_port:
             return
-        was_running = self.proxy.running
         self.settings.proxy_port = port
         save_settings(self.settings)
-        if not was_running:
+        if not self.proxy.running:
             return
+        answer = QMessageBox.question(
+            self,
+            "端口已修改",
+            f"代理端口已修改为 {port}，需要重启代理才能生效。\n\n"
+            "是否立即重启？重启后系统代理会自动切换到新端口。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._restart_proxy_on_port(port)
+        else:
+            self.status_bar.showMessage(
+                f"新端口 {port} 将在下次启动代理时生效", 6000
+            )
+
+    def _restart_proxy_on_port(self, port: int) -> None:
+        """运行中按新端口重启代理 + 系统代理重接管 + 证书服务静默重启。"""
         self.proxy.stop(timeout=2.0)
         self.proxy = self._make_proxy(port)
         self.proxy.start()

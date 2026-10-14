@@ -166,6 +166,17 @@ class ProxyService:
         except Exception:
             log.exception("代理线程异常退出")
         finally:
+            # mitmproxy 的 ProxyServer addon 没有 done() 钩子：master.run()
+            # 返回时监听 socket 不会关闭（CLI 场景进程直接退出看不出来）。
+            # 嵌入场景必须自己关，否则端口一直被占——「停止代理」后再启动
+            # 同端口会 EADDRINUSE，改端口回绑旧端口同样失败。
+            try:
+                proxyserver = master.addons.get("proxyserver")
+                if proxyserver is not None:
+                    for inst in list(proxyserver.servers):
+                        await inst.stop()
+            except Exception:
+                log.warning("关闭 mitmproxy 监听 socket 失败", exc_info=True)
             # 只清自己创建的：start() 后立刻 stop() 时，本线程可能还没跑到
             # `self._master = master` 就退出，无条件清 None 会把**后来新启动**的
             # master 一并清掉，UI 状态错乱、replay/stop 全部失灵
