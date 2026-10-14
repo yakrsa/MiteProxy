@@ -1606,7 +1606,15 @@ class MainWindow(QMainWindow):
         # 先做退出快照：此时列表与缓存都还是完整状态
         self._autosave_on_exit()
         self._stop_cert_server()
+        # 停代理与还原系统代理互不依赖（还原读的是落盘状态，不需要代理先停），
+        # 并行执行：退出耗时 = 两者较慢者，而不是相加（Windows 上尤其明显）
+        restorer = threading.Thread(
+            target=self._restore_sysproxy_sync,
+            daemon=True,
+            name="sysproxy-restore-exit",
+        )
+        restorer.start()
         self.proxy.stop()
-        self._restore_sysproxy_sync()    # 退出前必须还原系统代理
+        restorer.join(10.0)              # 必须等还原完再关（有锁保护竞态）
         self._save_geometry()
         super().closeEvent(event)
