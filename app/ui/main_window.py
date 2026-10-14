@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QSplitter,
     QTabWidget,
@@ -199,6 +200,10 @@ class MainWindow(QMainWindow):
                 self.traffic_splitter.restoreState(state)
             except Exception:
                 log.warning("分隔条位置恢复失败，使用默认比例", exc_info=True)
+            finally:
+                # Qt 的 restoreState 会用 state 里记录的值覆盖 childrenCollapsible，
+                # 必须重设，否则拖动分隔条时可以把某一边拖到 0（折叠消失）
+                self.traffic_splitter.setChildrenCollapsible(False)
 
     def _on_layout_changed(self) -> None:
         """切换流量列表与详情区的排布方向（左右 ↔ 上下）。
@@ -354,9 +359,17 @@ class MainWindow(QMainWindow):
         self.proxy_model.flow_lookup = self.capture.get_flow
         self.traffic_table.setModel(self.proxy_model)
         self.detail_panel = DetailPanel(wrap_default=self.settings.body_wrap)
+        # 水平方向 Ignored：详情面板不向 splitter 申报宽度意图。
+        # 否则切换请求时（长 URL 摘要、表单列宽、图片页等 sizeHint 变化）会
+        # 触发 splitter 重新分配，body 区域左右漂移；显式最小宽度防拖穿。
+        self.detail_panel.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        self.detail_panel.setMinimumWidth(200)
         self.traffic_splitter.addWidget(self.traffic_table)
         self.traffic_splitter.addWidget(self.detail_panel)
         self.traffic_splitter.setSizes([420, 300])
+        self.traffic_splitter.setChildrenCollapsible(False)
         traffic_layout.addWidget(self.traffic_splitter)
         self.tabs.addTab(traffic_page, "流量")
 
