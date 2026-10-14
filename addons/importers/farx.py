@@ -26,7 +26,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from app.rules import CONTAINS, EXACT, REGEX, Action, Match, Rule, CONFIG_DIR
+from app import rules as _rules_mod
+from app.rules import CONTAINS, EXACT, REGEX, Action, Match, Rule
 
 log = logging.getLogger(__name__)
 
@@ -64,9 +65,9 @@ def parse_file(path: str | Path) -> ImportResult:
         raise ValueError("文件中没有找到 ResponseRule 节点")
     for rr in rule_elements:
         try:
-            match_attr = (rr.get("Match") or "").strip()
-            if match_attr.startswith("["):
-                # Fiddler Everywhere：Match/Action 是 JSON 数组（base64 条件/动作）
+            if _is_everywhere(rr):
+                # Fiddler Everywhere：Match 是 {"matches":[...]} JSON 对象、
+                # Match/Action 是 JSON 数组（base64 条件/动作）
                 _parse_rule(rr, result)
             else:
                 # Fiddler Classic (v4/v5)：Match/Action 是字符串前缀语法
@@ -79,6 +80,25 @@ def parse_file(path: str | Path) -> ImportResult:
 
 
 # ------------------------------------------------------------------ 内部
+
+
+def _is_everywhere(rr: ET.Element) -> bool:
+    """Fiddler Everywhere 判定：Match/Action 任一是 JSON 数组，或 Match 是
+    含 "matches" 键的 JSON 对象（官方样本 Match 为 {"matches":[...]} 形态）。
+    Classic 格式的 Match/Action 是字符串前缀语法，不会是合法 JSON。"""
+    for attr in ((rr.get("Match") or ""), (rr.get("Action") or "")):
+        attr = attr.strip()
+        if attr.startswith("["):
+            return True
+    match_attr = (rr.get("Match") or "").strip()
+    if match_attr.startswith("{"):
+        try:
+            data = json.loads(match_attr)
+        except json.JSONDecodeError:
+            return False
+        if isinstance(data, dict) and "matches" in data:
+            return True
+    return False
 
 
 def _parse_rule(rr: ET.Element, result: ImportResult) -> None:
@@ -276,7 +296,8 @@ def _body_to_source(body_bytes: bytes) -> tuple[str, str, Optional[str]]:
     try:
         return "inline", body_bytes.decode("utf-8"), None
     except UnicodeDecodeError:
-        cache_dir = CONFIG_DIR / "imported"
+        # 运行时读取（而非 import 期绑定），保证测试 monkeypatch 与配置切换生效
+        cache_dir = _rules_mod.CONFIG_DIR / "imported"
         cache_dir.mkdir(parents=True, exist_ok=True)
         target = cache_dir / f"{uuid.uuid4().hex[:12]}.bin"
         target.write_bytes(body_bytes)
