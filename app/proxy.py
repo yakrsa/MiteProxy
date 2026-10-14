@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import time
 from typing import Optional
 
 from mitmproxy import options
@@ -64,6 +65,13 @@ class ProxyService:
         master, loop, thread = self._master, self._loop, self._thread
         if thread is None:
             return
+        # 线程刚 start 还没跑到 `self._master = master` 时，master/loop 都是
+        # None——直接 join 的话 shutdown 没人投递，线程会永久滞留（DumpMaster
+        # 一直 run）。先短等 master 就绪再投递（正常路径 master 已就绪，零等待）
+        deadline = time.monotonic() + 2.0
+        while master is None and thread.is_alive() and time.monotonic() < deadline:
+            time.sleep(0.02)
+            master, loop = self._master, self._loop
         if master is not None and loop is not None:
             try:
                 loop.call_soon_threadsafe(master.shutdown)
