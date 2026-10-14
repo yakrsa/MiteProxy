@@ -17,7 +17,7 @@ from app.ui.filter_model import FilterConfig
 
 SETTINGS_PATH = CONFIG_DIR / "settings.json"
 
-DEFAULT_PROXY_PORT = 8080
+DEFAULT_PROXY_PORT = 8888   # 对齐 Fiddler 默认端口
 DEFAULT_CERT_PORT = 8081
 
 # 流量列表「保存条数」可选项（对齐 Fiddler 的会话上限设置，上限 5000）
@@ -61,6 +61,9 @@ class Settings:
     newest_first: bool = False
     #: body 默认自动换行（超长单行会被闸门临时关掉，见 app/bodyview）
     body_wrap: bool = True
+    #: 启动代理时自动把系统代理指向本应用、停止/退出时还原
+    #: （对齐 Fiddler「Act as System Proxy」；macOS 需一次管理员授权）
+    auto_system_proxy: bool = True
     window_geometry: bytes | None = None
 
     def to_dict(self) -> dict:
@@ -76,6 +79,7 @@ class Settings:
             "auto_scroll": self.auto_scroll,
             "newest_first": self.newest_first,
             "body_wrap": self.body_wrap,
+            "auto_system_proxy": self.auto_system_proxy,
             # geometry 是 QByteArray，base64 成文本落盘（启动时恢复窗口位置）
             "window_geometry": (
                 base64.b64encode(self.window_geometry).decode("ascii")
@@ -107,6 +111,7 @@ class Settings:
             auto_scroll=bool(data.get("auto_scroll", True)),
             newest_first=bool(data.get("newest_first", False)),
             body_wrap=bool(data.get("body_wrap", True)),
+            auto_system_proxy=bool(data.get("auto_system_proxy", True)),
             window_geometry=cls._decode_geometry(data.get("window_geometry")),
         )
 

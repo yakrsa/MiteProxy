@@ -9,7 +9,9 @@
 from __future__ import annotations
 
 import logging
+import platform
 import shutil
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -74,6 +76,7 @@ from app.settings import (
     save_settings,
 )
 from app.bodyview import BODY_PREVIEW_LIMIT as BODY_SEND_LIMIT
+from app import sysproxy
 from app.textutil import decode_body
 from app.ui.compare_dialog import CompareDialog
 from app.ui.detail_panel import DetailPanel
@@ -112,6 +115,8 @@ class MainWindow(QMainWindow):
         self.settings: Settings = load_settings()
         # bridge 先建：规则命中回调要从代理线程回到主线程，得走信号
         self.bridge = FlowBridge()
+        #: 系统代理接管/还原串行化：停代理与后台接管线程竞争时保证不漏还原
+        self._sysproxy_lock = threading.Lock()
         self.rule_store = RuleStore()
         self.rule_store.load()
         self.rule_store.set_callbacks(
@@ -226,6 +231,16 @@ class MainWindow(QMainWindow):
             "你手动翻到别处时不会来抢滚动条——只有停在最新端才跟着走。"
         )
         toolbar_row.addWidget(self.auto_scroll_cb)
+
+        self.sysproxy_cb = QCheckBox("接管系统代理")
+        self.sysproxy_cb.setChecked(self.settings.auto_system_proxy)
+        self.sysproxy_cb.setToolTip(
+            "启动代理时自动把系统 HTTP/HTTPS 代理指向本应用，停止或退出时自动还原\n"
+            "（对齐 Fiddler「Act as System Proxy」）。\n"
+            "macOS 首次接管会请求一次管理员授权；不想自动改系统设置就取消勾选。"
+        )
+        self.sysproxy_cb.toggled.connect(self._on_sysproxy_toggled)
+        toolbar_row.addWidget(self.sysproxy_cb)
 
         toolbar_row.addWidget(QLabel("顺序:"))
         self.order_combo = QComboBox()
@@ -386,6 +401,7 @@ class MainWindow(QMainWindow):
         self.bridge.flow_updated.connect(self._on_flow_updated)
         self.bridge.rule_hit.connect(self.rules_panel.update_hit)
         self.bridge.rule_error.connect(self.rules_panel.update_rule_error)
+        self.bridge.sysproxy_done.connect(self._on_sysproxy_done)
         self.filter_bar.changed.connect(self._on_filter_changed)
         self.search_bar.config_changed.connect(self._on_search_changed)
         self.search_bar.closed.connect(self._on_search_closed)
@@ -439,6 +455,8 @@ class MainWindow(QMainWindow):
         """
         if self.proxy.running:
             return True
+        # 上次异常退出没还原的系统代理，先补还原（幂等，无记录时 no-op）
+        sysproxy.recover_if_needed()
         self.proxy.port = self.settings.proxy_port
         self.rule_store.load()      # 启动前重载规则（支持外部编辑 rules.json）
         # load() 会重建全部 Rule 对象，规则页表格还是旧引用——不刷新的话
@@ -448,6 +466,7 @@ class MainWindow(QMainWindow):
         self.proxy_btn.setText("停止代理")
         self.proxy_btn.setChecked(True)
         self._update_status()
+        self._takeover_sysproxy_async()
         if verify:
             QTimer.singleShot(700, self._verify_proxy_started)
         return True
@@ -460,6 +479,79 @@ class MainWindow(QMainWindow):
         self.proxy_btn.setText("启动代理")
         self.proxy_btn.setChecked(False)
         self._update_status()
+        self._restore_sysproxy_async()
+
+    # ------------------------------------------------------------ 系统代理接管
+
+    def _sysproxy_enabled(self) -> bool:
+        return self.sysproxy_cb.isChecked()
+
+    def _takeover_sysproxy_async(self) -> None:
+        """后台接管系统代理（networksetup 逐服务执行，可能要几秒，别卡 UI）。"""
+        if not self._sysproxy_enabled():
+            return
+
+        def work():
+            with self._sysproxy_lock:
+                ok, msg = sysproxy.takeover(self.proxy.port)
+            self.bridge.sysproxy_done.emit(ok, msg)
+
+        threading.Thread(target=work, daemon=True, name="sysproxy-takeover").start()
+
+    def _restore_sysproxy_async(self) -> None:
+        def work():
+            with self._sysproxy_lock:
+                ok, msg = sysproxy.restore()
+            if msg != "无接管记录":
+                self.bridge.sysproxy_done.emit(ok, msg)
+
+        threading.Thread(target=work, daemon=True, name="sysproxy-restore").start()
+
+    def _restore_sysproxy_sync(self) -> None:
+        """退出路径用同步还原：必须还原完再关窗口。"""
+        with self._sysproxy_lock:
+            ok, msg = sysproxy.restore()
+        if ok and msg != "无接管记录":
+            log.info("系统代理已还原: %s", msg)
+
+    def _on_sysproxy_done(self, ok: bool, msg: str) -> None:
+        if ok:
+            self.status_bar.showMessage(f"{msg}（停止代理或退出时自动还原）", 6000)
+            return
+        self.status_bar.showMessage(
+            f"系统代理接管失败：{msg}（可手动设置代理 127.0.0.1:{self.proxy.port}）",
+            8000,
+        )
+        # macOS 最常见失败原因是缺管理员权限 → 给一次提权重试（弹密码框）
+        if (platform.system() == "darwin"
+                and not getattr(self, "_sysproxy_elevate_asked", False)):
+            self._sysproxy_elevate_asked = True  # 每次会话只问一次，别烦人
+            answer = QMessageBox.question(
+                self,
+                "系统代理接管失败",
+                f"{msg}\n\n用管理员权限重试？（会弹出密码确认框，与 Charles 行为一致）",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes and self.proxy.running:
+                threading.Thread(
+                    target=lambda: self._sysproxy_elevated_takeover(),
+                    daemon=True,
+                    name="sysproxy-takeover-elevated",
+                ).start()
+
+    def _sysproxy_elevated_takeover(self) -> None:
+        with self._sysproxy_lock:
+            ok, msg = sysproxy.takeover(self.proxy.port, elevate=True)
+        self.bridge.sysproxy_done.emit(ok, msg)
+
+    def _on_sysproxy_toggled(self, checked: bool) -> None:
+        self.settings.auto_system_proxy = checked
+        save_settings(self.settings)
+        if self.proxy.running:
+            if checked:
+                self._takeover_sysproxy_async()
+            else:
+                self._restore_sysproxy_async()
 
     def _verify_proxy_started(self) -> None:
         if not self.proxy_btn.isChecked():
@@ -470,6 +562,7 @@ class MainWindow(QMainWindow):
         self.proxy_btn.setText("启动代理")
         self.proxy_btn.setChecked(False)
         self._update_status()
+        self._restore_sysproxy_async()   # 可能刚接管完代理就挂了，补还原
         QMessageBox.critical(
             self,
             "代理启动失败",
@@ -1317,5 +1410,6 @@ class MainWindow(QMainWindow):
         self._autosave_on_exit()
         self._stop_cert_server()
         self.proxy.stop()
+        self._restore_sysproxy_sync()    # 退出前必须还原系统代理
         self._save_geometry()
         super().closeEvent(event)
