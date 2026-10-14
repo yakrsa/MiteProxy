@@ -9,8 +9,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import platform
 import shutil
+import subprocess
+import sys
 import threading
 import time
 from datetime import datetime
@@ -140,6 +143,9 @@ class MainWindow(QMainWindow):
 
         self.proxy = self._make_proxy(self.settings.proxy_port)
         self.cert_server: CertServer | None = None
+        # 整应用重启标记：置位后退出路径跳过系统代理还原（快照留给新实例，
+        # 新实例启动时 recover_if_needed 先还原再接管，顺序才不会互相覆盖）
+        self._restarting = False
 
         # ---- 重放并对比（DESIGN 3.6）：pending 等重放响应到达后关联弹框
         self._pending_compare: list[dict] = []
@@ -589,7 +595,8 @@ class MainWindow(QMainWindow):
         self.proxy_btn.setText("启动代理")
         self.proxy_btn.setChecked(False)
         self._update_status()
-        self._restore_sysproxy_async()
+        if not self._restarting:        # 整应用重启时快照留给新实例处理
+            self._restore_sysproxy_async()
 
     # ------------------------------------------------------------ 系统代理接管
 
@@ -715,16 +722,59 @@ class MainWindow(QMainWindow):
         answer = QMessageBox.question(
             self,
             "端口已修改",
-            f"代理端口已修改为 {port}，需要重启代理才能生效。\n\n"
-            "是否立即重启？重启后系统代理会自动切换到新端口。",
+            f"代理端口已修改为 {port}，需要重启才能生效。\n\n"
+            "是否立即重启应用？重启后系统代理会自动切换到新端口。",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if answer == QMessageBox.StandardButton.Yes:
-            self._restart_proxy_on_port(port)
+            self._restart_app_for_port(port)
         else:
             self.status_bar.showMessage(
-                f"新端口 {port} 将在下次启动代理时生效", 6000
+                f"新端口 {port} 将在下次启动时生效", 6000
             )
+
+    def _app_restart_command(self) -> list[str] | None:
+        """构造「重新拉起自己」的命令；构造不出来返回 None（走兜底）。"""
+        exe = sys.executable
+        if not exe:
+            return None
+        if getattr(sys, "frozen", False):
+            if platform.system() == "darwin":
+                bundle = Path(exe).parents[2]        # …/MiteProxy.app
+                if bundle.name.endswith(".app") and bundle.is_dir():
+                    return ["open", "-n", str(bundle)]
+            return [exe]                             # Windows / 其他冻结环境
+        # 源码运行：原样重新执行入口脚本（脚本目录自动进 sys.path）
+        entry = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
+        if entry.endswith(".py") and os.path.isfile(entry):
+            return [exe, entry]
+        return None
+
+    def _restart_app_for_port(self, port: int) -> None:
+        """整个应用退出并重新打开（对齐 Fiddler 的重启生效）。
+
+        新实例监听新端口，不会撞旧实例正在释放的旧端口；系统代理不在这里
+        还原——旧实例退出时保留接管快照，新实例启动时 recover_if_needed
+        先还原旧接管、再按新端口重新接管，两条路径不会互相覆盖。
+        """
+        cmd = self._app_restart_command()
+        if cmd is None:
+            # 兜底：构造不出重启命令（异常运行环境），退回仅重启代理
+            self._restart_proxy_on_port(port)
+            return
+        self._restarting = True
+        self.status_bar.showMessage(f"正在重启应用，切换到端口 {port} …", 5000)
+        try:
+            subprocess.Popen(
+                cmd,
+                start_new_session=platform.system() != "Windows",
+            )
+        except Exception:
+            log.exception("重启应用失败，退回仅重启代理")
+            self._restarting = False
+            self._restart_proxy_on_port(port)
+            return
+        self.close()        # 走 closeEvent：停代理、保留快照、不还原系统代理
 
     def _restart_proxy_on_port(self, port: int) -> None:
         """运行中按新端口重启代理 + 系统代理重接管 + 证书服务静默重启。"""
@@ -1655,13 +1705,18 @@ class MainWindow(QMainWindow):
         if autosaver is not None:
             autosaver.start()
         # 停代理与还原系统代理互不依赖（还原读的是落盘状态，不需要代理先停），
-        # 加上快照写盘共三路并行：退出耗时 = 最慢一路，而不是相加
-        restorer = threading.Thread(
-            target=self._restore_sysproxy_sync,
-            daemon=True,
-            name="sysproxy-restore-exit",
-        )
-        restorer.start()
+        # 加上快照写盘共三路并行：退出耗时 = 最慢一路，而不是相加。
+        # 整应用重启时跳过还原：接管快照留给新实例处理（先还原再接管），
+        # 这里还原会跟新实例的接管互相覆盖
+        if self._restarting:
+            restorer = None
+        else:
+            restorer = threading.Thread(
+                target=self._restore_sysproxy_sync,
+                daemon=True,
+                name="sysproxy-restore-exit",
+            )
+            restorer.start()
         self.proxy.stop()
         for worker in (autosaver, restorer):
             if worker is not None:
