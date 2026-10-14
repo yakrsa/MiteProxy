@@ -7,6 +7,7 @@ from datetime import datetime
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -27,6 +28,7 @@ from app.ui.import_dialog import (
     _match_summary,
 )
 from app.ui.rule_editor import RuleEditorDialog
+from app.ui import theme
 
 
 class RuleTable(QTableWidget):
@@ -74,6 +76,7 @@ class RulesPanel(QWidget):
     def __init__(self, store: RuleStore, parent=None):
         super().__init__(parent)
         self.store = store
+        self._display_ids: list[str] = []   # 表格行 → 规则 id（过滤后的视图顺序）
         self._build_ui()
         self.refresh()
 
@@ -90,6 +93,10 @@ class RulesPanel(QWidget):
         self.import_btn = QPushButton("导入 Fiddler 规则")
         self.up_btn = QPushButton("上移")
         self.down_btn = QPushButton("下移")
+        self.only_enabled_cb = QCheckBox("只显示启用")
+        self.only_enabled_cb.setToolTip(
+            "勾选后列表只显示启用中的规则；停用规则仍在存储中，取消勾选即可看到。"
+        )
         for b in (
             self.add_btn,
             self.edit_btn,
@@ -99,6 +106,8 @@ class RulesPanel(QWidget):
             self.down_btn,
         ):
             toolbar.addWidget(b)
+        toolbar.addSpacing(12)
+        toolbar.addWidget(self.only_enabled_cb)
         toolbar.addStretch(1)
         layout.addLayout(toolbar)
 
@@ -106,6 +115,11 @@ class RulesPanel(QWidget):
         self.table.setHorizontalHeaderLabels(
             ["名称", "启用", "匹配", "动作", "来源", "命中"]
         )
+        # 质感：斑马纹 + 无网格线 + 紧凑行高（全局 QSS 管表头/边框）
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+        self.table.verticalHeader().setDefaultSectionSize(22)
+        self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
         )
@@ -126,14 +140,23 @@ class RulesPanel(QWidget):
         self.down_btn.clicked.connect(lambda: self._on_move(1))
         self.table.row_dropped.connect(self._on_row_dropped)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
+        self.only_enabled_cb.toggled.connect(self._on_filter_toggled)
         self.table.cellDoubleClicked.connect(lambda r, c: self._on_edit())
 
     # ------------------------------------------------------------ 刷新
 
-    def refresh(self) -> None:
+    def _visible_rules(self) -> list[Rule]:
+        """当前应显示的规则（「只显示启用」过滤后的视图顺序）。"""
         rules = self.store.all()
-        self.table.setRowCount(len(rules))
-        for i, rule in enumerate(rules):
+        if self.only_enabled_cb.isChecked():
+            return [r for r in rules if r.enabled]
+        return rules
+
+    def refresh(self) -> None:
+        visible = self._visible_rules()
+        self._display_ids = [r.id for r in visible]
+        self.table.setRowCount(len(visible))
+        for i, rule in enumerate(visible):
             enabled_item = QTableWidgetItem("✔" if rule.enabled else "—")
             enabled_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             name = rule.name + (" ⚠" if rule.error else "")
@@ -162,38 +185,39 @@ class RulesPanel(QWidget):
 
         只改一格、不动选中与滚动——命中可能每秒几十次，整表重建会把人逼疯。
         """
-        for i, rule in enumerate(self.store.all()):
-            if rule.id == rule_id:
-                self._fill_hits(i, rule)
-                return
+        try:
+            row = self._display_ids.index(rule_id)
+        except (ValueError, AttributeError):
+            return
+        rule = self.store.get(rule_id)
+        if rule is not None:
+            self._fill_hits(row, rule)
 
     def update_rule_error(self, rule_id: str, message) -> None:
         """代理线程报规则运行时错误后的实时刷新（mock 失败/文件缺失/重定向非法）。
 
         错误标记在名称列（⚠ + tooltip），不整表重建。
         """
-        for i, rule in enumerate(self.store.all()):
-            if rule.id != rule_id:
-                continue
-            item = self.table.item(i, 0)
-            if item is None:
-                return
-            if message:
-                item.setText(f"{rule.name} ⚠")
-                item.setToolTip(message)
-            else:
-                item.setText(rule.name)
-                item.setToolTip("")
+        try:
+            row = self._display_ids.index(rule_id)
+        except (ValueError, AttributeError):
             return
+        rule = self.store.get(rule_id)
+        item = self.table.item(row, 0)
+        if rule is None or item is None:
+            return
+        if message:
+            item.setText(f"{rule.name} ⚠")
+            item.setToolTip(message)
+        else:
+            item.setText(rule.name)
+            item.setToolTip("")
 
     def _current_rule(self) -> Rule | None:
         row = self.table.currentRow()
         if row < 0:
             return None
-        rules = self.store.all()
-        if row < len(rules):
-            return rules[row]
-        return None
+        return self.store.get(self._display_ids[row])
 
     # ------------------------------------------------------------ 右键菜单
 
@@ -205,10 +229,10 @@ class RulesPanel(QWidget):
     def _build_context_menu(self, row: int) -> QMenu:
         """构建右键菜单：选中行 → 规则操作；空白处 → 新增/导入。"""
         menu = QMenu(self)
-        rules = self.store.all()
-        if 0 <= row < len(rules):
+        visible = self._visible_rules()
+        if 0 <= row < len(visible):
             self.table.selectRow(row)
-            rule = rules[row]
+            rule = visible[row]
             menu.addAction("编辑", self._on_edit)
             menu.addAction(
                 "停用" if rule.enabled else "启用",
@@ -218,7 +242,7 @@ class RulesPanel(QWidget):
             act_up = menu.addAction("上移", lambda: self._on_move(-1))
             act_down = menu.addAction("下移", lambda: self._on_move(1))
             act_up.setEnabled(row > 0)
-            act_down.setEnabled(row < len(rules) - 1)
+            act_down.setEnabled(row < len(visible) - 1)
             menu.addSeparator()
             menu.addAction("删除", self._on_delete)
         else:
@@ -233,7 +257,50 @@ class RulesPanel(QWidget):
         self.store.update(rule_id, enabled=not rule.enabled)
         self.refresh()
 
-    # ------------------------------------------------------------ 事件
+    def _on_filter_toggled(self) -> None:
+        """切换「只显示启用」：重建视图，尽量保住当前选中的规则。"""
+        current = self._current_rule()
+        self.refresh()
+        if current is not None and current.id in self._display_ids:
+            self.table.selectRow(self._display_ids.index(current.id))
+
+    def _apply_display_order(self, new_display_ids: list[str]) -> None:
+        """把显示子序列的新顺序映射回全量存储顺序并落盘。
+
+        被过滤隐藏的规则保持原相对位置插回，不会因为只操作可见行
+        就被挤到列表末尾。
+        """
+        display_set = set(new_display_ids)
+        remaining = iter(new_display_ids)
+        full = []
+        for r in self.store.all():
+            full.append(next(remaining) if r.id in display_set else r.id)
+        self.store.reorder(full)
+
+    def _on_move(self, delta: int) -> None:
+        row = self.table.currentRow()
+        ids = self._display_ids
+        target = row + delta
+        if row < 0 or not (0 <= target < len(ids)):
+            return
+        ids[row], ids[target] = ids[target], ids[row]
+        self._apply_display_order(ids)
+        self.refresh()
+        self.table.selectRow(target)
+
+    def _on_row_dropped(self, src: int, dst: int) -> None:
+        """拖拽落点 → 重排（dst 为拖放前的列表索引语义）。"""
+        ids = list(self._display_ids)
+        if not (0 <= src < len(ids)):
+            return
+        insert_at = dst - 1 if dst > src else dst
+        if insert_at == src or not (0 <= insert_at <= len(ids) - 1):
+            return
+        moved = ids.pop(src)
+        ids.insert(insert_at, moved)
+        self._apply_display_order(ids)
+        self.refresh()
+        self.table.selectRow(insert_at)
 
     def _on_add(self) -> None:
         dialog = RuleEditorDialog(self.store, parent=self)
@@ -259,33 +326,6 @@ class RulesPanel(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             self.store.delete(rule.id)
             self.refresh()
-
-    def _on_move(self, delta: int) -> None:
-        row = self.table.currentRow()
-        rules = self.store.all()
-        target = row + delta
-        if row < 0 or not (0 <= target < len(rules)):
-            return
-        ids = [r.id for r in rules]
-        ids[row], ids[target] = ids[target], ids[row]
-        self.store.reorder(ids)
-        self.refresh()
-        self.table.selectRow(target)
-
-    def _on_row_dropped(self, src: int, dst: int) -> None:
-        """拖拽落点 → store.reorder（dst 为拖放前的列表索引语义）。"""
-        rules = self.store.all()
-        ids = [r.id for r in rules]
-        if not (0 <= src < len(ids)):
-            return
-        insert_at = dst - 1 if dst > src else dst
-        if insert_at == src or not (0 <= insert_at <= len(ids) - 1):
-            return
-        moved = ids.pop(src)
-        ids.insert(insert_at, moved)
-        self.store.reorder(ids)
-        self.refresh()
-        self.table.selectRow(insert_at)
 
     # ------------------------------------------------------------ Fiddler 导入
 

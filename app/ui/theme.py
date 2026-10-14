@@ -39,6 +39,10 @@ COLORS: dict[str, tuple[str, str]] = {
     "hit_bg":      ("#fff3bf", "#5d5420"),   # 搜索命中底色（body / 表单表格）
     "invalid_bg":  ("#fff1f0", "#4d1414"),   # 无效配置行底色
     "invalid_fg":  ("#8a1f1f", "#ff9b95"),   # 无效配置行文字
+    # -- 表格质感（对齐 Fiddler：斑马纹 + 扁平表头 + 细分隔线）
+    "alt_row":     ("#f6f8fa", "#2d333b"),   # 交替行底色（斑马纹）
+    "header_bg":   ("#eff2f5", "#2d333b"),   # 表头底色（扁平）
+    "grid_line":   ("#e1e4e8", "#444c56"),   # 表格分隔线
 }
 
 #: 当前档位（apply() 后与 settings.theme 一致）
@@ -120,6 +124,47 @@ def notify() -> None:
     _listeners[:] = alive
 
 
+def stylesheet() -> str:
+    """全局表格质感样式表：扁平表头、斑马纹、细网格、紧凑内边距。
+
+    基色用 palette() 引用（跟随深浅模式实时变化），斑马纹/表头/网格线
+    用本模块 token（切换主题时由 apply() 重新生成整份样式表）。
+    """
+    alt = css("alt_row")
+    header = css("header_bg")
+    grid = css("grid_line")
+    return f"""
+QTableView, QTableWidget {{
+    background-color: palette(base);
+    alternate-background-color: {alt};
+    gridline-color: {grid};
+    selection-background-color: palette(highlight);
+    selection-color: palette(highlighted-text);
+    border: none;
+}}
+QTableView::item, QTableWidget::item {{
+    padding: 1px 4px;
+    border: none;
+}}
+QHeaderView::section {{
+    background-color: {header};
+    color: palette(window-text);
+    padding: 2px 6px;
+    border: none;
+    border-right: 1px solid {grid};
+    border-bottom: 1px solid {grid};
+}}
+QHeaderView::section:checked {{
+    background-color: {header};
+    font-weight: normal;
+}}
+QTableCornerButton::section {{
+    background-color: {header};
+    border: none;
+}}
+"""
+
+
 def current_mode() -> str:
     return _mode
 
@@ -143,6 +188,9 @@ def apply(mode: str) -> None:
         QGuiApplication.styleHints().setColorScheme(scheme)
     except (AttributeError, RuntimeError):
         _apply_fusion_palette(mode)
+    app = QGuiApplication.instance()
+    if app is not None:
+        app.setStyleSheet(stylesheet())
     notify()
 
 
