@@ -95,6 +95,19 @@ macOS 与 Windows 双平台支持。
 
 ## 快速开始
 
+### 直接使用打包版（推荐，免装 Python）
+
+1. 到 [Releases](https://github.com/yakrsa/MiteProxy/releases) 下载 `MiteProxy-v1.12-macOS-arm64.zip`
+2. 解压得到 `MiteProxy.app`，拖进「应用程序」
+3. **首次运行：右键 → 打开**——产物是 ad-hoc 签名、未经 Apple 公证，直接双击会被
+   Gatekeeper 拦下；右键打开一次后即可正常双击启动
+4. 启动后代理**自动开启**（`127.0.0.1:8080`），无需任何依赖；数据文件都在 `~/.miteproxy/`
+5. 抓 HTTPS 需装 CA 证书：应用内「证书」页有**局域网二维码**，手机扫码直达下载页
+   （详见[使用教程](TUTORIAL.md)第 2 节）
+
+> 当前 Release 产物为 **arm64**（Apple Silicon M1~M4）。Intel Mac 与 Windows 用户
+> 请走下面的源码路线自行构建；Windows 版将由 `build_windows.ps1` 产出 `MiteProxy.exe`。
+
 ### 开发模式
 
 ```bash
