@@ -205,3 +205,101 @@ class TestContextMenu:
         panel = RulesPanel(three_rules)
         panel._build_context_menu(2)
         assert panel.table.currentRow() == 2
+
+
+# ---------------------------------------------------------------- 只显示启用
+
+
+class TestEnabledFilter:
+    def test_filter_hides_disabled(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        three_rules.update(three_rules.all()[1].id, enabled=False)
+        panel.refresh()
+        assert panel.table.rowCount() == 3        # 未开过滤，全显
+        panel.only_enabled_cb.setChecked(True)
+        assert panel.table.rowCount() == 2
+        names = [panel.table.item(i, 0).text() for i in range(2)]
+        assert names == ["规则甲", "规则丙"]
+
+    def test_filter_keeps_hidden_rules_in_place_on_move(self, qapp, three_rules):
+        """过滤下移动可见行，隐藏的停用规则不应被挤到列表末尾。"""
+        panel = RulesPanel(three_rules)
+        three_rules.update(three_rules.all()[1].id, enabled=False)  # 乙停用
+        panel.only_enabled_cb.setChecked(True)
+        panel.table.selectRow(1)                  # 丙（可见第 2 行）
+        panel._on_move(-1)                        # 丙上移到甲前面
+        names = [r.name for r in three_rules.all()]
+        # 隐藏的乙保持在原相对位置（甲丙之间），不被挤到末尾
+        assert names == ["规则丙", "规则乙", "规则甲"]
+
+    def test_filter_drop_semantics(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        three_rules.update(three_rules.all()[0].id, enabled=False)  # 甲停用
+        panel.only_enabled_cb.setChecked(True)
+        # 可见 [乙, 丙]：丙(可见行1)拖到 dst=0 → [丙, 乙]
+        panel._on_row_dropped(1, 0)
+        names = [r.name for r in three_rules.all()]
+        assert names == ["甲", "丙", "乙"] or names == ["规则甲", "规则丙", "规则乙"]
+        assert [r.name for r in three_rules.all() if r.enabled] == [
+            "规则丙", "规则乙"
+        ]
+
+    def test_current_rule_via_display_ids(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        three_rules.update(three_rules.all()[0].id, enabled=False)
+        panel.only_enabled_cb.setChecked(True)
+        panel.table.selectRow(0)
+        assert panel._current_rule().name == "规则乙"
+
+    def test_toggle_enable_keeps_selection_visible(self, qapp, three_rules):
+        """过滤中停用某规则：它从列表消失，选中不崩。"""
+        panel = RulesPanel(three_rules)
+        panel.only_enabled_cb.setChecked(True)
+        panel.table.selectRow(0)
+        rule = panel._current_rule()
+        panel._toggle_enable(rule.id)             # 甲停用 → 消失
+        assert panel.table.rowCount() == 2
+        assert rule.id not in panel._display_ids
+
+    def test_hit_update_respects_filter(self, qapp, three_rules):
+        """被过滤隐藏的规则命中时不越界、不崩。"""
+        import time as _time
+
+        panel = RulesPanel(three_rules)
+        rule = three_rules.all()[0]
+        panel.only_enabled_cb.setChecked(True)
+        three_rules.update(rule.id, enabled=False)
+        panel.refresh()
+        rule.hits = 5
+        rule.last_hit = _time.time()
+        panel.update_hit(rule.id)                 # 隐藏中：应静默跳过
+        assert panel.table.rowCount() == 2
+
+
+# ---------------------------------------------------------------- 表格质感
+
+
+class TestTablePolish:
+    def test_rules_table_styling(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        assert panel.table.alternatingRowColors() is True
+        assert panel.table.showGrid() is False
+        assert panel.table.verticalHeader().defaultSectionSize() == 22
+
+    def test_traffic_table_row_height(self, qapp, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setenv("MITEPROXY_HOME", str(home))
+        from app.ui.traffic_table import TrafficTable
+
+        table = TrafficTable()
+        assert table.verticalHeader().defaultSectionSize() == 22
+
+    def test_theme_has_polish_tokens(self):
+        from app.ui import theme
+
+        for key in ("alt_row", "header_bg", "grid_line"):
+            assert key in theme.COLORS
+        qss = theme.stylesheet()
+        assert "alternate-background-color" in qss
+        assert "QHeaderView::section" in qss

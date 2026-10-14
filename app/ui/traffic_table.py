@@ -198,6 +198,7 @@ class TrafficTable(QTableView):
         self.setShowGrid(False)
         self.setWordWrap(False)
         self.verticalHeader().setVisible(False)
+        self.verticalHeader().setDefaultSectionSize(22)   # Fiddler 式紧凑行高
         header = self.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)

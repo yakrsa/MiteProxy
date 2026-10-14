@@ -312,6 +312,9 @@ class BodyPane(QWidget):
         self.form_table = QTableWidget(0, 2)
         self.form_table.setHorizontalHeaderLabels(["名称", "值"])
         self.form_table.verticalHeader().setVisible(False)
+        self.form_table.setAlternatingRowColors(True)
+        self.form_table.setShowGrid(False)
+        self.form_table.verticalHeader().setDefaultSectionSize(22)
         self.form_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.form_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
@@ -628,6 +631,9 @@ class MessagePane(QWidget):
         self.headers_table.setHorizontalHeaderLabels(["Header", "Value"])
         self.headers_table.horizontalHeader().setStretchLastSection(True)
         self.headers_table.verticalHeader().setVisible(False)
+        self.headers_table.setAlternatingRowColors(True)
+        self.headers_table.setShowGrid(False)
+        self.headers_table.verticalHeader().setDefaultSectionSize(22)
         self.headers_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         splitter.addWidget(self.headers_table)
 
