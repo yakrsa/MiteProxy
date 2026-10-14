@@ -360,3 +360,40 @@ class TestPortChange:
         window.port_spin.setValue(window.settings.proxy_port)  # 同值
         window._on_port_changed()
         assert calls == []
+
+
+# ====================================================================== Windows 无窗口执行（v1.14b）
+
+class TestNoWindowCreation:
+    def test_windows_run_passes_create_no_window(self, monkeypatch):
+        """Windows 下 _run 必须带 CREATE_NO_WINDOW——GUI 进程起 reg 子进程
+        否则每个命令闪一个控制台窗口（启动接管连闪 4~5 个）。"""
+        import subprocess as sp
+
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured.update(kwargs)
+            captured["cmd"] = cmd
+            return sp.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        monkeypatch.setattr("app.sysproxy.platform.system", lambda: "Windows")
+        monkeypatch.setattr("app.sysproxy.subprocess.run", fake_run)
+        sysproxy._run(["reg", "query", "HKCU\\x"])
+        # Windows 上该常量 = CREATE_NO_WINDOW；非 Windows 平台常量本身是 0，
+        # 这里验证「Windows 分支确实把常量传进了 creationflags」这条接线
+        assert captured.get("creationflags") == sysproxy._CREATE_NO_WINDOW
+
+    def test_posix_run_has_no_creationflags(self, monkeypatch):
+        import subprocess as sp
+
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured.update(kwargs)
+            return sp.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        monkeypatch.setattr("app.sysproxy.platform.system", lambda: "Darwin")
+        monkeypatch.setattr("app.sysproxy.subprocess.run", fake_run)
+        sysproxy._run(["networksetup", "-getwebproxy", "Wi-Fi"])
+        assert "creationflags" not in captured

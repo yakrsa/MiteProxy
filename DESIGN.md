@@ -161,9 +161,14 @@ mitmproxy 的 DumpMaster 跑在自己的 asyncio 事件循环里，**不能**直
   enabled/server/port，还原时逐项写回——用户已有的代理配置（如 Clash 的 7890）不会丢。
 - **macOS**：`networksetup`；权限不足时弹一次密码框提权重试（osascript administrator
   privileges，每次会话最多问一次）。Windows：HKCU Internet Settings 注册表
-  （ProxyEnable/ProxyServer，未经实机回归）。
+  （ProxyEnable/ProxyServer）。**Windows 子进程必须带 `CREATE_NO_WINDOW`**——
+  打包后是无控制台的 GUI 进程，每条 `reg` 命令否则都会新建一个控制台窗口
+  （启动接管连闪 4~5 个黑框，还各搭 100ms+ 建窗开销）。
 - **崩溃恢复**：接管状态落盘 `~/.miteproxy/sysproxy.json`，进程异常退出没还原的，
   下次启动 `recover_if_needed()` 补还原。
+- **退出路径并行化**：closeEvent 里「停代理」与「还原系统代理」并行执行
+  （还原读落盘状态，不依赖代理先停），退出耗时取两者较慢者而非相加；
+  还原线程带 `_sysproxy_lock`，与启停路径无竞态。
 - **线程模型**：接管/还原在后台线程跑（networksetup 逐服务多条命令，可能数秒），
   经 `sysproxy_done` 信号回主线程；`_sysproxy_lock` 保证「接管未完成就停止」时
   仍能按完整记录还原。工具栏「设为系统代理」复选框控制是否自动（默认开），

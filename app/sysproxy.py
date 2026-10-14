@@ -29,11 +29,25 @@ STATE_PATH = CONFIG_DIR / "sysproxy.json"
 _TIMEOUT_S = 15
 
 
+#: Windows 独有常量（macOS/Linux 的 subprocess 没有这个属性，需 getattr 防护）
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 def _run(cmd: list[str], timeout: int = _TIMEOUT_S) -> tuple[int, str, str]:
-    """执行外部命令，返回 (rc, stdout, stderr)。测试可注入替身。"""
+    """执行外部命令，返回 (rc, stdout, stderr)。测试可注入替身。
+
+    Windows 下必须带 CREATE_NO_WINDOW：打包后是无控制台的 GUI 进程，
+    每次起 reg 子进程 Windows 都会给它新建一个控制台窗口——启动接管/退出
+    还原连续跑 4~5 条命令，就是用户看到的「多个黑窗口闪现」，且每条都有
+    100ms+ 的建窗开销。
+    """
+    extra: dict = {}
+    if platform.system() == "Windows":
+        extra["creationflags"] = _CREATE_NO_WINDOW
     try:
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, check=False
+            cmd, capture_output=True, text=True, timeout=timeout, check=False,
+            **extra,
         )
         return proc.returncode, proc.stdout, proc.stderr
     except (OSError, subprocess.TimeoutExpired) as e:
