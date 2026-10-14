@@ -19,6 +19,7 @@ import base64
 import binascii
 import json
 import logging
+import re
 import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -63,7 +64,14 @@ def parse_file(path: str | Path) -> ImportResult:
         raise ValueError("文件中没有找到 ResponseRule 节点")
     for rr in rule_elements:
         try:
-            _parse_rule(rr, result)
+            match_attr = (rr.get("Match") or "").strip()
+            if match_attr.startswith("["):
+                # Fiddler Everywhere：Match/Action 是 JSON 数组（base64 条件/动作）
+                _parse_rule(rr, result)
+            else:
+                # Fiddler Classic (v4/v5)：Match/Action 是字符串前缀语法
+                # （EXACT:/REGEX:/路径），与 Everywhere 的 JSON 格式不兼容
+                _parse_classic_rule(rr, result)
         except Exception:
             log.exception("解析 ResponseRule 失败")
             result.skipped.append((rr.get("Comment") or "未命名规则", "解析异常，已跳过"))
@@ -274,3 +282,137 @@ def _body_to_source(body_bytes: bytes) -> tuple[str, str, Optional[str]]:
         target.write_bytes(body_bytes)
         log.info("二进制 body 已缓存: %s", target)
         return "file", "", str(target)
+
+
+# ------------------------------------------------------------------ Fiddler Classic 格式
+# 兼容 Fiddler Classic (v4/v5) AutoResponder 导出的 .farx：Match / Action 是字符串前缀语法，
+# 而非 Everywhere 的 JSON 数组。实测样本：龙哥的 fiddler_ruls_all.farx（158 条，v5.0.20242）。
+#   Match:  EXACT:https://x | REGEX:https://x | (无前缀=包含) | NOT:(暂不支持)
+#   Action: 文件路径(返回文件内容) | *redir:url | *delay:ms | *status:code | 裸URL(=redir)
+#           | xxx.dat(Fiddler 内置模板→状态码) | *bpu/*bpafter/*drop(暂不支持)
+
+
+def _classic_name(rr: ET.Element, raw_match: str) -> str:
+    c = (rr.get("Comment") or "").strip()
+    if c:
+        return c
+    m = raw_match
+    for p in ("EXACT:", "REGEX:", "NOT:"):
+        if m.startswith(p):
+            m = m[len(p):]
+            break
+    m = m.strip()
+    return (m[:60] + ("…" if len(m) > 60 else "")) or "Fiddler 规则"
+
+
+def _net_named_group_to_python(pattern: str) -> str:
+    """Fiddler/.NET 命名组 (?<name>...) 或 (?'name'...) → Python (?P<name>...)。
+
+    MiteProxy 用 Python re，不认 .NET 命名组语法，不转会导致运行时 re.compile
+    抛 re.error、规则整条失效。同时需避开 (?<= / (?<! 后向断言（< 后非标识符）。
+    """
+    return re.sub(r"\(\?<\??[']?([A-Za-z_]\w*)'?>", r"(?P<\1>", pattern)
+
+
+def _classic_match(raw: str) -> Optional[Match]:
+    """Fiddler Classic 匹配字符串 → MiteProxy Match。否定匹配返回 None。"""
+    if not raw:
+        return None
+    if raw.startswith("NOT:"):
+        return None  # 否定匹配 MiteProxy 暂不支持
+    if raw.startswith("REGEX:"):
+        value = _net_named_group_to_python(raw[len("REGEX:"):])
+        return Match(type=REGEX, value=value)
+    if raw.startswith("EXACT:"):
+        return Match(type=EXACT, value=raw[len("EXACT:"):])
+    # 无前缀：Fiddler 默认按"包含"匹配
+    return Match(type=CONTAINS, value=raw)
+
+
+def _map_fiddler_vars(url: str, regex_value: str) -> str:
+    """Fiddler 的 ${name} 变量 → MiteProxy 的 $1/$2（按正则命名组出现顺序映射）。"""
+    names = re.findall(r"\(\?P<(\w+)>", regex_value)
+    for i, name in enumerate(names, 1):
+        url = url.replace("${%s}" % name, "$%d" % i)
+    return url
+
+
+def _dat_status(name: str) -> Optional[int]:
+    """Fiddler 内置 .dat 响应模板（404_Plain.dat / 502_Unreachable.dat）→ 状态码。"""
+    m = re.search(r"(\d{3})", name)
+    return int(m.group(1)) if m else None
+
+
+def _classic_action(raw: str, regex_value: str = ""):
+    """解析 Classic Action 字符串。
+
+    返回 (Action, skip_reason)：Action 为 None 时 skip_reason 非空（应跳过）。
+    """
+    if not raw.strip():
+        return None, "动作(Response)为空，无响应可返回"
+    delay_m = re.search(r"\*delay:(\d+)", raw)
+    redir_m = re.search(r"\*redir:(\S+)", raw)
+    status_m = re.search(r"\*status:(\d{3})", raw)
+    latency = int(delay_m.group(1)) if delay_m else 0
+    unsupported = []
+    if "*bpu" in raw or "*bpafter" in raw:
+        unsupported.append("断点(*bpu/*bpafter)")
+    if "*drop" in raw:
+        unsupported.append("丢弃(*drop)")
+    if unsupported:
+        return None, "暂不支持: " + "/".join(unsupported)
+    # 去掉所有 * 指令，残余即 文件路径 / URL / 状态码 / .dat 模板
+    rest = re.sub(r"\*\w+:?\S*", "", raw).strip()
+    redirect = redir_m.group(1) if redir_m else None
+    status = int(status_m.group(1)) if status_m else None
+    file_path = None
+    if rest.startswith(("http://", "https://")):
+        redirect = rest  # 裸 URL 等价 *redir
+    elif rest.endswith(".dat"):
+        code = _dat_status(rest)
+        if code:
+            status = code
+        else:
+            return None, f"无法识别的 Fiddler 模板 {rest}"
+    elif re.fullmatch(r"\*?\d{3}", rest):
+        status = int(rest.lstrip("*"))
+    elif rest:
+        file_path = rest  # Windows 绝对路径（通常不含空格）
+    if redirect and regex_value:
+        redirect = _map_fiddler_vars(redirect, regex_value)
+    if redirect:
+        return Action(redirect_url=redirect, latency_ms=latency), ""
+    if file_path:
+        # 文件模式：保留原绝对路径（目标机需同步该文件，缺失时运行期标红）
+        return Action(body_source="file", file_path=file_path, latency_ms=latency,
+                      status=status or 200), ""
+    if status is not None:
+        return Action(status=status, latency_ms=latency), ""
+    if latency:
+        return None, "仅延迟透传，MiteProxy 暂不支持（需配合 mock/重定向动作）"
+    return None, "无法识别的动作"
+
+
+def _parse_classic_rule(rr: ET.Element, result: ImportResult) -> None:
+    raw_match = (rr.get("Match") or "").strip()
+    raw_action = (rr.get("Action") or "").strip()
+    enabled = (rr.get("Enabled") or "true").strip().lower() != "false"
+    name = _classic_name(rr, raw_match)
+    match = _classic_match(raw_match)
+    if match is None:
+        result.skipped.append((name, f"不支持的匹配语法: {raw_match[:50]}"))
+        return
+    action, reason = _classic_action(raw_action, match.value if match.type == REGEX else "")
+    if action is None:
+        result.skipped.append((name, reason))
+        return
+    result.rules.append(
+        Rule(
+            id="imported_" + uuid.uuid4().hex[:8],
+            name=name,
+            enabled=enabled,
+            match=match,
+            action=action,
+            source="farx",
+        )
+    )
