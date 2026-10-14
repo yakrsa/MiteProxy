@@ -260,6 +260,22 @@ def window(monkeypatch, tmp_path):
 
 
 class TestListOrderAndScroll:
+    def test_default_layout_is_side_by_side(self, window):
+        """默认 Fiddler 风格左右布局，工具栏可切回上下。"""
+        from PySide6.QtCore import Qt
+
+        assert window.layout_combo.currentData() == "h"
+        assert window.traffic_splitter.orientation() == \
+            Qt.Orientation.Horizontal
+        window.layout_combo.setCurrentIndex(window.layout_combo.findData("v"))
+        assert window.traffic_splitter.orientation() == \
+            Qt.Orientation.Vertical
+        assert window.settings.traffic_side_by_side is False
+        window.layout_combo.setCurrentIndex(window.layout_combo.findData("h"))
+        assert window.traffic_splitter.orientation() == \
+            Qt.Orientation.Horizontal
+        assert window.settings.traffic_side_by_side is True
+
     def test_default_order_is_arrival(self, window):
         assert window.traffic_table.horizontalHeader().sortIndicatorSection() == -1
 
@@ -327,17 +343,24 @@ class TestSettingsRoundTrip:
         assert s.auto_scroll is True
         assert s.newest_first is False
         assert s.body_wrap is True
+        assert s.traffic_side_by_side is True
+        assert s.splitter_state is None
 
     def test_new_fields_roundtrip(self, tmp_path, monkeypatch):
         from app import settings as settings_mod
 
         monkeypatch.setattr(settings_mod, "SETTINGS_PATH", tmp_path / "s.json")
-        s = Settings(auto_scroll=False, newest_first=True, body_wrap=False)
+        s = Settings(
+            auto_scroll=False, newest_first=True, body_wrap=False,
+            traffic_side_by_side=False, splitter_state=b"\x00\x01split",
+        )
         save_settings(s)
         back = load_settings()
         assert (back.auto_scroll, back.newest_first, back.body_wrap) == (
             False, True, False,
         )
+        assert back.traffic_side_by_side is False
+        assert back.splitter_state == b"\x00\x01split"
 
     def test_old_settings_file_still_loads(self, tmp_path, monkeypatch):
         """没有新字段的旧 settings.json 不能被判成损坏而丢掉全部设置。"""

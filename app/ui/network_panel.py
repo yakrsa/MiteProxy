@@ -31,10 +31,12 @@ from app.network import (
     preset_labels,
     preset_values,
 )
+from app.ui import theme
 
-INVALID_ROW_BG = QColor("#fff1f0")
-INVALID_ROW_FG = QColor("#8a1f1f")
-DISABLED_ROW_FG = QColor("#8b8b8b")
+# 无效配置行（红底红字）与停用行（灰字）：theme.dynamic 就地随主题更新
+INVALID_ROW_BG = theme.dynamic("invalid_bg")
+INVALID_ROW_FG = theme.dynamic("invalid_fg")
+DISABLED_ROW_FG = theme.dynamic("hint")
 
 THROTTLE_HINT = (
     "延迟在响应返回给客户端前施加：档位给的固定延迟 + 按响应体大小折算的传输时间。\n"
@@ -117,8 +119,9 @@ class NetworkPanel(QWidget):
 
         hint = QLabel(THROTTLE_HINT)
         hint.setWordWrap(True)
-        hint.setStyleSheet("color: #6b6b6b;")
+        hint.setStyleSheet(f"color: {theme.css('hint')};")
         layout.addWidget(hint)
+        self._hint_labels = [hint]
 
         self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
         self.latency_spin.valueChanged.connect(self._on_numbers_changed)
@@ -156,8 +159,10 @@ class NetworkPanel(QWidget):
 
         hint = QLabel(MAP_HINT)
         hint.setWordWrap(True)
-        hint.setStyleSheet("color: #6b6b6b;")
+        hint.setStyleSheet(f"color: {theme.css('hint')};")
         layout.addWidget(hint)
+        self._hint_labels.append(hint)
+        theme.add_listener(self._retheme)
 
         self.add_btn.clicked.connect(self._on_add_row)
         self.del_btn.clicked.connect(self._on_del_rows)
@@ -345,6 +350,12 @@ class NetworkPanel(QWidget):
                     item.setBackground(QBrush())
                     item.setForeground(QBrush())
         self._refresh_map_state()
+
+    def _retheme(self) -> None:
+        """主题切换：说明文字重染 + 映射行按当前状态重新着色。"""
+        for hint in self._hint_labels:
+            hint.setStyleSheet(f"color: {theme.css('hint')};")
+        self._refresh_states()
 
     def _refresh_map_state(self) -> None:
         rules = self.to_rules()

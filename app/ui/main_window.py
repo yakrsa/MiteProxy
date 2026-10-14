@@ -16,8 +16,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtCore import QEvent, QTimer, Qt
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -87,6 +87,7 @@ from app.ui.replay_dialog import ReplayEditDialog
 from app.ui.rules_panel import RulesPanel
 from app.ui.signals import FlowBridge
 from app.ui.traffic_table import FilterBar, SearchBar, TrafficTable
+from app.ui import theme
 
 log = logging.getLogger(__name__)
 
@@ -150,6 +151,12 @@ class MainWindow(QMainWindow):
         self._build_menu()
         self._wire()
 
+        # -- 主题：启动即应用保存的档位（默认跟随系统），
+        #    并监听全局 PaletteChange（系统深浅切换 / 手动切档）广播给各面板
+        theme.apply(getattr(self.settings, "theme", "system"))
+        theme.add_listener(self._update_status)   # 切主题时状态栏重染色
+        QApplication.instance().installEventFilter(self)
+
         self._apply_filter_config(self.settings.filter)
         self._apply_flow_limit(self.settings.max_flows)
         self._apply_list_order()
@@ -164,6 +171,20 @@ class MainWindow(QMainWindow):
 
     # ================================================================ 窗口状态
 
+    def _on_theme_selected(self, mode: str) -> None:
+        """外观菜单切档：立即应用并落盘（下次启动保持）。"""
+        self.settings.theme = mode
+        save_settings(self.settings)
+        theme.apply(mode)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        # 系统深浅色切换（或手动切档）后 Qt 广播 PaletteChange——singleShot(0)
+        # 等调色板真正落位再广播，各面板的 _retheme 统一在这里触发
+        if event.type() == QEvent.Type.PaletteChange \
+                and obj is QApplication.instance():
+            QTimer.singleShot(0, theme.notify)
+        return super().eventFilter(obj, event)
+
     def _restore_geometry(self) -> None:
         geo = self.settings.window_geometry
         if geo:
@@ -171,10 +192,39 @@ class MainWindow(QMainWindow):
                 self.restoreGeometry(geo)
             except Exception:      # 损坏的几何数据不应阻断启动
                 log.warning("窗口几何恢复失败，使用默认尺寸", exc_info=True)
+        state = getattr(self.settings, "splitter_state", None)
+        if state:
+            try:
+                self.traffic_splitter.restoreState(state)
+            except Exception:
+                log.warning("分隔条位置恢复失败，使用默认比例", exc_info=True)
+
+    def _on_layout_changed(self) -> None:
+        """切换流量列表与详情区的排布方向（左右 ↔ 上下）。
+
+        切换时按当前比例换算到新方向的长度，避免 Qt 用 sizeHint 重新分配
+        把某一边挤没。选择立即落盘：就算之后崩溃，下次启动也是用户选的方向。
+        """
+        side = self.layout_combo.currentData() == "h"
+        new = Qt.Orientation.Horizontal if side else Qt.Orientation.Vertical
+        if self.traffic_splitter.orientation() == new:
+            return
+        sizes = self.traffic_splitter.sizes()   # [列表, 详情]，与方向无关
+        self.traffic_splitter.setOrientation(new)
+        total = sum(sizes)
+        length = (self.traffic_splitter.width() if side
+                  else self.traffic_splitter.height())
+        if total > 0 and length > 0:
+            first = max(int(length * sizes[0] / total), 60)
+            self.traffic_splitter.setSizes([first, max(length - first, 60)])
+        self.settings.traffic_side_by_side = side
+        save_settings(self.settings)
 
     def _save_geometry(self) -> None:
         try:
             self.settings.window_geometry = bytes(self.saveGeometry())
+            self.settings.splitter_state = bytes(self.traffic_splitter.saveState())
+            save_settings(self.settings)
             save_settings(self.settings)
         except Exception:
             log.warning("窗口几何保存失败", exc_info=True)
@@ -250,6 +300,20 @@ class MainWindow(QMainWindow):
         self.order_combo.setCurrentIndex(1 if self.settings.newest_first else 0)
         toolbar_row.addWidget(self.order_combo)
 
+        toolbar_row.addWidget(QLabel("布局:"))
+        self.layout_combo = QComboBox()
+        self.layout_combo.addItem("左右布局", "h")
+        self.layout_combo.addItem("上下布局", "v")
+        self.layout_combo.setToolTip(
+            "流量列表与详情区的排布方向。左右 = Fiddler 风格（列表在左、body 在右），\n"
+            "上下 = 列表在上、body 在下。选择会记住，下次启动保持。"
+        )
+        self.layout_combo.setCurrentIndex(
+            0 if getattr(self.settings, "traffic_side_by_side", True) else 1
+        )
+        self.layout_combo.currentIndexChanged.connect(self._on_layout_changed)
+        toolbar_row.addWidget(self.layout_combo)
+
         toolbar_row.addStretch(1)
         root.addLayout(toolbar_row)
 
@@ -269,7 +333,13 @@ class MainWindow(QMainWindow):
         traffic_page = QWidget()
         traffic_layout = QVBoxLayout(traffic_page)
         traffic_layout.setContentsMargins(0, 0, 0, 0)
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        # 左右（Fiddler 风格，默认）或上下，用户可在工具栏切换
+        side_by_side = bool(getattr(self.settings, "traffic_side_by_side", True))
+        self.traffic_splitter = QSplitter(
+            Qt.Orientation.Horizontal if side_by_side
+            else Qt.Orientation.Vertical
+        )
+        self.traffic_splitter.setHandleWidth(6)   # 分隔条加宽：看得见、好抓
         self.flow_store = FlowStore()
         self.traffic_table = TrafficTable()
         self.proxy_model = FlowFilterProxyModel()
@@ -277,10 +347,10 @@ class MainWindow(QMainWindow):
         self.proxy_model.flow_lookup = self.capture.get_flow
         self.traffic_table.setModel(self.proxy_model)
         self.detail_panel = DetailPanel(wrap_default=self.settings.body_wrap)
-        splitter.addWidget(self.traffic_table)
-        splitter.addWidget(self.detail_panel)
-        splitter.setSizes([420, 300])
-        traffic_layout.addWidget(splitter)
+        self.traffic_splitter.addWidget(self.traffic_table)
+        self.traffic_splitter.addWidget(self.detail_panel)
+        self.traffic_splitter.setSizes([420, 300])
+        traffic_layout.addWidget(self.traffic_splitter)
         self.tabs.addTab(traffic_page, "流量")
 
         # Mock 规则页
@@ -371,6 +441,26 @@ class MainWindow(QMainWindow):
         compare_action.setShortcut(QKeySequence("Ctrl+Shift+D"))
         compare_action.triggered.connect(lambda: self._goto_tool("compare"))
         tool_menu.addAction(compare_action)
+
+        # -- 外观：跟随系统 / 浅色 / 深色（默认跟随系统，选择随 settings 持久化）
+        view_menu = self.menuBar().addMenu("外观")
+        self._theme_group = QActionGroup(self)
+        self._theme_group.setExclusive(True)
+        self._theme_actions: dict[str, QAction] = {}
+        for mode, label in (
+            ("system", "跟随系统"),
+            ("light", "浅色模式"),
+            ("dark", "深色模式"),
+        ):
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.setChecked(self.settings.theme == mode)
+            action.triggered.connect(
+                lambda _=False, m=mode: self._on_theme_selected(m)
+            )
+            self._theme_group.addAction(action)
+            view_menu.addAction(action)
+            self._theme_actions[mode] = action
 
         menu = self.menuBar().addMenu("帮助")
         about = QAction("关于", self)
@@ -1372,7 +1462,9 @@ class MainWindow(QMainWindow):
             text += " · 弱网模拟中"
         self.count_label.setText(text)
         if filtering:
-            self.count_label.setStyleSheet("color: #bf8700; font-weight: bold;")
+            self.count_label.setStyleSheet(
+                f"color: {theme.css('warn')}; font-weight: bold;"
+            )
         else:
             self.count_label.setStyleSheet("")
 
@@ -1380,10 +1472,10 @@ class MainWindow(QMainWindow):
             self.proxy_state_label.setText(
                 f"代理运行中 127.0.0.1:{self.settings.proxy_port}"
             )
-            self.proxy_state_label.setStyleSheet("color: #1a7f37;")
+            self.proxy_state_label.setStyleSheet(f"color: {theme.css('ok')};")
         else:
             self.proxy_state_label.setText("代理未启动")
-            self.proxy_state_label.setStyleSheet("color: #cf222e;")
+            self.proxy_state_label.setStyleSheet(f"color: {theme.css('error')};")
 
         if self.cert_server is not None and self.cert_server.running:
             self.cert_state_label.setText(f"证书服务 {self.cert_server.url}")

@@ -284,10 +284,28 @@ class TestBodyPane:
         assert pane._json_highlighter.enabled
         assert pane.view_note.text() == "自动 → JSON"
 
+    def test_mode_button_bar(self):
+        """视图切换是 Fiddler 式的一排互斥按钮，不是下拉框。"""
+        pane = _pane()
+        assert not hasattr(pane, "mode_combo")
+        assert list(pane.mode_buttons) == [VIEW_AUTO, VIEW_RAW, VIEW_JSON,
+                                           VIEW_FORM, VIEW_IMAGE, VIEW_HEX]
+        assert pane.mode_buttons[VIEW_AUTO].isChecked()
+        assert pane.mode_group.exclusive()
+        # set_mode 同步按钮选中态（先给个 body，让 current_mode 有实际解析值）
+        pane.show_body(_headers("application/json"), b'{"a":1}')
+        pane.set_mode(VIEW_JSON)
+        assert pane.mode_buttons[VIEW_JSON].isChecked()
+        assert not pane.mode_buttons[VIEW_AUTO].isChecked()
+        assert pane.current_mode == VIEW_JSON
+        # 未知 key 忽略，不改变当前视图
+        pane.set_mode("nope")
+        assert pane.current_mode == VIEW_JSON
+
     def test_switch_to_raw_keeps_original(self):
         pane = _pane()
         pane.show_body(_headers("application/json"), b'{"a":1}')
-        pane.mode_combo.setCurrentIndex(pane.mode_combo.findData(VIEW_RAW))
+        pane.set_mode(VIEW_RAW)
         assert pane.body_view.toPlainText() == '{"a":1}'
         assert not pane._json_highlighter.enabled
         assert pane.current_mode == VIEW_RAW
@@ -296,7 +314,7 @@ class TestBodyPane:
         """手动切过之后换会话不回弹（对齐 Fiddler inspector）。"""
         pane = _pane()
         pane.show_body(_headers("application/json"), b'{"a":1}')
-        pane.mode_combo.setCurrentIndex(pane.mode_combo.findData(VIEW_HEX))
+        pane.set_mode(VIEW_HEX)
         pane.show_body(_headers("application/json"), b'{"a":1}')
         assert pane.current_mode == VIEW_HEX
         assert "十六进制视图" in pane.body_view.toPlainText()
@@ -325,7 +343,7 @@ class TestBodyPane:
     def test_form_falls_back_to_raw_when_unparsable(self):
         pane = _pane()
         pane.show_body(_headers("application/json"), b"plain")
-        pane.mode_combo.setCurrentIndex(pane.mode_combo.findData(VIEW_FORM))
+        pane.set_mode(VIEW_FORM)
         assert pane.body_stack.currentWidget() is pane.body_view
         assert pane.body_view.toPlainText() == "plain"
         assert "无法解析为表单" in pane.view_note.text()

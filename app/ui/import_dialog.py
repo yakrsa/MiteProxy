@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.rules import Rule
+from app.ui import theme
 
 SOURCE_LABELS = {"farx": "FARX", "js": "CustomRules.js", "manual": "手动"}
 
@@ -124,7 +125,7 @@ class ImportPreviewDialog(QDialog):
                 skip_lines += f"<br>• ……等共 {len(skipped)} 条"
             skip_label = QLabel(f"跳过的规则及原因：<br>{skip_lines}")
             skip_label.setWordWrap(True)
-            skip_label.setStyleSheet("color: #57606a;")
+            skip_label.setStyleSheet(f"color: {theme.css('hint')};")
             layout.addWidget(skip_label)
 
         buttons = QDialogButtonBox(

@@ -64,6 +64,12 @@ class Settings:
     #: 启动代理时自动把系统代理指向本应用、停止/退出时还原
     #: （对齐 Fiddler「Act as System Proxy」；macOS 需一次管理员授权）
     auto_system_proxy: bool = True
+    #: 流量页布局方向：True = 左右（Fiddler 风格，列表在左）；False = 上下
+    traffic_side_by_side: bool = True
+    #: 主题档位：system（跟随系统）/ light / dark（app/ui/theme.py THEME_MODES）
+    theme: str = "system"
+    #: 流量页分隔条位置（QSplitter.saveState()，base64 落盘）
+    splitter_state: bytes | None = None
     window_geometry: bytes | None = None
 
     def to_dict(self) -> dict:
@@ -80,6 +86,14 @@ class Settings:
             "newest_first": self.newest_first,
             "body_wrap": self.body_wrap,
             "auto_system_proxy": self.auto_system_proxy,
+            "traffic_side_by_side": self.traffic_side_by_side,
+            "theme": self.theme,
+            # splitter_state / geometry 是 QByteArray，base64 成文本落盘
+            "splitter_state": (
+                base64.b64encode(self.splitter_state).decode("ascii")
+                if self.splitter_state
+                else None
+            ),
             # geometry 是 QByteArray，base64 成文本落盘（启动时恢复窗口位置）
             "window_geometry": (
                 base64.b64encode(self.window_geometry).decode("ascii")
@@ -112,17 +126,28 @@ class Settings:
             newest_first=bool(data.get("newest_first", False)),
             body_wrap=bool(data.get("body_wrap", True)),
             auto_system_proxy=bool(data.get("auto_system_proxy", True)),
+            traffic_side_by_side=bool(data.get("traffic_side_by_side", True)),
+            theme=(
+                data["theme"] if data.get("theme") in ("system", "light", "dark")
+                else "system"
+            ),
+            splitter_state=cls._decode_b64(data.get("splitter_state")),
             window_geometry=cls._decode_geometry(data.get("window_geometry")),
         )
 
     @staticmethod
-    def _decode_geometry(value) -> bytes | None:
+    def _decode_b64(value) -> bytes | None:
+        """base64 文本 → bytes（geometry / splitter_state 共用）；坏数据回落 None。"""
         if not value:
             return None
         try:
             return base64.b64decode(str(value))
         except (ValueError, TypeError):
             return None
+
+    @classmethod
+    def _decode_geometry(cls, value) -> bytes | None:
+        return cls._decode_b64(value)
 
 
 def load_settings() -> Settings:

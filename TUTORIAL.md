@@ -8,7 +8,9 @@
 ## 1. 五分钟上手
 
 1. **启动**：到 [Releases](https://github.com/yakrsa/MiteProxy/releases) 下载打包版
-   （免装 Python），解压得到 `MiteProxy.app`（Windows 为 `MiteProxy.exe`）。
+   （免装 Python）。macOS：解压得到 `MiteProxy.app`；Windows：解压 zip 得到
+   `MiteProxy` 文件夹，双击里面的 `MiteProxy.exe`（exe 和 `_internal` 依赖文件夹
+   要放在一起，解压后别拆开）。
    **macOS 首次运行：右键 → 打开**——未经 Apple 公证，直接双击会被 Gatekeeper 拦下，
    右键打开一次后即可正常双击启动。
    启动后代理**自动开启**，底部状态栏显示 `127.0.0.1:8888`（Fiddler 同款默认端口，可在设置里改）。
@@ -21,8 +23,10 @@
    - **Windows**：设置 → 网络和 Internet → 代理 → 手动设置代理，地址 `127.0.0.1`，端口 `8080`。
    - **只调试某个程序**：大多数程序/框架支持环境变量
      `export http_proxy=http://127.0.0.1:8888 https_proxy=http://127.0.0.1:8888`。
-3. **看流量**：随便打开一个网页，列表里就会出现请求。点一条，下方详情面板显示
-   请求/响应的 headers 与 body。
+3. **看流量**：随便打开一个网页，列表里就会出现请求。点一条，详情面板显示
+   请求/响应的 headers 与 body。列表与详情默认**左右排布**（和 Fiddler 一样），
+   工具栏「布局」下拉可切成上下；中间的分隔条可以随意拖动，位置会记住。
+   界面默认跟随系统深浅色，想固定的话用菜单栏「外观」选浅色 / 深色。
 4. **找请求**：`Ctrl+F`（macOS 为 `Cmd+F`）搜索，可按 URL / Headers / Body 范围搜；
    顶部过滤栏可按域名黑白名单过滤、隐藏 CONNECT 与图片。
 

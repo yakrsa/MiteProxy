@@ -40,6 +40,7 @@ from app.rules import (
     Rule,
     RuleStore,
 )
+from app.ui import theme
 
 STATUS_PRESETS = [200, 400, 401, 403, 404, 429, 500, 502, 503, 504]
 
@@ -193,7 +194,7 @@ class RuleEditorDialog(QDialog):
         layout.addLayout(form)
 
         self.error_label = QLabel("")
-        self.error_label.setStyleSheet("color: #cf222e;")
+        self.error_label.setStyleSheet(f"color: {theme.css('error')};")
         layout.addWidget(self.error_label)
 
         buttons = QDialogButtonBox(

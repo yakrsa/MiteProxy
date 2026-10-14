@@ -54,6 +54,7 @@ from app.jsonutil import (
     parse_json,
 )
 from app.ui.highlight import JsonHighlighter, is_dark
+from app.ui import theme
 
 #: 树视图**已构建**节点总数上限（懒加载下按展开量计）：超过就暂停填充并提示
 TREE_NODE_LIMIT = 5000
@@ -69,10 +70,6 @@ INDENT_ITEMS = (
 VIEW_TEXT = "text"
 VIEW_TREE = "tree"
 VIEW_PATH = "path"
-
-HINT_COLOR = "#6b6b6b"
-ERROR_COLOR = "#e5534b"
-OK_COLOR = "#2f7d32"
 
 JSONPATH_TIP = (
     "常用写法：\n"
@@ -195,7 +192,7 @@ class JsonPanel(QWidget):
         in_bar = QHBoxLayout()
         in_bar.addStretch(1)
         self.input_count = QLabel("")
-        self.input_count.setStyleSheet(f"color: {HINT_COLOR};")
+        self.input_count.setStyleSheet(f"color: {theme.css('hint')};")
         in_bar.addWidget(self.input_count)
         in_layout.addLayout(in_bar)
 
@@ -239,7 +236,7 @@ class JsonPanel(QWidget):
         out_bar = QHBoxLayout()
         out_bar.addStretch(1)
         self.output_count = QLabel("")
-        self.output_count.setStyleSheet(f"color: {HINT_COLOR};")
+        self.output_count.setStyleSheet(f"color: {theme.css('hint')};")
         out_bar.addWidget(self.output_count)
         out_layout.addLayout(out_bar)
 
@@ -285,7 +282,9 @@ class JsonPanel(QWidget):
         self.goto_btn.setToolTip("把光标移到出错的行列")
         self.goto_btn.clicked.connect(self._goto_error)
         layout.addWidget(self.goto_btn)
-        self.status_label.setStyleSheet(f"color: {HINT_COLOR};")
+        self.status_label.setStyleSheet(f"color: {theme.css('hint')};")
+        self._status_kind = "hint"      # 主题切换时按最近一次状态重染色
+        theme.add_listener(self._retheme)
         return box
 
     # ------------------------------------------------------------ 对外
@@ -638,10 +637,20 @@ class JsonPanel(QWidget):
     def _set_status(self, text: str, *, error: bool,
                     ok: bool = False, goto=None) -> None:
         self.status_label.setText(text)
-        color = ERROR_COLOR if error else (OK_COLOR if ok else HINT_COLOR)
-        self.status_label.setStyleSheet(f"color: {color};")
+        kind = "error" if error else ("ok" if ok else "hint")
+        self._status_kind = kind
+        self.status_label.setStyleSheet(f"color: {theme.css(kind)};")
         self._last_error = goto
         self.goto_btn.setVisible(goto is not None)
+
+    def _retheme(self) -> None:
+        """主题切换：字符计数与状态区重新染色，结果着色器按新主题重刷。"""
+        self.input_count.setStyleSheet(f"color: {theme.css('hint')};")
+        self.output_count.setStyleSheet(f"color: {theme.css('hint')};")
+        self.status_label.setStyleSheet(f"color: {theme.css(self._status_kind)};")
+        self._highlighter.set_enabled(
+            self._highlighter.enabled, dark=is_dark(self.text_view)
+        )
 
     def _append_note(self, note: str) -> None:
         """追加一条说明——**不叠加**：以状态区当前文本为基准重画一次。"""

@@ -1,8 +1,9 @@
 """请求/响应详情面板（DESIGN.md 3.2）。
 
 body 视图（3.2.5）：
-- **自动 / 原文 / JSON / 表单 / 图片 / 十六进制**六种模式，默认「自动」按
-  content-type 挑；用户手动切过就保持（对齐 Fiddler inspector 的粘性）。
+- **自动 / 原文 / JSON / 表单 / 图片 / 十六进制**六种模式，一排互斥按钮
+  （Fiddler inspector 风格）直接点选；默认「自动」按 content-type 挑；
+  用户手动切过就保持（粘性）。
 - JSON = 缩进 2 空格 + 语法着色；表单 = key/value 表格（URL 已解码）；
   图片 = 预览（适应窗口 / 缩放）。
 - **格式化失败一律回落原文并说明原因**，绝不吞掉 body。
@@ -26,7 +27,6 @@ from datetime import datetime
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (
     QBrush,
-    QColor,
     QFont,
     QImage,
     QPainter,
@@ -39,6 +39,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QHBoxLayout,
@@ -52,6 +53,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QTabWidget,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -85,13 +87,10 @@ from app.bodyview import (
     view_mode_label,
 )
 from app.textutil import decode_body
+from app.ui import theme
 from app.ui.highlight import JsonHighlighter, is_dark
 
-_HIGHLIGHT_FORMAT = QTextCharFormat()
-_HIGHLIGHT_FORMAT.setBackground(QColor("#fff3bf"))
-
 #: 表单表格里命中的单元格底色（与 body 文本高亮同色系，视觉上是一回事）
-_FORM_HIT_BG = QColor("#fff3bf")
 
 #: WebSocket 消息表最多渲染的行数（再多的只记在内存里，别把表格撑爆）
 WS_TABLE_LIMIT = 2000
@@ -261,13 +260,22 @@ class BodyPane(QWidget):
         layout.setSpacing(3)
 
         row = QHBoxLayout()
-        row.addWidget(QLabel("body 视图:"))
-        self.mode_combo = QComboBox()
-        for key, label in view_mode_items():
-            self.mode_combo.addItem(label, key)
-        self.mode_combo.setCurrentIndex(0)
-        self.mode_combo.setToolTip(BODY_VIEW_TIP)
-        row.addWidget(self.mode_combo)
+        # 视图切换：一排互斥按钮（对齐 Fiddler inspector 的选项卡条），不用下拉。
+        # 「自动」保持粘性语义：点了别的按钮之后换会话不回弹。
+        self.mode_buttons: dict[str, QToolButton] = {}
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.setExclusive(True)
+        for i, (key, label) in enumerate(view_mode_items()):
+            btn = QToolButton()
+            btn.setText(label)
+            btn.setCheckable(True)
+            btn.setAutoRaise(True)      # 平时融入工具条，选中才浮起，最接近 Fiddler 观感
+            btn.setToolTip(BODY_VIEW_TIP)
+            self.mode_group.addButton(btn, i)
+            row.addWidget(btn)
+            self.mode_buttons[key] = btn
+        self.mode_buttons[VIEW_AUTO].setChecked(True)
+        self.mode_group.idClicked.connect(self._on_mode_clicked)
 
         self.wrap_cb = QCheckBox("换行")
         self.wrap_cb.setChecked(wrap_default)
@@ -285,7 +293,7 @@ class BodyPane(QWidget):
         row.addWidget(self.zoom_combo)
 
         self.view_note = QLabel("")
-        self.view_note.setStyleSheet("color: #6b6b6b;")
+        self.view_note.setStyleSheet(f"color: {theme.css('hint')};")
         self.view_note.setToolTip(BODY_VIEW_TIP)
         row.addWidget(self.view_note, stretch=1)
         layout.addLayout(row)
@@ -318,7 +326,6 @@ class BodyPane(QWidget):
 
         layout.addWidget(self.body_stack, stretch=1)
 
-        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         self.wrap_cb.toggled.connect(self._on_wrap_toggled)
         self.zoom_combo.currentIndexChanged.connect(self._on_zoom_changed)
 
@@ -328,8 +335,20 @@ class BodyPane(QWidget):
         self._base_note = ""            # 视图自身说明（不含换行提示）
         self._mode = VIEW_AUTO          # 手动切过就保持（粘性）
         self._resolved = VIEW_RAW       # 「自动」实际选中的视图
+        self._mode_keys = [k for k, _ in view_mode_items()]
+        theme.add_listener(self._retheme)
 
     # ------------------------------------------------------------ 展示
+
+    def set_mode(self, key: str) -> None:
+        """程序化切换视图（等价于点击对应按钮）。未知 key 忽略。"""
+        btn = self.mode_buttons.get(key)
+        if btn is None:
+            return
+        btn.setChecked(True)
+        if key != self._mode:
+            self._mode = key
+            self._render_body()
 
     def show_body(self, headers, body_bytes: bytes | None,
                   raw_len: int | None = None) -> None:
@@ -377,6 +396,8 @@ class BodyPane(QWidget):
         selections = []
         count = 0
         doc = self.body_view.document()
+        hit_fmt = QTextCharFormat()
+        hit_fmt.setBackground(theme.color("hit_bg"))
         cursor = QTextCursor(doc)
         while True:
             cursor = doc.find(term, cursor, flags)
@@ -384,7 +405,7 @@ class BodyPane(QWidget):
                 break
             sel = QTextEdit.ExtraSelection()
             sel.cursor = cursor
-            sel.format = _HIGHLIGHT_FORMAT
+            sel.format = hit_fmt
             selections.append(sel)
             count += 1
             if count > 2000:  # 防失控
@@ -404,15 +425,26 @@ class BodyPane(QWidget):
                 text = item.text()
                 hay = text if case_sensitive else text.lower()
                 hit = bool(needle) and needle in hay
-                item.setBackground(_FORM_HIT_BG if hit else QBrush())
+                item.setBackground(theme.color("hit_bg") if hit else QBrush())
                 if hit:
                     count += 1
         return count
 
+    # ------------------------------------------------------------ 主题
+
+    def _retheme(self) -> None:
+        """主题切换：说明文字换色 + 按当前数据重画（JSON 着色器随之切换深浅）。"""
+        self.view_note.setStyleSheet(f"color: {theme.css('hint')};")
+        self._render_body()
+
     # ------------------------------------------------------------ 内部
 
-    def _on_mode_changed(self) -> None:
-        self._mode = self.mode_combo.currentData() or VIEW_AUTO
+    def _on_mode_clicked(self, btn_id: int) -> None:
+        key = self._mode_keys[btn_id] if 0 <= btn_id < len(self._mode_keys) \
+            else VIEW_AUTO
+        if key == self._mode:
+            return
+        self._mode = key
         self._render_body()
 
     def _on_wrap_toggled(self, on: bool) -> None:
@@ -693,6 +725,8 @@ class WebSocketPane(QWidget):
         self._messages: list = []
         self._shown = 0
         self._overflow = False
+        self._row_from_client: list[bool] = []   # 与表格行一一对应（主题切换重染用）
+        theme.add_listener(self._retheme)
 
     # ------------------------------------------------------------ 展示
 
@@ -702,6 +736,7 @@ class WebSocketPane(QWidget):
         self._messages = []
         self._shown = 0
         self._overflow = False
+        self._row_from_client = []
         self.body_pane.clear()
         self.refresh(flow)
 
@@ -728,6 +763,8 @@ class WebSocketPane(QWidget):
                 # 滚动窗口：丢最旧一行，最新消息始终可见——否则长连接
                 # 跑过上限后用户看到的全是最早的旧消息，还被"最近"文案误导
                 self.table.removeRow(0)
+                if self._row_from_client:
+                    self._row_from_client.pop(0)
             # 序号用消息真实下标（i+1）：滚动删除头部后行数不再等于序号，
             # 用行数+1 会出现重复序号；i+1 始终是"第几条消息"
             self._append_row(i + 1, messages[i])
@@ -743,6 +780,7 @@ class WebSocketPane(QWidget):
         self._messages = []
         self._shown = 0
         self._overflow = False
+        self._row_from_client = []
         self.table.setRowCount(0)
         self.info_label.setText("")
         self.body_pane.clear()
@@ -775,10 +813,12 @@ class WebSocketPane(QWidget):
         for c, value in enumerate(values):
             item = QTableWidgetItem(value)
             if c == 2:
-                color = QColor("#0969da") if getattr(message, "from_client", False) \
-                    else QColor("#1a7f37")
-                item.setForeground(color)
+                item.setForeground(
+                    theme.color("info") if getattr(message, "from_client", False)
+                    else theme.color("ok")
+                )
             self.table.setItem(row, c, item)
+        self._row_from_client.append(bool(getattr(message, "from_client", False)))
 
     def _update_info(self, flow) -> None:
         ws = getattr(flow, "websocket", None)
@@ -813,6 +853,16 @@ class WebSocketPane(QWidget):
         message = self._messages[row]
         content = getattr(message, "content", b"") or b""
         self.body_pane.show_body(None, content)
+
+    def _retheme(self) -> None:
+        """主题切换：方向列的静态前景色要整列重染（item 里存的是 QColor 快照）。"""
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 2)
+            if item is not None and row < len(self._row_from_client):
+                item.setForeground(
+                    theme.color("info") if self._row_from_client[row]
+                    else theme.color("ok")
+                )
 
     def _at_bottom(self) -> bool:
         bar = self.table.verticalScrollBar()
