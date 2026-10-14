@@ -17,11 +17,12 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QTimer, Qt
-from PySide6.QtGui import QAction, QActionGroup, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
@@ -41,7 +42,7 @@ from addons.capture import CaptureAddon
 from addons.maplocal import MapLocalAddon
 from addons.mock import MockAddon
 from addons.throttle import ThrottleAddon
-from app.certserver import CA_PEM_PATH, CertServer
+from app.certserver import CA_PEM_PATH, CertServer, _lan_ips
 from app.ui.tool_panel import ToolPanel
 from app.network import build_map_remote_specs, map_local_entries
 from app.export import (
@@ -225,7 +226,6 @@ class MainWindow(QMainWindow):
             self.settings.window_geometry = bytes(self.saveGeometry())
             self.settings.splitter_state = bytes(self.traffic_splitter.saveState())
             save_settings(self.settings)
-            save_settings(self.settings)
         except Exception:
             log.warning("窗口几何保存失败", exc_info=True)
 
@@ -238,25 +238,8 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(6, 6, 6, 6)
         root.setSpacing(4)
 
-        # -- 工具栏
+        # -- 工具栏（排列：列表操作 | 抓包选项 | 代理控制 | 视图 | 低频功能）
         toolbar_row = QHBoxLayout()
-        self.proxy_btn = QPushButton("启动代理")
-        self.proxy_btn.setCheckable(True)
-        toolbar_row.addWidget(self.proxy_btn)
-
-        toolbar_row.addWidget(QLabel("端口:"))
-        self.port_spin = QSpinBox()
-        self.port_spin.setRange(1024, 65535)
-        self.port_spin.setValue(self.settings.proxy_port)
-        self.port_spin.valueChanged.connect(self._on_port_changed)
-        toolbar_row.addWidget(self.port_spin)
-
-        self.cert_btn = QPushButton("证书服务")
-        self.cert_btn.setToolTip("启动局域网证书下载服务（手机装 CA 用）")
-        toolbar_row.addWidget(self.cert_btn)
-
-        self.export_ca_btn = QPushButton("导出 CA 证书")
-        toolbar_row.addWidget(self.export_ca_btn)
 
         self.clear_btn = QPushButton("清除列表")
         toolbar_row.addWidget(self.clear_btn)
@@ -282,7 +265,7 @@ class MainWindow(QMainWindow):
         )
         toolbar_row.addWidget(self.auto_scroll_cb)
 
-        self.sysproxy_cb = QCheckBox("接管系统代理")
+        self.sysproxy_cb = QCheckBox("设为系统代理")
         self.sysproxy_cb.setChecked(self.settings.auto_system_proxy)
         self.sysproxy_cb.setToolTip(
             "启动代理时自动把系统 HTTP/HTTPS 代理指向本应用，停止或退出时自动还原\n"
@@ -292,6 +275,21 @@ class MainWindow(QMainWindow):
         self.sysproxy_cb.toggled.connect(self._on_sysproxy_toggled)
         toolbar_row.addWidget(self.sysproxy_cb)
 
+        toolbar_row.addSpacing(12)
+        self.proxy_btn = QPushButton("启动代理")
+        self.proxy_btn.setCheckable(True)
+        toolbar_row.addWidget(self.proxy_btn)
+
+        toolbar_row.addWidget(QLabel("端口:"))
+        self.port_spin = QSpinBox()
+        self.port_spin.setRange(1024, 65535)
+        self.port_spin.setValue(self.settings.proxy_port)
+        # editingFinished（回车/失焦提交）而非 valueChanged：后者每敲一个数字
+        # 触发一次，运行中会连续 stop/start 代理，中间值还可能撞别的端口
+        self.port_spin.editingFinished.connect(self._on_port_changed)
+        toolbar_row.addWidget(self.port_spin)
+
+        toolbar_row.addSpacing(12)
         toolbar_row.addWidget(QLabel("顺序:"))
         self.order_combo = QComboBox()
         self.order_combo.addItem("到达顺序（新在底部）", False)
@@ -313,6 +311,15 @@ class MainWindow(QMainWindow):
         )
         self.layout_combo.currentIndexChanged.connect(self._on_layout_changed)
         toolbar_row.addWidget(self.layout_combo)
+
+        # 证书功能不常用，放到工具栏最后面（DESIGN：低频操作靠右）
+        toolbar_row.addSpacing(12)
+        self.cert_btn = QPushButton("证书服务")
+        self.cert_btn.setToolTip("启动局域网证书下载服务（手机装 CA 用）")
+        toolbar_row.addWidget(self.cert_btn)
+
+        self.export_ca_btn = QPushButton("导出 CA 证书")
+        toolbar_row.addWidget(self.export_ca_btn)
 
         toolbar_row.addStretch(1)
         root.addLayout(toolbar_row)
@@ -679,15 +686,55 @@ class MainWindow(QMainWindow):
         self.flow_store.set_max_rows(limit)
         self._update_status()
 
-    def _on_port_changed(self, port: int) -> None:
+    def _on_port_changed(self) -> None:
+        """端口变更（回车/失焦提交）：保存并即时生效。
+
+        运行中改端口 = 重启代理 + 系统代理重接管 + 证书服务静默重启，
+        不需要手动停止再启动。新端口被占用时由 _verify_proxy_started 兜底提示。
+        """
+        port = self.port_spin.value()
+        if port == self.settings.proxy_port:
+            return
+        was_running = self.proxy.running
         self.settings.proxy_port = port
         save_settings(self.settings)
-        if self.proxy.running:
-            # 改端口需重启代理生效
-            self.proxy.stop()
-            self.proxy = self._make_proxy(port)
-            self.proxy.start()
-            self._update_status()
+        if not was_running:
+            return
+        self.proxy.stop(timeout=2.0)
+        self.proxy = self._make_proxy(port)
+        self.proxy.start()
+        self._update_status()
+        # 系统代理还挂在旧端口上：后台先还原再按新端口重接管。顺序不能反——
+        # 直接重接管会把「127.0.0.1:旧端口」当成原始设置存进状态文件，还原就错了
+        if self._sysproxy_enabled():
+            self._retake_sysproxy(port)
+        # 证书服务页面上显示的代理端口也要跟上
+        if self.cert_server is not None and self.cert_server.running:
+            self._stop_cert_server()
+            try:
+                server = CertServer(
+                    port=self.settings.cert_port, proxy_port=port
+                )
+                server.start()
+                self.cert_server = server
+            except OSError:
+                self.cert_server = None
+                log.warning("证书服务重启失败（端口被占用？）", exc_info=True)
+        # 新端口若被占用，代理线程会立刻退出——700ms 后校验并弹窗
+        QTimer.singleShot(700, self._verify_proxy_started)
+
+    def _retake_sysproxy(self, port: int) -> None:
+        """后台「还原旧接管 → 按新端口重接管」，全程持锁避免与启停路径竞态。"""
+
+        def work():
+            with self._sysproxy_lock:
+                sysproxy.restore()
+                ok, msg = sysproxy.takeover(port)
+            self.bridge.sysproxy_done.emit(ok, msg)
+
+        threading.Thread(
+            target=work, daemon=True, name="sysproxy-retake"
+        ).start()
 
     def _on_toggle_cert_server(self) -> None:
         if self.cert_server is not None and self.cert_server.running:
@@ -699,12 +746,7 @@ class MainWindow(QMainWindow):
             )
             server.start()
             self.cert_server = server
-            QMessageBox.information(
-                self,
-                "证书服务已启动",
-                f"手机浏览器打开:\n\n{server.url}\n\n"
-                f"代理请设为: 电脑IP : {self.settings.proxy_port}",
-            )
+            self._show_cert_dialog(server)
         except FileNotFoundError:
             QMessageBox.critical(
                 self,
@@ -719,6 +761,69 @@ class MainWindow(QMainWindow):
         except OSError as e:
             QMessageBox.critical(self, "启动失败", f"端口 {self.settings.cert_port} 可能被占用:\n{e}")
         self._update_status()
+
+    @staticmethod
+    def _qr_pixmap(url: str) -> QPixmap | None:
+        """URL → 二维码 QPixmap；segno 缺失/失败返回 None（调用方降级为纯文字）。"""
+        try:
+            import io
+
+            import segno
+
+            buf = io.BytesIO()
+            segno.make(url, error="m").save(
+                buf, kind="png", scale=6, border=2, dark="#1a1a1a"
+            )
+            pm = QPixmap()
+            return pm if pm.loadFromData(buf.getvalue(), "PNG") else None
+        except Exception:
+            log.debug("弹窗二维码生成失败", exc_info=True)
+            return None
+
+    def _show_cert_dialog(self, server: CertServer) -> None:
+        """证书服务弹窗：直接显示各局域网地址的二维码（v1.12 只有网页里有，
+        弹窗只给纯链接——手机还得先抄地址，体验对齐「打开就扫」）。"""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("证书服务已启动")
+        lay = QVBoxLayout(dlg)
+        hint = QLabel(
+            "手机连上同一 Wi-Fi，用相机扫下方任一二维码（或浏览器打开地址），\n"
+            "在打开的网页里下载并安装证书："
+        )
+        hint.setWordWrap(True)
+        lay.addWidget(hint)
+
+        urls = [f"http://{ip}:{server.port}" for ip in _lan_ips()][:4]
+        if not urls:
+            urls = [server.url]     # 拿不到局域网 IP 时至少给本机地址
+        row = QHBoxLayout()
+        for url in urls:
+            col = QVBoxLayout()
+            col.addStretch(1)
+            pm = self._qr_pixmap(url)
+            if pm is not None:
+                img = QLabel()
+                img.setPixmap(pm)
+                img.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                col.addWidget(img)
+            lbl = QLabel(f'<a href="{url}">{url}</a>')
+            lbl.setOpenExternalLinks(True)
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            col.addWidget(lbl)
+            col.addStretch(1)
+            row.addLayout(col)
+        lay.addLayout(row)
+
+        tip = QLabel(
+            f"安装证书后，手机 Wi-Fi 的代理请设为：电脑IP : {self.settings.proxy_port}"
+        )
+        tip.setWordWrap(True)
+        lay.addWidget(tip)
+        btn = QPushButton("好")
+        btn.setDefault(True)
+        btn.clicked.connect(dlg.accept)
+        lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        dlg.exec()
 
     def _stop_cert_server(self) -> None:
         if self.cert_server is not None:

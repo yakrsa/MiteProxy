@@ -290,3 +290,73 @@ class TestMainWindowWiring:
         window._sysproxy_elevate_asked = False
         window._on_sysproxy_done(False, "设置 Wi-Fi 代理失败: no rights")
         assert "接管失败" in window.status_bar.currentMessage()
+
+
+# ====================================================================== 端口即时生效（v1.14）
+
+class TestPortChange:
+    def test_change_restarts_running_proxy_and_retakes_sysproxy(
+        self, window, monkeypatch
+    ):
+        """运行中改端口：代理立刻换端口重监听，系统代理先还原再按新端口重接管。"""
+        calls = []
+        monkeypatch.setattr(
+            "app.sysproxy.takeover",
+            lambda port, run=None, elevate=False:
+                calls.append(("takeover", port)) or (True, "ok"),
+        )
+        monkeypatch.setattr(
+            "app.sysproxy.restore",
+            lambda run=None: calls.append(("restore",)) or (True, "已还原"),
+        )
+        monkeypatch.setattr(
+            "app.sysproxy.recover_if_needed",
+            lambda run=None: False,
+        )
+        window.start_proxy()
+        old_port = window.settings.proxy_port
+        assert ("takeover", old_port) in calls
+
+        calls.clear()
+        new_port = old_port + 73          # 换一个没绑过的端口
+        window.port_spin.setValue(new_port)
+        window._on_port_changed()          # editingFinished 处理器
+
+        assert window.settings.proxy_port == new_port
+        assert window.proxy.port == new_port
+        # FakeThread 同步执行：返回时还原+重接管已完成，且顺序正确
+        assert calls == [("restore",), ("takeover", new_port)]
+        # 新线程真的监听起来（最多等 3s）
+        import time as _time
+        deadline = _time.monotonic() + 3.0
+        while not window.proxy.running and _time.monotonic() < deadline:
+            _time.sleep(0.05)
+        assert window.proxy.running
+        window.stop_proxy()
+
+    def test_change_while_stopped_only_saves(self, window, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "app.sysproxy.takeover",
+            lambda port, run=None, elevate=False: calls.append("takeover") or (True, "ok"),
+        )
+        monkeypatch.setattr(
+            "app.sysproxy.restore",
+            lambda run=None: calls.append("restore") or (True, "ok"),
+        )
+        new_port = window.settings.proxy_port + 11
+        window.port_spin.setValue(new_port)
+        window._on_port_changed()
+        assert window.settings.proxy_port == new_port
+        assert calls == []                 # 没运行就不碰系统代理
+        assert not window.proxy.running
+
+    def test_same_port_noop(self, window, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "app.sysproxy.takeover",
+            lambda port, run=None, elevate=False: calls.append("takeover") or (True, "ok"),
+        )
+        window.port_spin.setValue(window.settings.proxy_port)  # 同值
+        window._on_port_changed()
+        assert calls == []
