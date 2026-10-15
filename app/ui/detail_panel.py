@@ -497,17 +497,29 @@ class BodyPane(QWidget):
     def _show_text(self, text: str, json_mode: bool = False) -> None:
         self.body_stack.setCurrentWidget(self.body_view)
         self.zoom_combo.setVisible(False)
+        # 先关换行再 setPlainText：上一条会话可能把换行留在开启状态，带着
+        # WidgetWidth 塞入超长单行（压缩成一行的 JSON / base64）会触发
+        # QPlainTextEdit 的超线性排版（300KB 单行 ≈ 1.2s，几 MB 直接卡死），
+        # 而下面的换行闸门是在塞完之后才算的——晚了。NoWrap 状态下塞文本
+        # 很便宜，塞完再按闸门决定要不要重新打开（多行短文本重新打开无压力）。
+        self.body_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.body_view.setPlainText(text)
-        self._apply_wrap()
+        self._apply_wrap(text)
         # 大文本暂停着色：QSyntaxHighlighter 按 block 走，2 万行约 260ms
         colored = json_mode and len(text) <= HIGHLIGHT_LIMIT
         self._json_highlighter.set_enabled(colored, dark=is_dark(self.body_view))
 
-    def _apply_wrap(self) -> None:
-        """换行开关 → 真正应用（可能被超长单行闸门拦下）。"""
+    def _apply_wrap(self, text: str | None = None) -> None:
+        """换行开关 → 真正应用（可能被超长单行闸门拦下）。
+
+        `text` 传入时直接复用（_show_text 手里就有），避免 toPlainText()
+        把整篇文档再物化一遍；换行开关切换时传 None，从文档现取。
+        """
         if self.body_stack.currentWidget() is not self.body_view:
             return
-        wrap, reason = should_wrap(self.body_view.toPlainText(), self.wrap_cb.isChecked())
+        if text is None:
+            text = self.body_view.toPlainText()
+        wrap, reason = should_wrap(text, self.wrap_cb.isChecked())
         self.body_view.setLineWrapMode(
             QPlainTextEdit.LineWrapMode.WidgetWidth
             if wrap else QPlainTextEdit.LineWrapMode.NoWrap

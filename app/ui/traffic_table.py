@@ -237,7 +237,7 @@ class TrafficTable(QTableView):
         self.setColumnWidth(COL_REQ_SIZE, 64)
         self.setColumnWidth(COL_RESP_SIZE, 64)
         self.setColumnWidth(COL_DURATION, 64)
-        self.setColumnWidth(COL_MARK, 140)
+        self.setColumnWidth(COL_MARK, 280)
 
     def setModel(self, model):  # noqa: N802
         """接入模型后清掉初始排序指示（section=-1 → 保持抓包到达顺序）。

@@ -185,6 +185,8 @@ class Rule:
     last_hit: float = 0.0
     #: 创建时间（time.time() 秒，本地时间；0 = 旧数据/导入规则未记录）
     created_at: float = 0.0
+    #: 从抓包请求生成 Mock 时带入的原始请求 body（仅参考，不参与 URL 匹配）
+    request_body: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -195,6 +197,7 @@ class Rule:
             "action": self.action.to_dict(),
             "source": self.source,
             "created_at": self.created_at,
+            "request_body": self.request_body,
         }
 
     @classmethod
@@ -209,6 +212,7 @@ class Rule:
             action=Action.from_dict(data.get("action") or {}),
             source=str(data.get("source", "manual")),
             created_at=created_at,
+            request_body=str(data.get("request_body", "")),
         )
 
     @classmethod

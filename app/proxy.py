@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 import threading
 import time
 from typing import Optional
@@ -19,6 +20,21 @@ from mitmproxy import options
 from mitmproxy.tools.dump import DumpMaster
 
 log = logging.getLogger(__name__)
+
+#: 端口被占用时向后顺延的最大尝试数（从请求端口起连续试 100 个）
+PORT_SCAN_TRIES = 100
+
+
+def _port_bindable(host: str, port: int) -> bool:
+    """探测端口能否绑定（bind 后立即关，不监听，只用来查占用）。"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind((host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
 
 
 class ProxyService:
@@ -51,14 +67,39 @@ class ProxyService:
         return self._thread is not None and self._thread.is_alive()
 
     def start(self) -> None:
-        """启动代理线程（幂等；已在运行则直接返回）。"""
+        """启动代理线程（幂等；已在运行则直接返回）。
+
+        启动前先探测端口：被占用就自动顺延到下一个可用端口（实际端口
+        回写 self.port）。mitmproxy 是异步绑定、失败只能靠事后 verify
+        兜底，这里把绝大多数端口冲突在启动前就消化掉。
+        找不到任何可用端口时抛 OSError，由调用方统一收尾。
+        """
         if self.running:
             return
+        requested = self.port
+        chosen = self._pick_port()
+        if chosen is None:
+            raise OSError(
+                f"从端口 {requested} 起连续 {PORT_SCAN_TRIES} 个端口均不可用"
+            )
+        self.port = chosen
+        if chosen != requested:
+            log.warning("端口 %s 被占用，代理自动改用 %s", requested, chosen)
         self._thread = threading.Thread(
             target=self._thread_main, name="mitmproxy-proxy", daemon=True
         )
         self._thread.start()
         log.info("代理线程已启动: %s:%s", self.host, self.port)
+
+    def _pick_port(self) -> Optional[int]:
+        """从 self.port 起找一个可绑定端口；找不到返回 None。"""
+        for offset in range(PORT_SCAN_TRIES):
+            candidate = self.port + offset
+            if candidate > 65535:
+                return None
+            if _port_bindable(self.host, candidate):
+                return candidate
+        return None
 
     def stop(self, timeout: float = 5.0) -> None:
         """优雅停止代理；超时未退出也不阻塞主流程（daemon 线程会随进程退出）。"""

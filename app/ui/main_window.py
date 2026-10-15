@@ -22,6 +22,7 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, QTimer, Qt
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -48,6 +49,7 @@ from addons.maplocal import MapLocalAddon
 from addons.mock import MockAddon
 from addons.throttle import ThrottleAddon
 from app.certserver import CA_PEM_PATH, CertServer, _lan_ips
+from app import single_instance
 from app.ui.tool_panel import ToolPanel
 from app.network import build_map_remote_specs, map_local_entries
 from app.export import (
@@ -63,7 +65,7 @@ from app.export import (
 )
 from app.proxy import ProxyService
 from app.replay import apply_request_edits, make_replay_copy
-from app.rules import RuleStore
+from app.rules import Action, EXACT, Match, Rule, RuleStore
 from app import session as session_mod
 from app.session import (
     SESSION_EXT,
@@ -92,6 +94,7 @@ from app.ui.network_panel import NetworkPanel
 from app.ui.replay_dialog import ReplayEditDialog
 from app.ui.rules_panel import RulesPanel
 from app.ui.signals import FlowBridge
+from app.ui.log_panel import LogPanel
 from app.ui.traffic_table import FilterBar, SearchBar, TrafficTable
 from app.ui import theme
 
@@ -108,6 +111,18 @@ CA_EXPORT_HINT = (
 COMPARE_TIMEOUT_S = 20
 #: 对比对话框保留个数：开太多不关也不至于无限攒着
 COMPARE_DIALOG_KEEP = 5
+
+
+class _PortSpinBox(QSpinBox):
+    """端口输入框：只允许键盘输入，彻底屏蔽所有误改手段。
+
+    - 上下微调按钮已在构造处用 ``NoButtons`` 去掉；
+    - 这里再屏蔽滚轮事件，避免鼠标悬停在端口框上滚动页面时把端口改掉。
+    """
+
+    def wheelEvent(self, event):  # noqa: N802 (Qt 命名约定)
+        # 不调用 super()，滚轮事件直接丢弃，端口值保持不变
+        event.ignore()
 
 
 class MainWindow(QMainWindow):
@@ -192,7 +207,30 @@ class MainWindow(QMainWindow):
         if event.type() == QEvent.Type.PaletteChange \
                 and obj is QApplication.instance():
             QTimer.singleShot(0, theme.notify)
+        # 端口框聚焦时，鼠标点到其他任意位置（含标签/空白这类不抢焦点的控件）
+        # 也触发保存：editingFinished 只在焦点真正离开时发信号，点到不抢焦点
+        # 的地方焦点不离开就不发。先 interpretText 把输入文本同步进 value()
+        # （编辑中 value() 还是旧值），再走与回车一致的保存逻辑；保存本身
+        # 幂等（值没变直接 return），与随后 editingFinished 的重复触发无冲突。
+        elif event.type() == QEvent.Type.MouseButtonPress:
+            if self.port_spin.hasFocus() and not self._spin_within(
+                self.port_spin, obj
+            ):
+                self.port_spin.interpretText()
+                self._on_port_changed()
+            if self.cert_port_spin.hasFocus() and not self._spin_within(
+                self.cert_port_spin, obj
+            ):
+                self.cert_port_spin.interpretText()
+                self._on_cert_port_changed()
         return super().eventFilter(obj, event)
+
+    @staticmethod
+    def _spin_within(spin, watched) -> bool:
+        """点击目标是否落在端口框内部（框本身或其子控件如行编辑器）。"""
+        return isinstance(watched, QWidget) and (
+            watched is spin or spin.isAncestorOf(watched)
+        )
 
     def _restore_geometry(self) -> None:
         geo = self.settings.window_geometry
@@ -307,9 +345,13 @@ class MainWindow(QMainWindow):
         toolbar_row.addWidget(self.proxy_btn)
 
         toolbar_row.addWidget(QLabel("端口:"))
-        self.port_spin = QSpinBox()
+        self.port_spin = _PortSpinBox()
         self.port_spin.setRange(1024, 65535)
         self.port_spin.setValue(self.settings.proxy_port)
+        # 去掉上下微调按钮：端口是敏感值，箭头点一下就改端口太容易误操；
+        # 只允许键盘输入，回车/失焦时统一提交（见 _on_port_changed）
+        self.port_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.port_spin.setAccelerated(False)
         # editingFinished（回车/失焦提交）而非 valueChanged：后者每敲一个数字
         # 触发一次，运行中会连续 stop/start 代理，中间值还可能撞别的端口
         self.port_spin.editingFinished.connect(self._on_port_changed)
@@ -340,6 +382,21 @@ class MainWindow(QMainWindow):
 
         # 证书功能不常用，放到工具栏最后面（DESIGN：低频操作靠右）
         toolbar_row.addSpacing(12)
+        toolbar_row.addWidget(QLabel("证书端口:"))
+        self.cert_port_spin = _PortSpinBox()
+        self.cert_port_spin.setRange(1024, 65535)
+        self.cert_port_spin.setValue(self.settings.cert_port)
+        # 同样去掉上下按钮：避免误点改端口；只允许键盘输入，提交逻辑见
+        # _on_cert_port_changed（运行中改端口立即用新端口重启证书服务）
+        self.cert_port_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.cert_port_spin.setAccelerated(False)
+        self.cert_port_spin.setToolTip(
+            "证书下载服务的监听端口（默认 8081，被占用时自动顺延）\n"
+            "证书服务运行中修改会立即用新端口重启"
+        )
+        self.cert_port_spin.editingFinished.connect(self._on_cert_port_changed)
+        toolbar_row.addWidget(self.cert_port_spin)
+
         self.cert_btn = QPushButton("证书服务")
         self.cert_btn.setToolTip("启动局域网证书下载服务（手机装 CA 用）")
         toolbar_row.addWidget(self.cert_btn)
@@ -406,6 +463,10 @@ class MainWindow(QMainWindow):
         # 工具页（编码转换 + JSON 格式化/JSONPath，对齐 Fiddler TextWizard + json.cn）
         self.tool_panel = ToolPanel()
         self.tabs.addTab(self.tool_panel, "工具")
+
+        # 日志页：实时显示运行日志（级别筛选 / 清空 / 打开磁盘日志文件）
+        self.log_panel = LogPanel()
+        self.tabs.addTab(self.log_panel, "日志")
 
         # -- 状态栏
         self.status_bar = self.statusBar()
@@ -604,6 +665,8 @@ class MainWindow(QMainWindow):
         入口 main() 用 verify=True：若端口被占用，代理线程会立刻退出，
         由 _verify_proxy_started 收尾复位按钮并提示，避免出现
         "界面显示运行中、实际没有代理" 的假象。
+        请求端口被占用时 ProxyService 会自动顺延到下一个可用端口——
+        实际端口在这里同步回设置/端口框，系统代理也指向真实端口。
         """
         if self.proxy.running:
             return True
@@ -615,7 +678,27 @@ class MainWindow(QMainWindow):
         # load() 会重建全部 Rule 对象，规则页表格还是旧引用——不刷新的话
         # 用户点「编辑/删除」时行号会映射到新列表的另一条规则上，静默改错
         self.rules_panel.refresh()
-        self.proxy.start()
+        try:
+            self.proxy.start()
+        except OSError:
+            # 从请求端口起连续 N 个端口都不可用（极端情况）
+            log.warning("代理启动失败：无可用端口", exc_info=True)
+            self._proxy_start_failed()
+            return False
+        # 端口被占用时自动顺延：把实际端口同步回设置与界面，
+        # 系统代理接管读 self.proxy.port（已是真实端口），无需额外处理
+        requested = self.settings.proxy_port
+        actual = self.proxy.port
+        if actual != requested:
+            self.settings.proxy_port = actual
+            # setValue 不触发 editingFinished，不会递归进 _on_port_changed
+            self.port_spin.setValue(actual)
+            save_settings(self.settings)
+            # MockAddon 的重定向死循环校验按真实端口判断
+            self.mock.proxy_addr = ("127.0.0.1", actual)
+            self.status_bar.showMessage(
+                f"端口 {requested} 被占用，代理已自动改用 {actual}", 6000
+            )
         self.proxy_btn.setText("停止代理")
         self.proxy_btn.setChecked(True)
         self._update_status()
@@ -716,6 +799,10 @@ class MainWindow(QMainWindow):
         if self.proxy.running:
             return                    # 正常监听中
         # 线程已退出 → 启动失败（端口占用等）
+        self._proxy_start_failed()
+
+    def _proxy_start_failed(self) -> None:
+        """代理起不来的统一收尾：复位按钮态 + 还原系统代理 + 弹窗提示。"""
         self.proxy_btn.setText("启动代理")
         self.proxy_btn.setChecked(False)
         self._update_status()
@@ -758,6 +845,9 @@ class MainWindow(QMainWindow):
         self.settings.proxy_port = port
         save_settings(self.settings)
         if not self.proxy.running:
+            self.status_bar.showMessage(
+                f"代理端口已保存为 {port}（重启后生效）", 5000
+            )
             return
         answer = QMessageBox.question(
             self,
@@ -804,6 +894,9 @@ class MainWindow(QMainWindow):
             return
         self._restarting = True
         self.status_bar.showMessage(f"正在重启应用，切换到端口 {port} …", 5000)
+        # 先让出单实例锁：新实例起来时会被锁挡回去（发现「已在运行」
+        # 就只唤醒旧窗口然后退出），重启就死了
+        single_instance.release()
         try:
             subprocess.Popen(
                 cmd,
@@ -811,6 +904,7 @@ class MainWindow(QMainWindow):
             )
         except Exception:
             log.exception("重启应用失败，退回仅重启代理")
+            single_instance.acquire()   # 没重启成，继续以本实例运行：重新占锁
             self._restarting = False
             self._restart_proxy_on_port(port)
             return
@@ -821,23 +915,40 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(f"正在重启代理，切换到 127.0.0.1:{port} …", 4000)
         self.proxy.stop(timeout=2.0)
         self.proxy = self._make_proxy(port)
-        self.proxy.start()
+        try:
+            self.proxy.start()
+        except OSError:
+            # 请求端口起全被占用：线程根本没起，700ms 后 verify 统一弹窗
+            log.warning("代理重启失败：无可用端口", exc_info=True)
+            self._update_status()
+            QTimer.singleShot(700, self._verify_proxy_started)
+            return
         self._update_status()
+        # 顺延可能改了实际端口：后续系统代理/证书服务都要按真实端口走
+        actual = self.proxy.port
+        if actual != port:
+            self.settings.proxy_port = actual
+            self.port_spin.setValue(actual)
+            save_settings(self.settings)
+            self.mock.proxy_addr = ("127.0.0.1", actual)
+            self.status_bar.showMessage(
+                f"端口 {port} 被占用，代理已自动改用 {actual}", 6000
+            )
         # 重启成功要有可见反馈：按钮文字不变、流量列表不清空，用户无从
         # 判断是否真的重启了（之前被当成「点了 Yes 没反应」）
         self.status_bar.showMessage(
-            f"代理已重启，监听 127.0.0.1:{port}；系统代理切换中…", 8000
+            f"代理已重启，监听 127.0.0.1:{actual}；系统代理切换中…", 8000
         )
         # 系统代理还挂在旧端口上：后台先还原再按新端口重接管。顺序不能反——
         # 直接重接管会把「127.0.0.1:旧端口」当成原始设置存进状态文件，还原就错了
         if self._sysproxy_enabled():
-            self._retake_sysproxy(port)
+            self._retake_sysproxy(actual)
         # 证书服务页面上显示的代理端口也要跟上
         if self.cert_server is not None and self.cert_server.running:
             self._stop_cert_server()
             try:
                 server = CertServer(
-                    port=self.settings.cert_port, proxy_port=port
+                    port=self.settings.cert_port, proxy_port=actual
                 )
                 server.start()
                 self.cert_server = server
@@ -870,6 +981,13 @@ class MainWindow(QMainWindow):
             )
             server.start()
             self.cert_server = server
+            # 请求端口被占用时 CertServer 自动顺延：明确告知实际端口
+            if server.port != self.settings.cert_port:
+                self.status_bar.showMessage(
+                    f"端口 {self.settings.cert_port} 被占用，"
+                    f"证书服务已自动改用 {server.port}",
+                    6000,
+                )
             self._show_cert_dialog(server)
         except FileNotFoundError:
             QMessageBox.critical(
@@ -883,8 +1001,47 @@ class MainWindow(QMainWindow):
                 self, "CA 证书损坏", f"证书文件无法解析，删除后重启可重新生成:\n{e}"
             )
         except OSError as e:
-            QMessageBox.critical(self, "启动失败", f"端口 {self.settings.cert_port} 可能被占用:\n{e}")
+            QMessageBox.critical(
+                self,
+                "启动失败",
+                f"从端口 {self.settings.cert_port} 起没有找到可用端口:\n{e}",
+            )
         self._update_status()
+
+    def _on_cert_port_changed(self) -> None:
+        """证书端口变更（回车/失焦提交）：保存设置；运行中立即用新端口重启。"""
+        port = self.cert_port_spin.value()
+        if port == self.settings.cert_port:
+            return
+        self.settings.cert_port = port
+        save_settings(self.settings)
+        if self.cert_server is None or not self.cert_server.running:
+            self.status_bar.showMessage(
+                f"证书端口已保存为 {port}，下次启动证书服务时生效", 5000
+            )
+            return
+        # 运行中改端口：立即重启到新端口（成功后弹二维码窗，和手动开启一致）
+        self._stop_cert_server()
+        try:
+            server = CertServer(
+                port=port, proxy_port=self.settings.proxy_port
+            )
+            server.start()
+        except OSError as e:
+            self.cert_server = None
+            self._update_status()
+            QMessageBox.critical(
+                self,
+                "启动失败",
+                f"从端口 {port} 起没有找到可用端口:\n{e}",
+            )
+            return
+        self.cert_server = server
+        if server.port != port:
+            self.status_bar.showMessage(
+                f"端口 {port} 被占用，证书服务已自动改用 {server.port}", 6000
+            )
+        self._show_cert_dialog(server)
 
     @staticmethod
     def _qr_pixmap(url: str) -> QPixmap | None:
@@ -1127,6 +1284,10 @@ class MainWindow(QMainWindow):
             count == 1 and bool(getattr(flows[0], "comment", "") if flows else "")
         )
         clear_mark_action.triggered.connect(self._clear_mark_selected)
+        menu.addSeparator()
+        mock_action = menu.addAction("加入 Mock（用原响应做 Mock）")
+        mock_action.setEnabled(count == 1)
+        mock_action.triggered.connect(self._add_selected_to_mock)
 
         for action in (replay_action, edit_replay_action, compare_action,
                        curl_action, curl_cmd_action, copy_url_action,
@@ -1145,6 +1306,73 @@ class MainWindow(QMainWindow):
         export_action.triggered.connect(self._export_selected)
         export_resp_action.triggered.connect(lambda: self._export_selected(FORMAT_RESPONSE))
         menu.exec(self.traffic_table.viewport().mapToGlobal(pos))
+
+    # ================================================================ 加入 Mock
+
+    def _add_selected_to_mock(self) -> None:
+        """右键「加入 Mock」：用抓到的请求 URL（精确匹配）+ 原响应生成一条 Mock 规则。
+
+        默认精确匹配该请求的 URL，响应 body 即原响应 body、状态码/Content-Type
+        一并带过去；请求 body 也保留在规则里作参考（不参匹配）。生成后跳到
+        Mock 面板并选中，方便立即检查/微调。
+        """
+        flows = self._selected_flows()
+        if len(flows) != 1:
+            return
+        flow = flows[0]
+        res = getattr(flow, "response", None)
+        if res is None:
+            self.status_bar.showMessage("该请求还没有响应，无法生成 Mock", 5000)
+            return
+        rule = self._build_mock_rule(flow)
+        self.rule_store.add(rule)
+        self.tabs.setCurrentWidget(self.rules_panel)
+        self.rules_panel.select_rule(rule.id)
+        self.status_bar.showMessage(
+            f"已加入 Mock：{rule.name}（精确匹配 URL，响应=原响应）", 6000
+        )
+
+    @staticmethod
+    def _decode_bytes(data) -> str:
+        """字节 → 文本（utf-8，失败处用替换字符）；None/空返回空串。"""
+        if not data:
+            return ""
+        try:
+            return data.decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _mock_rule_name(req, url: str) -> str:
+        """用 host + path 起个短名字，便于在规则列表里一眼认出。"""
+        from urllib.parse import urlsplit
+
+        try:
+            parts = urlsplit(url)
+            host = parts.netloc or "host"
+            path = parts.path or "/"
+            base = f"{getattr(req, 'method', '')} {host}{path}"
+        except Exception:
+            base = url
+        return base[:80]
+
+    def _build_mock_rule(self, flow) -> Rule:
+        """从抓包 flow 构造 Mock 规则：精确匹配 URL，响应=原响应。"""
+        req = getattr(flow, "request", None)
+        res = flow.response
+        url = req.pretty_url
+        rule = Rule.create(name=self._mock_rule_name(req, url))
+        rule.match = Match(type=EXACT, value=url, method="")
+        rule.action = Action(
+            status=res.status_code,
+            headers={str(k): str(v) for k, v in dict(res.headers).items()},
+            body_source="inline",
+            body=self._decode_bytes(res.get_content(strict=False)),
+            latency_ms=0,
+        )
+        rule.source = "captured"
+        rule.request_body = self._decode_bytes(req.get_content(strict=False))
+        return rule
 
     def _send_body_to_tool(self) -> None:
         """把选中会话的 body 送进工具页（有响应就用响应，否则用请求）。

@@ -23,7 +23,7 @@ from pathlib import Path
 
 # ---------------------------------------------------------------- 常量
 
-APP_VERSION = "v1.15"
+APP_VERSION = "v1.16"
 GITHUB_REPO = "yakrsa/MiteProxy"
 ISSUES_URL = f"https://github.com/{GITHUB_REPO}/issues"
 ISSUES_API = f"https://api.github.com/repos/{GITHUB_REPO}/issues"

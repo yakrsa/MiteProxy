@@ -11,8 +11,9 @@ import sys
 from pathlib import Path
 
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
+from app import single_instance
 from app.ui.main_window import MainWindow
 
 
@@ -39,15 +40,55 @@ def _app_icon() -> QIcon:
     return QIcon()
 
 
+def _setup_file_logging() -> None:
+    """把日志同时落盘到 ~/.miteproxy/logs/miteproxy.log。
+
+    用 RotatingFileHandler：单文件上限 2MB，保留 4 份备份，总占用封顶 ~10MB，
+    不会无限增长；旧文件自动按 .1/.2/.3 滚动覆盖。日志级别 INFO 及以上。
+    """
+    from logging.handlers import RotatingFileHandler
+
+    from app.ui.log_panel import get_log_path
+
+    path = get_log_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fh = RotatingFileHandler(
+        str(path),
+        maxBytes=2 * 1024 * 1024,
+        backupCount=4,
+        encoding="utf-8",
+        delay=True,
+    )
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    )
+    logging.getLogger().addHandler(fh)
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    # 落盘滚动日志（有大小上限，不会无限增长）
+    _setup_file_logging()
 
     app = QApplication(sys.argv)
     app.setApplicationName("MiteProxy")
     app.setWindowIcon(_app_icon())
+
+    # 单实例：第二个实例不启动主界面，唤醒已运行实例的主窗口后退出。
+    # 多开没有任何收益——只会抢代理/证书端口、互相覆盖系统代理设置。
+    if not single_instance.acquire():
+        if not single_instance.notify_running():
+            # 极端情况（锁在但唤醒服务没监听）：至少提示用户别干等
+            QMessageBox.information(
+                None,
+                "MiteProxy 已在运行",
+                "检测到 MiteProxy 已有一个实例在运行，请切换到已打开的窗口。",
+            )
+        return 0
 
     # 代理由 MainWindow 统一持有（含 MockAddon / CaptureAddon），
     # 入口不再单独创建 ProxyService，否则会出现两个代理实例：
@@ -57,7 +98,17 @@ def main() -> int:
     window.start_proxy(verify=True)      # 启动即开代理（对齐 Fiddler 打开即抓包）
     app.aboutToQuit.connect(window.stop_proxy)
 
-    return app.exec()
+    # 主窗口就绪后再接收后续实例的唤醒请求（把它带到前台）
+    def _raise_window() -> None:
+        window.showNormal()
+        window.raise_()
+        window.activateWindow()
+
+    single_instance.start_wake_listener(_raise_window)
+
+    rc = app.exec()
+    single_instance.release()    # 正常退出释放锁（崩溃场景由探活逻辑兜底）
+    return rc
 
 
 if __name__ == "__main__":
