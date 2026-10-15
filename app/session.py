@@ -462,7 +462,7 @@ def _record_to_flow(record: dict):
     flow = HTTPFlow(client_conn=client, server_conn=server)
     flow.request = req
     flow.response = res
-    # 标记与重放态一并还原：恢复出来的 mock 命中行照样是琥珀色 + MOCK 徽标
+    # 标记与重放态一并还原：恢复出来的 mock 命中行照样是浅绿色 + MOCK 徽标
     try:
         flow.marked = str(summary.get("marked") or "")
         flow.is_replay = bool(summary.get("is_replay"))
