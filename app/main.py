@@ -19,13 +19,15 @@ from app.ui.main_window import MainWindow
 def _app_icon() -> QIcon:
     """窗口/任务栏图标（Windows 任务栏取自 QApplication.windowIcon）。
 
-    打包后 icon_256.png 由 spec datas 塞进 _internal（sys._MEIPASS），
-    源码运行取仓库 packaging/ 下。
+    打包后图标由 spec datas 塞进 _internal（sys._MEIPASS），
+    源码运行取仓库 packaging/ 下。优先 icon.ico（含 16-256 全尺寸帧，
+    各 DPI 清晰），回落 icon_256.png。
     """
     base = Path(getattr(sys, "_MEIPASS", "")) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-    for candidate in (base / "icon_256.png", base / "packaging" / "icon_256.png"):
-        if candidate.is_file():
-            return QIcon(str(candidate))
+    for name in ("icon.ico", "icon_256.png"):
+        for candidate in (base / name, base / "packaging" / name):
+            if candidate.is_file():
+                return QIcon(str(candidate))
     return QIcon()
 
 
