@@ -287,10 +287,20 @@ class RulesPanel(QWidget):
             seq.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             seq.setForeground(QBrush(theme.color("hint")))
             self.table.setItem(i, 1, seq)
-            enabled_item = QTableWidgetItem("✔" if rule.enabled else "—")
-            enabled_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             name = rule.name + (" ⚠" if rule.error else "")
             self.table.setItem(i, 2, QTableWidgetItem(name))
+            # 启用列：复选框（勾选 = 启用），点击直接切换启用状态（见 _on_item_changed）
+            enabled_item = QTableWidgetItem()
+            enabled_item.setFlags(
+                Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsSelectable
+            )
+            enabled_item.setCheckState(
+                Qt.CheckState.Checked if rule.enabled else Qt.CheckState.Unchecked
+            )
+            enabled_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            enabled_item.setToolTip("勾选 = 启用；点击可切换启用 / 停用")
             self.table.setItem(i, 3, enabled_item)
             self.table.setItem(i, 4, QTableWidgetItem(_match_summary(rule)))
             self.table.setItem(i, 5, QTableWidgetItem(_action_summary(rule)))
@@ -328,22 +338,29 @@ class RulesPanel(QWidget):
     # ------------------------------------------------------------ 批量勾选
 
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
-        """勾选框变化 → 维护 _checked_ids + 批量按钮显隐。"""
-        if self._loading or item.column() != 0:
+        """勾选框变化 → 维护 _checked_ids（列0）+ 切换启用状态（列3）。"""
+        if self._loading:
             return
-        rule_id = (
-            self._display_ids[item.row()]
-            if 0 <= item.row() < len(self._display_ids)
-            else None
-        )
-        if rule_id is None:
+        if item.column() == 0:
+            rule_id = (
+                self._display_ids[item.row()]
+                if 0 <= item.row() < len(self._display_ids)
+                else None
+            )
+            if rule_id is None:
+                return
+            if item.checkState() == Qt.CheckState.Checked:
+                self._checked_ids.add(rule_id)
+            else:
+                self._checked_ids.discard(rule_id)
+            self._update_batch_buttons()
+            self._update_select_all_state()
             return
-        if item.checkState() == Qt.CheckState.Checked:
-            self._checked_ids.add(rule_id)
-        else:
-            self._checked_ids.discard(rule_id)
-        self._update_batch_buttons()
-        self._update_select_all_state()
+        if item.column() == 3:
+            # 启用列复选框：点击直接切换启用 / 停用
+            if 0 <= item.row() < len(self._display_ids):
+                self._toggle_enable(self._display_ids[item.row()])
+            return
 
     def _update_batch_buttons(self) -> None:
         """勾选数 > 0 时才显示批量按钮，按钮文字带上数量。"""
@@ -533,6 +550,11 @@ class RulesPanel(QWidget):
         now_enabled = not rule.enabled
         self.store.update(rule_id, enabled=now_enabled)
         self.refresh()
+        # 切换后保持该规则选中 + 可见，避免行跳动，或在「只显示启用」过滤下丢焦点
+        if rule_id in self._display_ids:
+            row = self._display_ids.index(rule_id)
+            self.table.selectRow(row)
+            self.table.scrollTo(self.table.model().index(row, 0))
         # 单条启用/停用也给出轻提示（批量那条已有），否则右键点一下毫无反馈
         self._toast(f"已{'启用' if now_enabled else '停用'}「{rule.name}」")
 

@@ -10,6 +10,7 @@ import pytest  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # noqa: E402
 
+from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication, QLabel  # noqa: E402
 
 from app.rules import Match, Rule, RuleStore  # noqa: E402
@@ -97,3 +98,41 @@ class TestMoveToTop:
         panel._move_to_top(rid)
         # 内存中的全量列表顺序已置顶（磁盘持久化由其他用例覆盖）
         assert panel.store.all()[0].id == rid
+
+
+class TestEnabledCheckbox:
+    def test_enabled_column_is_checkable_and_reflects_state(self, panel):
+        rid = panel._display_ids[0]
+        item = panel.table.item(0, 3)
+        assert bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable)
+        expected = (
+            Qt.CheckState.Checked
+            if panel.store.get(rid).enabled
+            else Qt.CheckState.Unchecked
+        )
+        assert item.checkState() == expected
+
+    def test_click_checkbox_toggles_enabled(self, panel):
+        rid = panel._display_ids[0]
+        before = panel.store.get(rid).enabled
+        item = panel.table.item(0, 3)
+        item.setCheckState(
+            Qt.CheckState.Unchecked if before else Qt.CheckState.Checked
+        )
+        # itemChanged -> _on_item_changed(列3) -> _toggle_enable：store 翻转 + 提示
+        assert panel.store.get(rid).enabled != before
+        assert "已" in panel._toast_w.text()
+        # 切回原状态仍生效（再点一次）
+        panel.table.item(0, 3).setCheckState(
+            Qt.CheckState.Checked if before else Qt.CheckState.Unchecked
+        )
+        assert panel.store.get(rid).enabled == before
+
+    def test_uncheck_hides_when_filter_on(self, panel):
+        # 默认规则都启用；打开「只显示启用」后取消勾选第一条 → 该条被过滤隐藏
+        rid = panel._display_ids[0]
+        panel.only_enabled_cb.setChecked(True)
+        panel._on_filter_toggled()
+        assert rid in panel._display_ids
+        panel.table.item(0, 3).setCheckState(Qt.CheckState.Unchecked)
+        assert rid not in panel._display_ids

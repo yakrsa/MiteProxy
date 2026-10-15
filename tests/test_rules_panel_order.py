@@ -195,7 +195,7 @@ class TestContextMenu:
         panel = RulesPanel(three_rules)
         menu = panel._build_context_menu(0)
         texts = self._texts(menu)
-        assert texts == ["编辑", "停用", "上移", "下移", "删除"]
+        assert texts == ["编辑", "停用", "上移", "下移", "置顶", "删除"]
 
     def test_row_menu_boundary_actions_disabled(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
