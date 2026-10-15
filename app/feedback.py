@@ -1,0 +1,123 @@
+"""意见反馈：应用内一键提交 GitHub Issue（v1.15）。
+
+无服务器方案的反馈通道——用户在反馈对话框填写标题和内容，
+应用自动附带版本 / 系统诊断信息，通过 GitHub Issues API 直接创建 issue。
+
+认证：GitHub 创建 issue 必须带 token（不能匿名提交）。这里内置一个
+fine-grained PAT（EMBEDDED_FEEDBACK_TOKEN），只授权 yakrsa/MiteProxy
+一个仓库的 Issues 写权限——即使 token 被从包里提取，最坏影响也只是
+有人往该仓库灌垃圾 issue。打包前把 token 填进该常量（或用环境变量
+MITEPROXY_FEEDBACK_TOKEN 覆盖，便于本地测试）。
+
+分层：本模块是纯函数层（payload / headers / 响应解析 / 错误提示），
+网络发送在 UI 层用 QNetworkAccessManager 异步完成，测试注入假传输层。
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import platform
+import sys
+
+# ---------------------------------------------------------------- 常量
+
+APP_VERSION = "v1.15"
+GITHUB_REPO = "yakrsa/MiteProxy"
+ISSUES_URL = f"https://github.com/{GITHUB_REPO}/issues"
+ISSUES_API = f"https://api.github.com/repos/{GITHUB_REPO}/issues"
+NEW_ISSUE_URL = f"https://github.com/{GITHUB_REPO}/issues/new"
+
+TOKEN_ENV = "MITEPROXY_FEEDBACK_TOKEN"
+# 打包前填入 fine-grained PAT（仅本仓库 Issues 写权限）
+EMBEDDED_FEEDBACK_TOKEN = ""
+
+REQUEST_TIMEOUT_MS = 15000
+
+
+def get_token() -> str:
+    """运行时读取：环境变量优先（便于测试/本地调试），否则用内置 token。"""
+    return os.environ.get(TOKEN_ENV, "").strip() or EMBEDDED_FEEDBACK_TOKEN.strip()
+
+
+# ---------------------------------------------------------------- 诊断信息
+
+def collect_diagnostics() -> str:
+    """采集提交 issue 时自动附带的环境诊断信息（多行纯文本）。"""
+    lines = [
+        f"- App 版本: {APP_VERSION}",
+        f"- 系统: {platform.system()} {platform.release()} "
+        f"({platform.machine()})",
+        f"- Python: {platform.python_version()}",
+        f"- 打包运行: {'是' if getattr(sys, 'frozen', False) else '否'}",
+    ]
+    try:
+        from PySide6 import QtCore  # 延迟导入：纯函数层测试可不依赖 Qt 细节
+
+        lines.append(f"- Qt: {QtCore.qVersion()}")
+    except Exception:  # pragma: no cover - 未装 Qt 时仅少一行
+        pass
+    return "\n".join(lines)
+
+
+def build_issue_body(content: str, diagnostics: str) -> str:
+    """用户反馈正文 + 诊断信息合并为 issue body（诊断放代码块里）。"""
+    text = (content or "").strip()
+    diag = (diagnostics or "").strip()
+    if diag:
+        text = f"{text}\n\n---\n\n**诊断信息（自动生成）**\n\n```text\n{diag}\n```"
+    return text
+
+
+# ---------------------------------------------------------------- 请求构造
+
+def payload(title: str, body: str) -> dict:
+    return {
+        "title": (title or "").strip()[:200],
+        "body": body,
+        "labels": ["feedback"],
+    }
+
+
+def headers(token: str) -> dict:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+        "User-Agent": f"MiteProxy-feedback/{APP_VERSION}",
+    }
+
+
+# ---------------------------------------------------------------- 响应解析
+
+def describe_result(status: int, err: str = "") -> str:
+    """把 GitHub API / 网络层的结果转成用户可读的一句话提示。"""
+    if status == 0:
+        return f"网络请求失败：{err or '无法连接 GitHub'}。请检查网络后重试。"
+    if status == 401:
+        return "提交失败：反馈凭证无效（token 已过期或被撤销）。"
+    if status == 403:
+        if "rate limit" in (err or "").lower():
+            return "提交失败：GitHub 接口限流，请稍后再试。"
+        return "提交失败：没有创建 issue 的权限（token 权限不足）。"
+    if status == 404:
+        return "提交失败：仓库不存在或 token 未授权该仓库。"
+    if status == 422:
+        return "提交失败：内容未通过 GitHub 校验（标题或正文可能过长）。"
+    if 500 <= status < 600:
+        return f"提交失败：GitHub 服务暂时不可用（HTTP {status}），请稍后再试。"
+    return f"提交失败：HTTP {status} {err}".strip()
+
+
+def parse_issue_response(status: int, raw: bytes, err: str = "") -> tuple[bool, str, str]:
+    """解析 GitHub API 响应 -> (ok, 提示语, issue_url)。"""
+    if status == 201:
+        url = ""
+        try:
+            data = json.loads(raw.decode("utf-8"))
+            url = data.get("html_url", "") or ""
+        except Exception:
+            pass
+        return True, "反馈已提交，感谢！", url
+    return False, describe_result(status, err), ""
