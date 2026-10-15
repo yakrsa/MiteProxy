@@ -40,6 +40,8 @@ class TestTokens:
         for key, (light, dark) in theme.COLORS.items():
             assert QColor(light).isValid(), key
             assert QColor(dark).isValid(), key
+            if key == "sel_fg":
+                continue  # 选中行文字深浅两套都刻意用白色（蓝底上最清晰）
             assert light != dark, f"{key} 两套值不应相同"
 
     def test_color_and_css_follow_mode(self):
@@ -51,6 +53,21 @@ class TestTokens:
     def test_unknown_key_falls_back_to_hint(self):
         theme.apply("light")
         assert theme.color("nope").name() == theme.COLORS["hint"][0].lower()
+
+    def test_selection_colors_explicit_not_palette_ref(self):
+        """浅色模式选中行看不见的回归：选中色必须是显式 token 取色。
+
+        旧实现 `selection-background-color: palette(highlight)` 在 macOS
+        原生样式下与 highlighted-text 不同步（浅底配白字 → 整行隐形）。
+        """
+        theme.apply("light")
+        sheet = theme.stylesheet()
+        assert theme.COLORS["sel_bg"][0].lower() in sheet
+        assert "palette(highlight)" not in sheet
+        theme.apply("dark")
+        sheet = theme.stylesheet()
+        assert theme.COLORS["sel_bg"][1].lower() in sheet
+        assert "palette(highlight)" not in sheet
 
 
 class TestDynamicColor:
