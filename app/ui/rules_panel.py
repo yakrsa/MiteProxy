@@ -254,8 +254,40 @@ class RulesPanel(QWidget):
         rule = self.store.get(rule_id)
         if rule is None:
             return
+        if rule.enabled:
+            self._warn_duplicate_matches(rule)
         self.store.update(rule_id, enabled=not rule.enabled)
         self.refresh()
+
+    @staticmethod
+    def _same_match(a, b) -> bool:
+        """两条规则的匹配条件是否完全一样（类型 + 值 + 方法）。"""
+        return (
+            a.match.type == b.match.type
+            and a.match.value == b.match.value
+            and a.match.method == b.match.method
+        )
+
+    def _warn_duplicate_matches(self, rule) -> None:
+        """停用规则时，若有相同匹配条件的启用规则仍会命中，明确告知。
+
+        「先声明先匹配」下常见困惑：导入了重叠的 Fiddler 规则，停用
+        其中一条后请求仍被另一条 mock——看起来像"停用不生效"。
+        """
+        dupes = [
+            r for r in self.store.all()
+            if r.enabled and r.id != rule.id and self._same_match(r, rule)
+        ]
+        if not dupes:
+            return
+        names = "、".join(d.name for d in dupes[:3])
+        more = f" 等 {len(dupes)} 条" if len(dupes) > 3 else ""
+        QMessageBox.information(
+            self,
+            "注意：仍有规则会命中",
+            f"停用「{rule.name}」后，相同匹配的启用规则仍会命中同样请求：\n"
+            f"{names}{more}\n\n如需完全放行，请一并停用这些规则。",
+        )
 
     def _on_filter_toggled(self) -> None:
         """切换「只显示启用」：重建视图，尽量保住当前选中的规则。"""
