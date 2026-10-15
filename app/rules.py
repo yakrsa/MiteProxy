@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import re
 import threading
 import time
@@ -182,6 +183,8 @@ class Rule:
     hits: int = 0
     #: 最近命中时间（time.time() 秒），0 = 从未命中
     last_hit: float = 0.0
+    #: 创建时间（time.time() 秒，本地时间；0 = 旧数据/导入规则未记录）
+    created_at: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -191,10 +194,13 @@ class Rule:
             "match": self.match.to_dict(),
             "action": self.action.to_dict(),
             "source": self.source,
+            "created_at": self.created_at,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Rule":
+        ca = data.get("created_at")
+        created_at = float(ca) if isinstance(ca, (int, float)) else 0.0
         return cls(
             id=str(data.get("id") or _new_id()),
             name=str(data.get("name", "未命名规则")),
@@ -202,6 +208,7 @@ class Rule:
             match=Match.from_dict(data.get("match") or {}),
             action=Action.from_dict(data.get("action") or {}),
             source=str(data.get("source", "manual")),
+            created_at=created_at,
         )
 
     @classmethod
@@ -212,6 +219,7 @@ class Rule:
             enabled=True,
             match=Match(),
             action=Action(),
+            created_at=time.time(),
         )
 
 
@@ -238,6 +246,64 @@ def _wildcard_to_regex(pattern: str) -> str:
     return "^" + "".join(out) + "$"
 
 
+# ------------------------------------------------------------------ 后台落盘
+
+
+class _SaveWorker(threading.Thread):
+    """后台落盘线程：把多次 schedule_save 合并成一次写，避免 UI 线程被 IO 拖住。
+
+    内存变更（增删改）全部同步生效，落盘异步化——选中很多条规则批量启停时
+    不再被 N 次整文件写盘卡住。线程 daemon 运行，退出/测试用 flush() 阻塞等写完。
+    """
+
+    def __init__(self, store: "RuleStore"):
+        super().__init__(daemon=True, name="rules-saver")
+        self._store = store
+        self._q: "queue.Queue" = queue.Queue()
+        self._stop = threading.Event()
+
+    def schedule(self) -> None:
+        # None = 合并写请求（无需 ack），多个会被 run() 一次性合并
+        self._q.put(None)
+
+    def flush(self, timeout: float = 5.0) -> None:
+        """等当前排队的写完成（测试断言持久化 / 退出时确保最后改动不丢）。
+
+        每个 flush 投一个专属 Event 哨兵：只有处理到它的那次写盘后才会被置位，
+        避免共享事件被上一次写盘的 set() 误唤醒（曾导致 flush 提前返回、读到旧文件）。
+        """
+        ack = threading.Event()
+        self._q.put(ack)
+        ack.wait(timeout)
+
+    def run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                item = self._q.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            # 取出本次要 ack 的 flush 哨兵（可能多个并发 flush），其余 None 丢弃
+            acks = [item] if isinstance(item, threading.Event) else []
+            while True:
+                try:
+                    nxt = self._q.get_nowait()
+                except queue.Empty:
+                    break
+                if isinstance(nxt, threading.Event):
+                    acks.append(nxt)
+            try:
+                self._store._write_to_disk()
+            except Exception:  # 落盘失败不该拖垮主流程
+                log.exception("规则落盘失败")
+            finally:
+                for ev in acks:
+                    ev.set()
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._q.put(None)
+
+
 # ------------------------------------------------------------------ 规则仓库
 
 
@@ -251,6 +317,9 @@ class RuleStore:
         self._on_change: Optional[Callable[[], None]] = None
         self._on_rule_error: Optional[Callable[[str, Optional[str]], None]] = None
         self._on_rule_hit: Optional[Callable[[str], None]] = None
+        # 后台落盘线程（首次 schedule_save 时懒启动），与退出 flush 互斥写盘
+        self._save_thread: Optional["_SaveWorker"] = None
+        self._save_lock = threading.Lock()
 
     # ------------------------------------------------------------- 回调注册
 
@@ -295,17 +364,36 @@ class RuleStore:
             log.info("已加载 %d 条规则", len(self._rules))
 
     def save(self) -> None:
+        """同步落盘（测试 / 退出 flush 直接调用）。"""
+        self._write_to_disk()
+
+    def _write_to_disk(self) -> None:
+        """实际写盘：锁内仅做序列化，文件 IO 在锁外（缩短持锁时间）。"""
         with self._lock:
-            payload = {
-                "version": 1,
-                "rules": [r.to_dict() for r in self._rules],
-            }
+            text = json.dumps(
+                {"version": 1, "rules": [r.to_dict() for r in self._rules]},
+                ensure_ascii=False,
+                indent=2,
+            )
+        with self._save_lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.path.with_suffix(".json.tmp")
-            tmp.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
+            tmp.write_text(text, encoding="utf-8")
             os.replace(tmp, self.path)  # 原子替换，防崩溃写坏
+
+    def schedule_save(self) -> None:
+        """落盘推迟到后台线程（内存变更已同步生效）。多次调用合并为一次写。"""
+        if self._save_thread is None or not self._save_thread.is_alive():
+            self._save_thread = _SaveWorker(self)
+            self._save_thread.start()
+        self._save_thread.schedule()
+
+    def flush_save(self, timeout: float = 5.0) -> None:
+        """阻塞到待落盘内容写完（退出 / 测试断言持久化时调用）。"""
+        if self._save_thread is None or not self._save_thread.is_alive():
+            self._write_to_disk()
+            return
+        self._save_thread.flush(timeout)
 
     # ------------------------------------------------------------- CRUD
 
@@ -335,9 +423,9 @@ class RuleStore:
     def add(self, rule: Rule) -> Rule:
         with self._lock:
             self._rules.append(rule)
-            self.save()
             self._notify_change()
-            return rule
+        self.schedule_save()
+        return rule
 
     def update(self, rule_id: str, **fields: Any) -> Optional[Rule]:
         """按字段更新；match/action 传 dict 时整体替换。"""
@@ -354,9 +442,36 @@ class RuleStore:
                     setattr(rule, key, value)
                 else:
                     raise KeyError(f"不允许更新的字段: {key}")
-            self.save()
             self._notify_change()
-            return rule
+        self.schedule_save()
+        return rule
+
+    def update_many(self, rule_ids: list[str], **fields: Any) -> int:
+        """批量按字段更新（启用/停用等）：一次锁、一次后台落盘、一次通知。
+
+        批量选中 N 条做启用/停用时，循环调 update 会触发 N 次整文件写盘
+        （每次都序列化全部规则），选中很多条明显卡顿；这里合并成一次。
+        """
+        if not rule_ids:
+            return 0
+        for key in fields:
+            if key not in ("name", "enabled", "source"):
+                raise KeyError(f"不允许更新的字段: {key}")
+        with self._lock:
+            by_id = {r.id: r for r in self._rules}
+            changed = 0
+            for rid in rule_ids:
+                rule = by_id.get(rid)
+                if rule is None:
+                    continue
+                for key, value in fields.items():
+                    setattr(rule, key, value)
+                changed += 1
+            if changed:
+                self._notify_change()
+        if changed:
+            self.schedule_save()
+        return changed
 
     def delete(self, rule_id: str) -> bool:
         with self._lock:
@@ -364,9 +479,25 @@ class RuleStore:
             self._rules = [r for r in self._rules if r.id != rule_id]
             changed = len(self._rules) != before
             if changed:
-                self.save()
                 self._notify_change()
-            return changed
+        if changed:
+            self.schedule_save()
+        return changed
+
+    def delete_many(self, rule_ids: list[str]) -> int:
+        """批量删除：一次锁、一次后台落盘、一次通知。"""
+        ids = set(rule_ids)
+        if not ids:
+            return 0
+        with self._lock:
+            before = len(self._rules)
+            self._rules = [r for r in self._rules if r.id not in ids]
+            removed = before - len(self._rules)
+            if removed:
+                self._notify_change()
+        if removed:
+            self.schedule_save()
+        return removed
 
     def reorder(self, rule_ids: list[str]) -> None:
         """按给定 id 顺序重排（优先级 = 列表顺序）。"""
@@ -375,8 +506,8 @@ class RuleStore:
             ordered = [by_id[i] for i in rule_ids if i in by_id]
             rest = [r for r in self._rules if r.id not in set(rule_ids)]
             self._rules = ordered + rest
-            self.save()
             self._notify_change()
+        self.schedule_save()
 
     def merge(self, rules: list[Rule]) -> tuple[int, list[str]]:
         """合并导入的规则：重生成 id，同名自动加后缀。返回 (导入数, 新id列表)。"""
@@ -393,9 +524,9 @@ class RuleStore:
                 existing_names.add(rule.name)
                 self._rules.append(rule)
                 new_ids.append(rule.id)
-            self.save()
             self._notify_change()
-            return len(rules), new_ids
+        self.schedule_save()
+        return len(rules), new_ids
 
     # ------------------------------------------------------------- 匹配
 

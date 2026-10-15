@@ -43,8 +43,12 @@ MOCK_ROW_FG = theme.dynamic("mock_row_fg")
 MOCK_MARK_PREFIXES = ("MOCK:", "MOCK#")
 
 # URL 关键字高亮行整行底色（顶部「高亮」框实时命中，v1.15）。
-# 青蓝底与 mock 琥珀、搜索黄、选中蓝区分；theme.dynamic 随主题切换就地更新。
+# 黄色：比 mock 琥珀更饱和，深浅主题下都能与琥珀底分开；
+# theme.dynamic 随主题切换就地更新。
 HL_ROW_BG = theme.dynamic("hl_row_bg")
+# 错误行（HTTP 4xx/5xx）整行红色——出问题的请求一眼定位。
+ERR_ROW_BG = theme.dynamic("err_row_bg")
+ERR_ROW_FG = theme.dynamic("err_row_fg")
 # 斑马纹：全局 QSS 不再设 alternate-background-color（会压制模型背景），
 # 改由模型在奇数行返回 alt_row 色，与旧 QSS 斑马纹视觉一致。
 ALT_ROW_BG = theme.dynamic("alt_row")
@@ -52,6 +56,18 @@ ALT_ROW_BG = theme.dynamic("alt_row")
 
 def _is_mock_row(row: dict) -> bool:
     return (row.get("marked") or "").startswith(MOCK_MARK_PREFIXES)
+
+
+def _is_error_row(row: dict) -> bool:
+    """HTTP 错误行：4xx（客户端错误）+ 5xx（服务端错误）都算。
+
+    连接层失败（status 为空/0）不着色——那更像「没响应」而不是「错误
+    响应」，真失败时详情面板有明确提示，列表里全染红反而干扰。
+    """
+    try:
+        return int(row.get("status") or 0) >= 400
+    except (TypeError, ValueError):
+        return False
 
 
 def format_size(n: int) -> str:
@@ -155,9 +171,11 @@ class FlowStore(QAbstractTableModel):
             # 注意：BackgroundRole 必须返回 QBrush——直接给 QColor 时 Qt
             # 静默不上色（高亮/mock 行底色整个消失的根因）。每次调用现包
             # 一层 QBrush：theme.dynamic 的 QColor 就地更新也能取到新值。
-            # URL 关键字高亮优先于 mock 底色（用户主动指定的关注点更醒目）
+            # 优先级：URL 高亮(黄) > 错误(红) > mock(琥珀) > 斑马纹
             if self._is_highlighted(row):
                 return QBrush(HL_ROW_BG)
+            if _is_error_row(row):
+                return QBrush(ERR_ROW_BG)
             if _is_mock_row(row):
                 # mock 命中的整行底色（含未选中态；选中时由系统选择色覆盖）
                 return QBrush(MOCK_ROW_BG)
@@ -165,11 +183,14 @@ class FlowStore(QAbstractTableModel):
                 return QBrush(ALT_ROW_BG)
 
         if role == Qt.ItemDataRole.ForegroundRole:
-            # 状态列保留语义色（绿/蓝/橙/红），优先于 mock 行色（同样必须 QBrush）
+            # 状态列保留语义色（绿/蓝/橙/红），优先于行色（同样必须 QBrush）
             if col == COL_STATUS:
                 color = status_color(row["status"])
                 if color is not None:
                     return QBrush(color)
+            # 错误行整行红字（状态列除外，那列有自己语义色）
+            if _is_error_row(row):
+                return QBrush(ERR_ROW_FG)
             if _is_mock_row(row):
                 return QBrush(MOCK_ROW_FG)
 

@@ -48,6 +48,9 @@ from app.ui.flow_store import (  # noqa: E402
     COL_HOST,
     COL_MARK,
     COL_STATUS,
+    ERR_ROW_BG,
+    ERR_ROW_FG,
+    HL_ROW_BG,
     MAX_ROWS,
     MOCK_ROW_BG,
     MOCK_ROW_FG,
@@ -258,6 +261,67 @@ class TestMockRowColoring:
         assert store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole) is None
         odd = store.data(store.index(1, COL_HOST), Qt.ItemDataRole.BackgroundRole)
         assert odd is not None and odd.color() == ALT_ROW_BG
+
+
+class TestErrorRowColoring:
+    """HTTP 错误响应（4xx/5xx）整行标红，一眼定位失败请求。"""
+
+    def test_4xx_gets_red_background(self):
+        store = FlowStore()
+        store.append(_row(status=404))
+        bg = store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole)
+        assert bg is not None and bg.color() == ERR_ROW_BG
+
+    def test_5xx_gets_red_background(self):
+        store = FlowStore()
+        store.append(_row(status=503))
+        bg = store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole)
+        assert bg is not None and bg.color() == ERR_ROW_BG
+
+    def test_2xx_and_3xx_not_red(self):
+        store = FlowStore()
+        store.append(_row(status=200))
+        store.append(_row(status=302))
+        for i in (0, 1):
+            bg = store.data(store.index(i, COL_HOST), Qt.ItemDataRole.BackgroundRole)
+            # 偶数行斑马纹为 None、奇数行为浅纹，二者都不是错误红
+            if bg is not None:
+                assert bg.color() != ERR_ROW_BG
+
+    def test_status_zero_not_error(self):
+        """连接层失败（status 空/0）不染红——那是"没响应"不是"错误响应"。"""
+        store = FlowStore()
+        store.append(_row(status=0))
+        assert store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole) is None
+
+    def test_error_row_text_is_red(self):
+        store = FlowStore()
+        store.append(_row(status=500))
+        fg = store.data(store.index(0, COL_HOST), Qt.ItemDataRole.ForegroundRole)
+        assert fg is not None and fg.color() == ERR_ROW_FG
+
+    def test_status_column_keeps_semantic_color_over_error(self):
+        """状态列保留 4xx 橙 / 5xx 红语义色，不被整行红字覆盖。"""
+        store = FlowStore()
+        store.append(_row(status=404))
+        assert store.data(store.index(0, COL_STATUS), Qt.ItemDataRole.ForegroundRole).color() == status_color(404)
+        store2 = FlowStore()
+        store2.append(_row(status=503))
+        assert store2.data(store2.index(0, COL_STATUS), Qt.ItemDataRole.ForegroundRole).color() == status_color(503)
+
+    def test_highlight_wins_over_error(self):
+        store = FlowStore()
+        store.append(_row(status=500))
+        store.set_highlight("user")  # URL 含 /v1/user
+        assert store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole).color() == HL_ROW_BG
+
+    def test_error_wins_over_mock(self):
+        """mock 行若同时是错误响应（如 500），整行标红优先于琥珀。"""
+        store = FlowStore()
+        store.append(_row(marked="MOCK#1:规则", status=500))
+        bg = store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole)
+        assert bg.color() == ERR_ROW_BG
+        assert bg.color() != MOCK_ROW_BG
 
 
 # --------------------------------------------- URL 关键字高亮（v1.15）

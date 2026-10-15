@@ -43,8 +43,8 @@ class RuleTable(QTableWidget):
     row_dropped = Signal(int, int)  # (源行, 目标插入位置-原始列表语义)
 
     def __init__(self, parent=None):
-        # 列：选 / 序号 / 名称 / 启用 / 匹配 / 动作 / 来源 / 命中（v1.15）
-        super().__init__(0, 8, parent)
+        # 列：选 / 序号 / 名称 / 启用 / 匹配 / 动作 / 来源 / 命中 / 创建时间（v1.15+）
+        super().__init__(0, 9, parent)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
@@ -151,7 +151,7 @@ class RulesPanel(QWidget):
         # 列布局：勾选框 + 序号 + 名称在前（v1.15 批量操作 redesign：
         # 勾选的才是批量操作目标；序号与流量列表 MOCK#N 徽标对应）
         self.table.setHorizontalHeaderLabels(
-            ["选", "序号", "名称", "启用", "匹配", "动作", "来源", "命中"]
+            ["选", "序号", "名称", "启用", "匹配", "动作", "来源", "命中", "创建时间"]
         )
         # 质感：斑马纹 + 无网格线 + 紧凑行高（全局 QSS 管表头/边框）
         self.table.setAlternatingRowColors(True)
@@ -240,6 +240,7 @@ class RulesPanel(QWidget):
                 i, 6, QTableWidgetItem(SOURCE_LABELS.get(rule.source, rule.source))
             )
             self._fill_hits(i, rule)
+            self._fill_created_at(i, rule)
             if rule.error:
                 self.table.item(i, 2).setToolTip(rule.error)
         self._loading = False
@@ -253,6 +254,16 @@ class RulesPanel(QWidget):
             when = datetime.fromtimestamp(rule.last_hit).strftime("%H:%M:%S")
             item.setToolTip(f"最近命中 {when}")
         self.table.setItem(row, 7, item)
+
+    def _fill_created_at(self, row: int, rule) -> None:
+        """创建时间列：本地时间格式化；旧规则/导入规则无记录显示「—」。"""
+        if rule.created_at:
+            text = datetime.fromtimestamp(rule.created_at).strftime("%Y-%m-%d %H:%M")
+        else:
+            text = "—"
+        item = QTableWidgetItem(text)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.table.setItem(row, 8, item)
 
     # ------------------------------------------------------------ 批量勾选
 
@@ -433,8 +444,8 @@ class RulesPanel(QWidget):
         if not ids:
             QMessageBox.information(self, "提示", "请先勾选规则（首列复选框）")
             return
-        for rule_id in ids:
-            self.store.update(rule_id, enabled=enabled)
+        # 批量更新走 store.update_many：一次锁 + 一次后台落盘，选中很多条也不卡
+        self.store.update_many(ids, enabled=enabled)
         self.refresh()
 
     def _on_delete(self) -> None:
@@ -457,8 +468,10 @@ class RulesPanel(QWidget):
         )
         reply = QMessageBox.question(self, "确认删除", f"确定删除{target}？")
         if reply == QMessageBox.StandardButton.Yes:
-            for rule_id in ids:
-                self.store.delete(rule_id)
+            # 批量删除走 store.delete_many：一次锁 + 一次后台落盘
+            self.store.delete_many(ids)
+            # 清掉已删规则的勾选，避免批量按钮计数失准
+            self._checked_ids.difference_update(ids)
             self.refresh()
 
     # ------------------------------------------------------------ Fiddler 导入

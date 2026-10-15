@@ -39,6 +39,8 @@ COLORS: dict[str, tuple[str, str]] = {
     "hit_bg":      ("#fff3bf", "#5d5420"),   # 搜索命中底色（body / 表单表格）
     "invalid_bg":  ("#fff1f0", "#4d1414"),   # 无效配置行底色
     "invalid_fg":  ("#8a1f1f", "#ff9b95"),   # 无效配置行文字
+    "err_row_bg":  ("#ffebe9", "#4d1414"),   # 错误行底色（4xx/5xx，红）
+    "err_row_fg":  ("#cf222e", "#ff9b95"),   # 错误行文字
     # -- 表格质感（对齐 Fiddler：斑马纹 + 扁平表头 + 细分隔线）
     "alt_row":     ("#f6f8fa", "#2d333b"),   # 交替行底色（斑马纹）
     "header_bg":   ("#eff2f5", "#2d333b"),   # 表头底色（扁平）
@@ -48,9 +50,10 @@ COLORS: dict[str, tuple[str, str]] = {
     #    整行看不见的 bug），token 显式取色 + apply() 重建样式表才稳
     "sel_bg":      ("#0969da", "#4493f8"),   # 选中行底色
     "sel_fg":      ("#ffffff", "#ffffff"),   # 选中行文字
-    # -- URL 关键字高亮行（顶部「高亮」框实时命中，v1.15）：青蓝底，
-    #    与 mock 琥珀、搜索黄、选中蓝区分开
-    "hl_row_bg":   ("#d9eef7", "#12384f"),   # 高亮行底色
+    # -- URL 关键字高亮行（顶部「高亮」框实时命中，v1.15）：黄色，
+    #    比 mock 琥珀更饱和（浅色 #ffec99 vs 琥珀 #fff4d6），两者并排
+    #    也能一眼分开；错误行红底优先级见 FlowStore.data()
+    "hl_row_bg":   ("#ffec99", "#5d5420"),   # 高亮行底色（黄）
 }
 
 #: 当前档位（apply() 后与 settings.theme 一致）

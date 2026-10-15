@@ -50,8 +50,10 @@ class Settings:
     throttle: ThrottleConfig = field(default_factory=ThrottleConfig)
     #: 域名映射规则（把线上域名转发到本地服务）
     map_rules: list[MapRule] = field(default_factory=list)
-    #: 退出时自动把本次会话快照到 last-session.jsonl（下次启动可一键恢复）
-    auto_save_session: bool = True
+    #: 退出时自动把本次会话快照到 last-session.jsonl（下次启动可一键恢复）。
+    #: 默认关闭：会话始终在内存，只有退出时才异步落盘（避免大流量时写盘拖慢 UI）；
+    #: 需要持久化时在「设置 → 自动保存会话」打开，仍是内存优先、退出/手动时落盘。
+    auto_save_session: bool = False
     #: 会话文件对话框的起始目录（记住上次位置，省得每次找）
     last_session_dir: str = ""
     #: 流量列表自动滚动：新会话到达时滚到"最新端"。
