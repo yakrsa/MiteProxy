@@ -14,7 +14,9 @@ a = Analysis(
     pathex=[str(PROJECT)],
     binaries=[],
     datas=[
-        # 运行时窗口/任务栏图标（main.py 按 _MEIPASS 查找）
+        # 运行时窗口/任务栏图标（main.py 按 _MEIPASS 查找）：
+        # ico 含 16-256 全尺寸帧（任务栏/标题栏各 DPI 清晰），png 兜底
+        (str(PROJECT / "packaging" / "icon.ico"), "."),
         (str(PROJECT / "packaging" / "icon_256.png"), "."),
     ],
     hiddenimports=[
