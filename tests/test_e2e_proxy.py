@@ -192,3 +192,38 @@ class TestStopReleasesPort:
             rebind.listen(1)
         finally:
             rebind.close()
+
+
+class TestBindAllInterfaces:
+    def test_default_host_binds_all_and_serves_loopback(self):
+        """默认监听 0.0.0.0（全部网卡）：手机/局域网设备可通过内网 IP 连代理，
+        本机 127.0.0.1 照常工作。只绑 127.0.0.1 会导致「本机能用手机连不上」。"""
+        import socket as _socket
+
+        assert ProxyService(port=18099).host == "0.0.0.0"
+
+        probe = _socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+
+        proxy = ProxyService(port=port)   # 默认 host
+        proxy.start()
+        deadline = time.monotonic() + 5.0
+        while not proxy.running and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert proxy.running
+        try:
+            # running=True 后 server socket 就绪有微小延迟，重试连接
+            deadline = time.monotonic() + 5.0
+            while True:
+                try:
+                    conn = _socket.create_connection(("127.0.0.1", port), timeout=3)
+                    conn.close()
+                    break
+                except ConnectionRefusedError:
+                    if time.monotonic() > deadline:
+                        raise
+                    time.sleep(0.1)
+        finally:
+            proxy.stop(timeout=5.0)
