@@ -546,3 +546,23 @@ class TestBatchToast:
         assert getattr(panel, "_toast_w", None) is not None
         assert "3" in panel._toast_w.text()
         assert "启用" in panel._toast_w.text()
+
+    def test_toast_visible_inside_panel(self, qapp, three_rules):
+        """toast 是面板子控件，必须落在面板可视范围内（此前误用 mapToGlobal
+        的屏幕坐标喂给子控件 move()，窗口不在屏幕原点时整层被裁剪掉）。"""
+        from PySide6.QtWidgets import QTableWidgetItem
+        panel = RulesPanel(three_rules)
+        panel.resize(900, 500)
+        panel.show()
+        for r in range(panel.table.rowCount()):
+            item = panel.table.item(r, 0)
+            if item is None:
+                item = QTableWidgetItem()
+                panel.table.setItem(r, 0, item)
+            item.setCheckState(Qt.CheckState.Checked)
+        panel._on_batch_set_enabled(False)
+        w = panel._toast_w
+        assert w is not None and w.isVisible()
+        # 面板局部坐标必须完整落在面板 rect 内（被裁剪 = 用户看不见）
+        assert panel.rect().contains(w.geometry())
+        assert "停用" in w.text()

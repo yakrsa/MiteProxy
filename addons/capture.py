@@ -107,6 +107,13 @@ class CaptureAddon:
         duration_ms = 0.0
         ws_messages = 0
         ws_closed = False
+        # 弱网延迟（addons/throttle.py 写入 metadata 的实际睡眠毫秒数）
+        try:
+            throttle_ms = float(
+                (getattr(flow, "metadata", None) or {}).get("mproxy_throttle_ms") or 0
+            )
+        except (TypeError, ValueError):
+            throttle_ms = 0.0
 
         if ws is not None:
             messages = list(getattr(ws, "messages", None) or [])
@@ -120,8 +127,20 @@ class CaptureAddon:
                 duration_ms = (end - req.timestamp_start) * 1000
         else:
             try:
-                if res is not None and req.timestamp_start and res.timestamp_end:
-                    duration_ms = (res.timestamp_end - req.timestamp_start) * 1000
+                if res is not None and req.timestamp_start:
+                    if res.timestamp_end:
+                        # 上游真实响应：timestamp_end 在钩子执行前就定死了，
+                        # 弱网延迟不在其中，单独加上
+                        duration_ms = (
+                            (res.timestamp_end - req.timestamp_start) * 1000
+                            + throttle_ms
+                        )
+                    else:
+                        # mock / map-local 在 request 阶段注入的响应没有
+                        # timestamp_end；走到这里时 mock 延迟与弱网延迟都
+                        # 已睡完，当前时间就是真实的结束时刻（自然含延迟，
+                        # 不能再叠加 throttle_ms，否则重复计一次）
+                        duration_ms = (time.time() - req.timestamp_start) * 1000
             except Exception:
                 pass
             # raw_content 在流式响应期间为 None（mitmproxy 文档明确说明），
@@ -149,6 +168,7 @@ class CaptureAddon:
             "size": size,
             "req_size": req_size,
             "duration_ms": round(duration_ms, 1),
+            "throttle_ms": round(throttle_ms, 1),
             "content_type": content_type,
             "marked": getattr(flow, "marked", "") or "",
             "is_replay": bool(getattr(flow, "is_replay", None)),

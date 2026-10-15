@@ -158,13 +158,20 @@ class FlowStore(QAbstractTableModel):
                 # 用户备注优先（自己写的比系统徽标更想看见）；
                 # MOCK 徽标次之；WebSocket 会话显示 WS；重放会话显示 REPLAY。
                 # 备注与徽标同时存在时，徽标进 tooltip（见 ToolTipRole）。
+                # 弱网延迟流量追加「弱网Xms」徽标（throttle 实际睡眠毫秒数）
                 if row.get("comment"):
-                    return row["comment"]
-                if row["marked"]:
-                    return row["marked"]
-                if row.get("is_websocket"):
-                    return f"WS {row.get('ws_messages', 0)}"
-                return "REPLAY" if row.get("is_replay") else ""
+                    base = row["comment"]
+                elif row["marked"]:
+                    base = row["marked"]
+                elif row.get("is_websocket"):
+                    base = f"WS {row.get('ws_messages', 0)}"
+                else:
+                    base = "REPLAY" if row.get("is_replay") else ""
+                throttle_ms = row.get("throttle_ms") or 0
+                if throttle_ms:
+                    tag = f"弱网{int(throttle_ms)}ms"
+                    return f"{base} · {tag}" if base else tag
+                return base
             return None
 
         if role == Qt.ItemDataRole.BackgroundRole:
@@ -241,6 +248,8 @@ class FlowStore(QAbstractTableModel):
                 tip += f"\n备注: {row['comment']}"
             if row["marked"]:
                 tip += f"\n{row['marked']}"
+            if row.get("throttle_ms"):
+                tip += f"\n弱网延迟: {round(row['throttle_ms'], 1)} ms"
             if row.get("is_websocket"):
                 tip += (
                     f"\nWebSocket：{row.get('ws_messages', 0)} 条消息"

@@ -71,7 +71,7 @@ class RuleEditorDialog(QDialog):
         self.store = store
         self.rule = rule or Rule.create()
         self.setWindowTitle("编辑 Mock 规则" if rule else "新增 Mock 规则")
-        self.setMinimumWidth(560)
+        self.setMinimumWidth(640)
         self._build_ui()
         self._load_rule()
 
@@ -80,21 +80,31 @@ class RuleEditorDialog(QDialog):
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         form = QFormLayout()
+        # macOS 上 QFormLayout 默认字段不横向拉伸（Mac 风格字段保持自身
+        # 尺寸），名称/URL 输入框会缩成一小截——明确要求所有非固定字段占满列宽
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
 
         self.name_edit = QLineEdit()
         form.addRow("规则名称:", self.name_edit)
 
-        match_row = QWidget()
-        match_layout = QHBoxLayout(match_row)
-        match_layout.setContentsMargins(0, 0, 0, 0)
+        # URL 值很可能很长：类型下拉单独一行，值输入框另起一行占满整行
+        match_type_row = QWidget()
+        match_type_layout = QHBoxLayout(match_type_row)
+        match_type_layout.setContentsMargins(0, 0, 0, 0)
         self.match_type_combo = QComboBox()
         for mtype, label in MATCH_LABELS:
             self.match_type_combo.addItem(label, mtype)
+        match_type_layout.addWidget(self.match_type_combo)
+        match_type_layout.addStretch(1)
         self.match_value_edit = QLineEdit()
         self.match_value_edit.setPlaceholderText("如 /api/user/list 或 https?://.*/v1/.*")
-        match_layout.addWidget(self.match_type_combo)
-        match_layout.addWidget(self.match_value_edit, stretch=1)
-        form.addRow("URL 匹配:", match_row)
+        match_col = QWidget()
+        match_layout = QVBoxLayout(match_col)
+        match_layout.setContentsMargins(0, 0, 0, 0)
+        match_layout.setSpacing(6)
+        match_layout.addWidget(match_type_row)
+        match_layout.addWidget(self.match_value_edit)
+        form.addRow("URL 匹配:", match_col)
 
         # 请求方法过滤（比 Fiddler 好：不用自己拼正则区分方法）
         self.method_combo = QComboBox()

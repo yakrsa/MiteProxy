@@ -19,12 +19,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from app.network import MAX_DELAY_MS, ThrottleConfig
 
 log = logging.getLogger(__name__)
 
 _META_KEY = "mproxy_throttled"   # 标记该 flow 已施加过延迟，防 request/response 重复
+_META_MS_KEY = "mproxy_throttle_ms"  # 实际施加的延迟毫秒数（capture 计入耗时列 / UI 标记弱网）
 
 
 class ThrottleAddon:
@@ -60,9 +62,13 @@ class ThrottleAddon:
         if delay_ms <= 0:
             return
         # 上界由 MAX_DELAY_MS 兜住（见 app/network.py），这里再保险一次
+        started = time.monotonic()
         await asyncio.sleep(min(delay_ms, float(MAX_DELAY_MS)) / 1000.0)
+        actual_ms = (time.monotonic() - started) * 1000
         try:
             flow.metadata[_META_KEY] = True
+            # 记下实际延迟：capture.summarize 把它计入耗时列，UI 标「弱网」徽标
+            flow.metadata[_META_MS_KEY] = round(actual_ms, 1)
         except Exception:
             pass
         self.applied += 1

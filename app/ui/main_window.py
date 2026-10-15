@@ -581,10 +581,14 @@ class MainWindow(QMainWindow):
             # 内网 IP 走代理抓包；只绑 127.0.0.1 的话本机能用、手机连不上
             host="0.0.0.0",
             port=port,
-            # 顺序很重要：throttle 必须排在会"造响应"的 mock / map-local 之后，
-            # 这样在它的 request 钩子里 flow.response 才已被注入，弱网延迟才能
-            # 作用到 mock 出来的接口上
-            addons=[self.mock, self.capture, self.maplocal, self.throttle],
+            # 顺序很重要（两个约束）：
+            # ① throttle 必须排在会"造响应"的 mock / map-local 之后，这样在它的
+            #    request 钩子里 flow.response 才已被注入，弱网延迟才能作用到
+            #    mock 出来的接口上；
+            # ② capture 必须排在 throttle 之后——capture 的 response 钩子总结
+            #    耗时时要读 throttle 写入 metadata 的实际延迟（计入耗时列），
+            #    排在前面就读不到，弱网延迟也体现不到耗时上
+            addons=[self.mock, self.maplocal, self.throttle, self.capture],
             options={"map_remote": specs},
         )
 
