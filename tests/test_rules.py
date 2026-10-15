@@ -104,6 +104,7 @@ class TestRuleStore:
         r.match = Match(type=REGEX, value=r"/u/(\d+)")
         r.action = Action(status=503, headers={"X-A": "b"}, latency_ms=1200)
         store.add(r)
+        store.flush_save()  # 落盘已异步：断言持久化前先等后台写完成
         store2 = RuleStore(path=store.path)
         store2.load()
         loaded = store2.all()[0]
@@ -161,6 +162,7 @@ class TestRuleStore:
         r = Rule.create("file rule")
         r.action = Action(body_source="file", file_path="/tmp/x.json")
         store.add(r)
+        store.flush_save()  # 落盘已异步：断言持久化前先等后台写完成
         store2 = RuleStore(path=store.path)
         store2.load()
         assert store2.all()[0].action.file_path == "/tmp/x.json"
@@ -247,6 +249,7 @@ class TestRedirect:
         r.match = Match(type=CONTAINS, value="/api/")
         r.action = Action(redirect_url="https://staging.example.com/api/")
         store.add(r)
+        store.flush_save()  # 落盘已异步：断言持久化前先等后台写完成
         store2 = RuleStore(path=store.path)
         store2.load()
         loaded = store2.all()[0]
@@ -260,6 +263,81 @@ class TestRedirect:
             action=Action(redirect_url="https://b.com/").to_dict(),
         )
         assert updated.action.redirect_url == "https://b.com/"
+
+
+class TestCreatedAt:
+    def test_create_sets_local_time(self):
+        r = Rule.create("新规则")
+        import time as _t
+
+        assert 0 < r.created_at <= _t.time() + 1  # 本地时间戳，刚创建
+
+    def test_from_dict_roundtrip(self, store):
+        r = Rule.create("带时间")
+        snapshot = Rule.from_dict(r.to_dict())
+        assert snapshot.created_at == r.created_at  # 序列化往返保留
+
+    def test_missing_created_at_defaults_to_zero(self):
+        r = Rule.from_dict({"name": "老规则"})
+        assert r.created_at == 0.0  # 旧文件/导入规则未记录 → 0，UI 显示「—」
+
+    def test_bad_created_at_is_safe(self):
+        r = Rule.from_dict({"name": "x", "created_at": "not-a-number"})
+        assert r.created_at == 0.0
+
+
+class TestAsyncSave:
+    def test_flush_writes_once_after_many_mutations(self, store, monkeypatch):
+        """核心：多次变更后一次 flush 只落盘一次；内存同步生效不等落盘。"""
+        writes = []
+
+        def fake_write(self_):
+            writes.append(1)
+
+        monkeypatch.setattr(RuleStore, "_write_to_disk", fake_write)
+        # 落盘推到后台，这里直接验证「flush 触发一次写」的语义
+        monkeypatch.setattr(RuleStore, "schedule_save", lambda self_: None)
+        a, b, c = Rule.create("a"), Rule.create("b"), Rule.create("c")
+        store.add(a)
+        store.add(b)
+        store.add(c)
+        store.update_many([a.id, b.id, c.id], enabled=False)
+        # 内存已同步生效（不等落盘）
+        assert len(store.all()) == 3
+        assert all(r.enabled is False for r in store.all())
+        # 退出/断言前 flush：合并成一次写
+        store.flush_save()
+        assert writes == [1]
+
+    def test_in_memory_effective_before_flush(self, store):
+        r = store.add(Rule.create("x"))
+        assert store.get(r.id) is not None  # 内存同步，不等落盘
+        store.flush_save()
+
+
+class TestBatchOps:
+    def test_update_many_one_pass(self, store):
+        a, b, c = Rule.create("a"), Rule.create("b"), Rule.create("c")
+        store.add(a)
+        store.add(b)
+        store.add(c)
+        n = store.update_many([a.id, c.id], enabled=False)
+        assert n == 2
+        states = {r.name: r.enabled for r in store.all()}
+        assert states == {"a": False, "b": True, "c": False}  # 只改选中的
+
+    def test_delete_many_one_pass(self, store):
+        a, b, c = Rule.create("a"), Rule.create("b"), Rule.create("c")
+        for r in (a, b, c):
+            store.add(r)
+        removed = store.delete_many([a.id, b.id])
+        assert removed == 2
+        assert [r.name for r in store.all()] == ["c"]
+
+    def test_update_many_rejects_bad_field(self, store):
+        a = store.add(Rule.create("a"))
+        with pytest.raises(KeyError):
+            store.update_many([a.id], bogus=1)
 
 
 class TestProxyLoopGuard:

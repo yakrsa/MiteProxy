@@ -84,6 +84,7 @@ class TestRuleHitCounting:
         """每次命中都写盘会拖慢热路径——计数只在内存，重启归零。"""
         rule = _mock_rule(store)
         store.record_hit(rule.id)
+        store.flush_save()  # 落盘已异步：先把规则落下去再读，避免读到空文件
         reloaded = RuleStore(path=tmp_path / "rules.json")
         reloaded.load()
         assert reloaded.get(rule.id).hits == 0
@@ -272,8 +273,9 @@ class TestFlowStoreComment:
 class TestRulesPanelHits:
     def test_column_added(self, qapp, store):
         panel = RulesPanel(store)
-        assert panel.table.columnCount() == 8
+        assert panel.table.columnCount() == 9
         assert panel.table.horizontalHeaderItem(7).text() == "命中"
+        assert panel.table.horizontalHeaderItem(8).text() == "创建时间"
 
     def test_refresh_shows_dash_for_zero(self, qapp, store):
         rule = _mock_rule(store)

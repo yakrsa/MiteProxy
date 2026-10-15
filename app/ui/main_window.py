@@ -277,7 +277,7 @@ class MainWindow(QMainWindow):
         self.highlight_edit.setClearButtonEnabled(True)
         self.highlight_edit.setFixedWidth(150)
         self.highlight_edit.setToolTip(
-            "URL 包含该关键字的请求整行青蓝高亮。\n"
+            "URL 包含该关键字的请求整行黄色高亮。\n"
             "实时生效：正在显示的与之后新到的流量都会高亮；清空即关闭。"
         )
         toolbar_row.addWidget(self.highlight_edit)
@@ -1774,6 +1774,11 @@ class MainWindow(QMainWindow):
         # 先把窗口藏起来——用户感知层面立即退出，清理在后台并行收尾
         # （进程会多存活零点几秒，但没有任何可见窗口）
         self.hide()
+        # 先同步把规则改动落盘（后台线程可能还没写完），避免最后一次编辑丢失
+        try:
+            self.rule_store.flush_save(timeout=5.0)
+        except Exception:
+            log.exception("退出时规则落盘失败")
         self._stop_cert_server()             # 进程内 HTTP 服务，停止是毫秒级
         autosaver = self._autosave_on_exit()   # 采集同步（数据须完整），写盘后台
         if autosaver is not None:

@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from app.rules import Match, Rule, RuleStore  # noqa: E402
+from app.rules import Action, Match, Rule, RuleStore  # noqa: E402
 from app.ui.rules_panel import RuleTable, RulesPanel  # noqa: E402
 
 
@@ -58,8 +58,25 @@ def three_rules(store):
 class TestColumnLayout:
     def test_checkbox_and_seq_are_first_columns(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
-        headers = [panel.table.horizontalHeaderItem(i).text() for i in range(8)]
-        assert headers == ["选", "序号", "名称", "启用", "匹配", "动作", "来源", "命中"]
+        headers = [panel.table.horizontalHeaderItem(i).text() for i in range(9)]
+        assert headers == [
+            "选", "序号", "名称", "启用", "匹配", "动作", "来源", "命中", "创建时间"
+        ]
+
+    def test_created_at_column_new_rule_shows_time(self, qapp, three_rules):
+        from datetime import datetime
+
+        panel = RulesPanel(three_rules)
+        text = panel.table.item(0, 8).text()
+        assert text != "—"  # 新建规则有创建时间，不是占位符
+        datetime.strptime(text, "%Y-%m-%d %H:%M")  # 本地时间格式
+
+    def test_created_at_column_unknown_shows_dash(self, qapp, store):
+        # 旧规则/导入规则无创建时间记录 → 显示「—」
+        r = Rule("x", "老规则", True, Match(), Action())
+        store.add(r)
+        panel = RulesPanel(store)
+        assert panel.table.item(0, 8).text() == "—"
 
     def test_refresh_fills_name_column(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
@@ -134,6 +151,7 @@ class TestDragReorder:
     def test_reorder_persisted(self, qapp, three_rules, tmp_path):
         panel = RulesPanel(three_rules)
         panel._on_row_dropped(2, 0)
+        three_rules.flush_save()  # 落盘已异步：断言前先等后台写完成
         reloaded = RuleStore(path=tmp_path / "rules.json")
         reloaded.load()
         assert [r.name for r in reloaded.all()] == ["规则丙", "规则甲", "规则乙"]
@@ -206,6 +224,7 @@ class TestContextMenu:
         panel = RulesPanel(three_rules)
         rule_id = three_rules.all()[1].id
         panel._toggle_enable(rule_id)
+        three_rules.flush_save()  # 落盘已异步：断言前先等后台写完成
         reloaded = RuleStore(path=tmp_path / "rules.json")
         reloaded.load()
         assert reloaded.all()[1].enabled is False
