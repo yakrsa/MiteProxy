@@ -19,6 +19,7 @@ import json
 import os
 import platform
 import sys
+from pathlib import Path
 
 # ---------------------------------------------------------------- 常量
 
@@ -31,13 +32,26 @@ NEW_ISSUE_URL = f"https://github.com/{GITHUB_REPO}/issues/new"
 TOKEN_ENV = "MITEPROXY_FEEDBACK_TOKEN"
 # 打包前填入 fine-grained PAT（仅本仓库 Issues 写权限）
 EMBEDDED_FEEDBACK_TOKEN = ""
+# 本机 token 文件（开发机覆盖用，优先级介于环境变量与内置常量之间；
+# 打包版用户机器上没有该文件，自然回落到内置 token）
+TOKEN_FILE = Path("~/.miteproxy/feedback_token").expanduser()
 
 REQUEST_TIMEOUT_MS = 15000
 
 
 def get_token() -> str:
-    """运行时读取：环境变量优先（便于测试/本地调试），否则用内置 token。"""
-    return os.environ.get(TOKEN_ENV, "").strip() or EMBEDDED_FEEDBACK_TOKEN.strip()
+    """运行时读取：环境变量 > 本机 token 文件 > 内置常量。
+
+    分层覆盖便于测试（env）与开发机调试（文件），发布版只用内置常量。
+    """
+    env = os.environ.get(TOKEN_ENV, "").strip()
+    if env:
+        return env
+    try:
+        file_token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        file_token = ""
+    return file_token or EMBEDDED_FEEDBACK_TOKEN.strip()
 
 
 # ---------------------------------------------------------------- 诊断信息
