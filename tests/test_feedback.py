@@ -85,6 +85,19 @@ class TestToken:
         monkeypatch.setenv(fb.TOKEN_ENV, "  ")
         assert fb.get_token() == fb.EMBEDDED_FEEDBACK_TOKEN
 
+    def test_token_file_between_env_and_embedded(self, monkeypatch, tmp_path):
+        token_file = tmp_path / "feedback_token"
+        token_file.write_text("file-token\n")
+        monkeypatch.setattr(fb, "TOKEN_FILE", token_file)
+        assert fb.get_token() == "file-token"  # 无 env 时用文件
+        monkeypatch.setenv(fb.TOKEN_ENV, "env-token")
+        assert fb.get_token() == "env-token"  # env 优先
+
+    def test_missing_token_file_falls_back(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(fb, "TOKEN_FILE", tmp_path / "nope")
+        monkeypatch.delenv(fb.TOKEN_ENV, raising=False)
+        assert fb.get_token() == fb.EMBEDDED_FEEDBACK_TOKEN
+
 
 # ---------------------------------------------------------------- 对话框
 
