@@ -70,7 +70,10 @@ class RuleEditorDialog(QDialog):
         super().__init__(parent)
         self.store = store
         self.rule = rule or Rule.create()
-        self.setWindowTitle("编辑 Mock 规则" if rule else "新增 Mock 规则")
+        # 标题按"规则是否已在 store 中"区分新增/编辑，而非仅看是否传了 rule：
+        # 从抓包「加入 Mock」预填的也属新增，应显示「新增」而非「编辑」。
+        is_edit = any(r.id == self.rule.id for r in store.all())
+        self.setWindowTitle("编辑 Mock 规则" if is_edit else "新增 Mock 规则")
         self.setMinimumWidth(640)
         self._build_ui()
         self._load_rule()

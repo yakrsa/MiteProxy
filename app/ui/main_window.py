@@ -93,6 +93,7 @@ from app.ui.flow_store import COL_ID, FlowStore, format_size
 from app.ui.network_panel import NetworkPanel
 from app.ui.replay_dialog import ReplayEditDialog
 from app.ui.rules_panel import RulesPanel
+from app.ui.rule_editor import RuleEditorDialog
 from app.ui.signals import FlowBridge
 from app.ui.log_panel import LogPanel
 from app.ui.traffic_table import FilterBar, SearchBar, TrafficTable
@@ -1310,11 +1311,11 @@ class MainWindow(QMainWindow):
     # ================================================================ 加入 Mock
 
     def _add_selected_to_mock(self) -> None:
-        """右键「加入 Mock」：用抓到的请求 URL（精确匹配）+ 原响应生成一条 Mock 规则。
+        """右键「加入 Mock」：用抓到的请求 URL（精确匹配）+ 原响应预填一条 Mock 规则，
+        打开「新增 Mock 规则」窗口让用户确认/微调；用户在窗口点「确定」后才真正加入列表。
 
         默认精确匹配该请求的 URL，响应 body 即原响应 body、状态码/Content-Type
-        一并带过去；请求 body 也保留在规则里作参考（不参匹配）。生成后跳到
-        Mock 面板并选中，方便立即检查/微调。
+        一并带过去；请求 body 也保留在规则里作参考（不参匹配）。
         """
         flows = self._selected_flows()
         if len(flows) != 1:
@@ -1325,12 +1326,16 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("该请求还没有响应，无法生成 Mock", 5000)
             return
         rule = self._build_mock_rule(flow)
-        self.rule_store.add(rule)
-        self.tabs.setCurrentWidget(self.rules_panel)
-        self.rules_panel.select_rule(rule.id)
-        self.status_bar.showMessage(
-            f"已加入 Mock：{rule.name}（精确匹配 URL，响应=原响应）", 6000
-        )
+        # 不直接落库：先打开新建窗口，自动带入 URL/请求 body/响应 body/状态码/Headers，
+        # 用户检查或微调后点「确定」，由 RuleEditorDialog 负责加入 store。
+        dialog = RuleEditorDialog(self.rule_store, rule, parent=self)
+        if dialog.exec():
+            self.tabs.setCurrentWidget(self.rules_panel)
+            self.rules_panel.select_rule(rule.id)
+            self.status_bar.showMessage(
+                f"已加入 Mock：{rule.name}（精确匹配 URL，响应=原响应）", 6000
+            )
+        # 取消则什么都不做，规则不会进入列表
 
     @staticmethod
     def _decode_bytes(data) -> str:

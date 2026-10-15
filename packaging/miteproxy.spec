@@ -75,7 +75,7 @@ if sys.platform == "darwin":
         icon=str(PROJECT / "packaging" / "icon.icns"),
         bundle_identifier="com.miteproxy.app",
         info_plist={
-            "CFBundleShortVersionString": "1.16.0",
+            "CFBundleShortVersionString": "2.0.0",
             "CFBundleName": "MiteProxy",
             "NSHighResolutionCapable": True,
         },
