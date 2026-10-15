@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QFont, QBrush
 
 from app.ui import theme
 
@@ -35,19 +35,23 @@ DEFAULT_MAX_ROWS = 5000
 # mock 命中行整行着色（除「标记」列文字外，背景与文字都变）——琥珀底 + 琥珀字，
 # 深浅主题各一套（theme.dynamic：主题切换时这两个 QColor 就地更新，
 # 模型 data() 每次重绘重新取值，天然生效）。
-# 只认 MOCK: 前缀：MapLocal 也会写 flow.marked（LOCAL:xxx），那不是 mock，
-# 不该染成同一个颜色——否则"哪些是造数据"一眼看不出来。
+# 只认 MOCK 前缀（v1.15 徽标改为 MOCK#N:名称，两种都要认）：
+# MapLocal 也会写 flow.marked（LOCAL:xxx），那不是 mock，不该染成同一个
+# 颜色——否则"哪些是造数据"一眼看不出来。
 MOCK_ROW_BG = theme.dynamic("mock_row_bg")
 MOCK_ROW_FG = theme.dynamic("mock_row_fg")
-MOCK_MARK_PREFIX = "MOCK:"
+MOCK_MARK_PREFIXES = ("MOCK:", "MOCK#")
 
 # URL 关键字高亮行整行底色（顶部「高亮」框实时命中，v1.15）。
 # 青蓝底与 mock 琥珀、搜索黄、选中蓝区分；theme.dynamic 随主题切换就地更新。
 HL_ROW_BG = theme.dynamic("hl_row_bg")
+# 斑马纹：全局 QSS 不再设 alternate-background-color（会压制模型背景），
+# 改由模型在奇数行返回 alt_row 色，与旧 QSS 斑马纹视觉一致。
+ALT_ROW_BG = theme.dynamic("alt_row")
 
 
 def _is_mock_row(row: dict) -> bool:
-    return (row.get("marked") or "").startswith(MOCK_MARK_PREFIX)
+    return (row.get("marked") or "").startswith(MOCK_MARK_PREFIXES)
 
 
 def format_size(n: int) -> str:
@@ -148,21 +152,26 @@ class FlowStore(QAbstractTableModel):
             return None
 
         if role == Qt.ItemDataRole.BackgroundRole:
+            # 注意：BackgroundRole 必须返回 QBrush——直接给 QColor 时 Qt
+            # 静默不上色（高亮/mock 行底色整个消失的根因）。每次调用现包
+            # 一层 QBrush：theme.dynamic 的 QColor 就地更新也能取到新值。
             # URL 关键字高亮优先于 mock 底色（用户主动指定的关注点更醒目）
             if self._is_highlighted(row):
-                return HL_ROW_BG
+                return QBrush(HL_ROW_BG)
             if _is_mock_row(row):
                 # mock 命中的整行底色（含未选中态；选中时由系统选择色覆盖）
-                return MOCK_ROW_BG
+                return QBrush(MOCK_ROW_BG)
+            if index.row() % 2 == 1:
+                return QBrush(ALT_ROW_BG)
 
         if role == Qt.ItemDataRole.ForegroundRole:
-            # 状态列保留语义色（绿/蓝/橙/红），优先于 mock 行色
+            # 状态列保留语义色（绿/蓝/橙/红），优先于 mock 行色（同样必须 QBrush）
             if col == COL_STATUS:
                 color = status_color(row["status"])
                 if color is not None:
-                    return color
+                    return QBrush(color)
             if _is_mock_row(row):
-                return MOCK_ROW_FG
+                return QBrush(MOCK_ROW_FG)
 
         if (
             role == Qt.ItemDataRole.FontRole

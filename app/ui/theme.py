@@ -145,15 +145,14 @@ def stylesheet() -> str:
     sel_fg = css("sel_fg")
     return f"""
 QTableView, QTableWidget {{
-    background-color: palette(base);
-    alternate-background-color: {alt};
+    /* 注意：这里不能写 background-color / alternate-background-color，
+       也不能给 item 加子控件规则（连 padding 都不行）——
+       实测两者任一存在时，QStyleSheetStyle 会接管 item 绘制并压制
+       模型返回的 BackgroundRole（高亮行 / mock 行底色全部失效的根因）。
+       斑马纹由 QPalette.AlternateBase + FlowStore 模型层提供。 */
     gridline-color: {grid};
     selection-background-color: {sel_bg};
     selection-color: {sel_fg};
-    border: none;
-}}
-QTableView::item, QTableWidget::item {{
-    padding: 1px 4px;
     border: none;
 }}
 QHeaderView::section {{
@@ -219,6 +218,7 @@ def _apply_fusion_palette(mode: str) -> None:
         palette.setColor(QPalette.ColorRole.Window, QColor("#f3f3f3"))
         palette.setColor(QPalette.ColorRole.WindowText, QColor("#1f2328"))
         palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#f6f8fa"))
         palette.setColor(QPalette.ColorRole.Text, QColor("#1f2328"))
         palette.setColor(QPalette.ColorRole.Button, QColor("#f3f3f3"))
         palette.setColor(QPalette.ColorRole.ButtonText, QColor("#1f2328"))
@@ -229,6 +229,7 @@ def _apply_fusion_palette(mode: str) -> None:
         palette.setColor(QPalette.ColorRole.Window, QColor("#1c2128"))
         palette.setColor(QPalette.ColorRole.WindowText, QColor("#e6edf3"))
         palette.setColor(QPalette.ColorRole.Base, QColor("#22272e"))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#2d333b"))
         palette.setColor(QPalette.ColorRole.Text, QColor("#e6edf3"))
         palette.setColor(QPalette.ColorRole.Button, QColor("#2d333b"))
         palette.setColor(QPalette.ColorRole.ButtonText, QColor("#e6edf3"))
