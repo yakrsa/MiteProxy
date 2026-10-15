@@ -219,7 +219,7 @@ class TestMockRowColoring:
         assert bg is not None and bg.color() == MOCK_ROW_BG
 
     def test_local_marked_row_not_colored(self):
-        """MapLocal 的 LOCAL: 标记不算 mock 行（不能被误染成琥珀底）。"""
+        """MapLocal 的 LOCAL: 标记不算 mock 行（不能被误染成 mock 浅绿底）。"""
         store = FlowStore()
         store.append(_row(marked="LOCAL:/tmp/x.json"))
         assert store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole) is None
@@ -316,7 +316,7 @@ class TestErrorRowColoring:
         assert store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole).color() == HL_ROW_BG
 
     def test_error_wins_over_mock(self):
-        """mock 行若同时是错误响应（如 500），整行标红优先于琥珀。"""
+        """mock 行若同时是错误响应（如 500），整行标红优先于 mock 浅绿。"""
         store = FlowStore()
         store.append(_row(marked="MOCK#1:规则", status=500))
         bg = store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole)

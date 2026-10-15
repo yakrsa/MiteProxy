@@ -34,8 +34,8 @@ COLORS: dict[str, tuple[str, str]] = {
     "error":       ("#cf222e", "#f85149"),   # 错误 / 5xx
     "warn":        ("#bf8700", "#d29922"),   # 警告 / 4xx
     "info":        ("#0969da", "#4493f8"),   # 信息 / 3xx / 发送方
-    "mock_row_bg": ("#fff4d6", "#4b3a10"),   # mock 命中行底色（琥珀）
-    "mock_row_fg": ("#412402", "#ffd97a"),   # mock 命中行文字
+    "mock_row_bg": ("#e6ffec", "#12351f"),   # mock 命中行底色（浅绿）
+    "mock_row_fg": ("#1a7f37", "#7ee2a0"),   # mock 命中行文字
     "hit_bg":      ("#fff3bf", "#5d5420"),   # 搜索命中底色（body / 表单表格）
     "invalid_bg":  ("#fff1f0", "#4d1414"),   # 无效配置行底色
     "invalid_fg":  ("#8a1f1f", "#ff9b95"),   # 无效配置行文字
@@ -51,8 +51,8 @@ COLORS: dict[str, tuple[str, str]] = {
     "sel_bg":      ("#0969da", "#4493f8"),   # 选中行底色
     "sel_fg":      ("#ffffff", "#ffffff"),   # 选中行文字
     # -- URL 关键字高亮行（顶部「高亮」框实时命中，v1.15）：黄色，
-    #    比 mock 琥珀更饱和（浅色 #ffec99 vs 琥珀 #fff4d6），两者并排
-    #    也能一眼分开；错误行红底优先级见 FlowStore.data()
+    #    与 mock 浅绿（#e6ffec）色相不同，两者并排也能一眼分开；
+    #    错误行红底优先级见 FlowStore.data()
     "hl_row_bg":   ("#ffec99", "#5d5420"),   # 高亮行底色（黄）
 }
 

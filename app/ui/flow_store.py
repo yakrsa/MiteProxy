@@ -32,7 +32,7 @@ SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 MAX_ROWS = 5000  # 硬上限（Fiddler 对齐：最大 5000 条）
 DEFAULT_MAX_ROWS = 5000
 
-# mock 命中行整行着色（除「标记」列文字外，背景与文字都变）——琥珀底 + 琥珀字，
+# mock 命中行整行着色（除「标记」列文字外，背景与文字都变）——浅绿底 + 绿字，
 # 深浅主题各一套（theme.dynamic：主题切换时这两个 QColor 就地更新，
 # 模型 data() 每次重绘重新取值，天然生效）。
 # 只认 MOCK 前缀（v1.15 徽标改为 MOCK#N:名称，两种都要认）：
@@ -43,7 +43,7 @@ MOCK_ROW_FG = theme.dynamic("mock_row_fg")
 MOCK_MARK_PREFIXES = ("MOCK:", "MOCK#")
 
 # URL 关键字高亮行整行底色（顶部「高亮」框实时命中，v1.15）。
-# 黄色：比 mock 琥珀更饱和，深浅主题下都能与琥珀底分开；
+# 黄色：与 mock 浅绿底色相不同，深浅主题下都能分开；
 # theme.dynamic 随主题切换就地更新。
 HL_ROW_BG = theme.dynamic("hl_row_bg")
 # 错误行（HTTP 4xx/5xx）整行红色——出问题的请求一眼定位。
@@ -178,7 +178,7 @@ class FlowStore(QAbstractTableModel):
             # 注意：BackgroundRole 必须返回 QBrush——直接给 QColor 时 Qt
             # 静默不上色（高亮/mock 行底色整个消失的根因）。每次调用现包
             # 一层 QBrush：theme.dynamic 的 QColor 就地更新也能取到新值。
-            # 优先级：URL 高亮(黄) > 错误(红) > mock(琥珀) > 斑马纹
+            # 优先级：URL 高亮(黄) > 错误(红) > mock(浅绿) > 斑马纹
             if self._is_highlighted(row):
                 return QBrush(HL_ROW_BG)
             if _is_error_row(row):
