@@ -118,6 +118,26 @@ class TestFlowStoreUpdate:
             store.index(0, COL_MARK), Qt.ItemDataRole.DisplayRole
         ) == "REPLAY"
 
+    # ---------------- 弱网标记（v1.15 用户反馈：延迟要看得见） ----------------
+
+    def test_throttled_row_shows_badge(self):
+        store = FlowStore()
+        store.append(_summary("f1", throttle_ms=823.4))
+        text = store.data(store.index(0, COL_MARK), Qt.ItemDataRole.DisplayRole)
+        assert "弱网" in text and "823" in text
+
+    def test_throttled_mock_row_combines_badges(self):
+        store = FlowStore()
+        store.append(_summary("f1", marked="MOCK#1:测试", throttle_ms=500.0))
+        text = store.data(store.index(0, COL_MARK), Qt.ItemDataRole.DisplayRole)
+        assert "MOCK#1:测试" in text and "弱网500ms" in text
+
+    def test_non_throttled_row_no_badge(self):
+        store = FlowStore()
+        store.append(_summary("f1", throttle_ms=0.0))
+        text = store.data(store.index(0, COL_MARK), Qt.ItemDataRole.DisplayRole)
+        assert "弱网" not in text
+
 
 # ====================================================================== WS 摘要
 

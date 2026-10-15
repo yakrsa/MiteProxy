@@ -467,8 +467,14 @@ class RulesPanel(QWidget):
         self._toast(f"已将 {len(ids)} 条规则{'启用' if enabled else '停用'}")
 
     # ------------------------------------------------------------ 轻提示
-    def _toast(self, text: str, msec: int = 1800) -> None:
-        """非阻塞的轻量成功提示：右下角浮层，自动消失（不弹 Modal 框）。"""
+    def _toast(self, text: str, msec: int = 2500) -> None:
+        """非阻塞的轻量成功提示：右下角浮层，自动消失（不弹 Modal 框）。
+
+        坐标坑：toast 是 self 的子控件，move() 必须用**面板局部坐标**——
+        此前用 mapToGlobal 的屏幕坐标喂给 move()，窗口不在屏幕左上角时
+        浮层被定位到父控件可视范围之外，整层被裁剪掉（真机上"没提示"
+        的根因）。
+        """
         old = getattr(self, "_toast_w", None)
         if old is not None:
             old.deleteLater()
@@ -478,9 +484,10 @@ class RulesPanel(QWidget):
             "padding:8px 14px;font-size:13px;"
         )
         w.adjustSize()
-        gp = self.mapToGlobal(self.rect().bottomRight())
-        w.move(gp.x() - w.width() - 16, gp.y() - w.height() - 12)
+        br = self.rect().bottomRight()
+        w.move(max(8, br.x() - w.width() - 16), max(8, br.y() - w.height() - 12))
         w.show()
+        w.raise_()
         QTimer.singleShot(msec, w.deleteLater)
         self._toast_w = w
 
@@ -509,6 +516,7 @@ class RulesPanel(QWidget):
             # 清掉已删规则的勾选，避免批量按钮计数失准
             self._checked_ids.difference_update(ids)
             self.refresh()
+            self._toast(f"已删除 {len(ids)} 条规则")
 
     # ------------------------------------------------------------ Fiddler 导入
 
