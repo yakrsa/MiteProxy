@@ -41,6 +41,10 @@ TOKEN_FILE = Path("~/.miteproxy/feedback_token").expanduser()
 
 REQUEST_TIMEOUT_MS = 15000
 
+# 反馈人昵称：必填，最长 64 字符（GitHub issue 作者只能是 token 账号
+# 本人，昵称放进标题/正文，让反馈可追溯）
+NICKNAME_MAX_LEN = 64
+
 
 def get_token() -> str:
     """运行时读取：环境变量 > 本机 token 文件 > 内置常量。
@@ -77,9 +81,12 @@ def collect_diagnostics() -> str:
     return "\n".join(lines)
 
 
-def build_issue_body(content: str, diagnostics: str) -> str:
-    """用户反馈正文 + 诊断信息合并为 issue body（诊断放代码块里）。"""
+def build_issue_body(content: str, diagnostics: str, nickname: str = "") -> str:
+    """用户反馈正文 + 昵称 + 诊断信息合并为 issue body。"""
     text = (content or "").strip()
+    nick = (nickname or "").strip()[:NICKNAME_MAX_LEN]
+    if nick:
+        text = f"**反馈人：{nick}**\n\n{text}"
     diag = (diagnostics or "").strip()
     if diag:
         text = f"{text}\n\n---\n\n**诊断信息（自动生成）**\n\n```text\n{diag}\n```"
@@ -87,6 +94,13 @@ def build_issue_body(content: str, diagnostics: str) -> str:
 
 
 # ---------------------------------------------------------------- 请求构造
+
+def build_issue_title(nickname: str, title: str) -> str:
+    """issue 标题 = [昵称] 用户标题（昵称超长时先截断）。"""
+    nick = (nickname or "").strip()[:NICKNAME_MAX_LEN]
+    t = (title or "").strip()
+    return f"[{nick}] {t}" if nick else t
+
 
 def payload(title: str, body: str) -> dict:
     return {

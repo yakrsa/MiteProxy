@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -42,7 +43,8 @@ class RuleTable(QTableWidget):
     row_dropped = Signal(int, int)  # (源行, 目标插入位置-原始列表语义)
 
     def __init__(self, parent=None):
-        super().__init__(0, 6, parent)
+        # 列：选 / 序号 / 名称 / 启用 / 匹配 / 动作 / 来源 / 命中（v1.15）
+        super().__init__(0, 8, parent)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
@@ -78,6 +80,8 @@ class RulesPanel(QWidget):
         super().__init__(parent)
         self.store = store
         self._display_ids: list[str] = []   # 表格行 → 规则 id（过滤后的视图顺序）
+        self._checked_ids: set[str] = set()  # 勾选的规则 id（批量操作目标）
+        self._loading = False                # refresh 重建时屏蔽 itemChanged
         self._build_ui()
         self.refresh()
 
@@ -94,8 +98,18 @@ class RulesPanel(QWidget):
         self.import_btn = QPushButton("导入 Fiddler 规则")
         self.export_btn = QPushButton("导出规则")
         self.import_native_btn = QPushButton("导入规则")
-        self.batch_enable_btn = QPushButton("批量启用")
-        self.batch_disable_btn = QPushButton("批量停用")
+        self.batch_enable_btn = QPushButton("启用")
+        self.batch_disable_btn = QPushButton("停用")
+        self.batch_delete_btn = QPushButton("删除")
+        self.batch_export_btn = QPushButton("导出")
+        for btn in (
+            self.batch_enable_btn,
+            self.batch_disable_btn,
+            self.batch_delete_btn,
+            self.batch_export_btn,
+        ):
+            btn.setToolTip("对勾选的规则生效；取消全部勾选后自动隐藏")
+            btn.hide()
         self.up_btn = QPushButton("上移")
         self.down_btn = QPushButton("下移")
         self.only_enabled_cb = QCheckBox("只显示启用")
@@ -103,7 +117,7 @@ class RulesPanel(QWidget):
             "勾选后列表只显示启用中的规则；停用规则仍在存储中，取消勾选即可看到。"
         )
         self.export_btn.setToolTip(
-            "选中行时只导出选中的规则；未选中时导出全部。"
+            "勾选规则时只导出勾选的；未勾选时导出全部。"
             "MiteProxy 原生 .json 格式，启停状态与顺序一并保存。"
         )
         self.import_native_btn.setToolTip(
@@ -111,7 +125,7 @@ class RulesPanel(QWidget):
             "不覆盖已有规则）。要导 Fiddler 的 .farx 请用旁边的按钮。"
         )
         self.delete_btn.setToolTip(
-            "删除选中的规则（支持 Ctrl/Shift 多选批量删除）。"
+            "删除当前选中的规则；首列勾选了多条时删除勾选的。"
         )
         for b in (
             self.add_btn,
@@ -119,6 +133,8 @@ class RulesPanel(QWidget):
             self.delete_btn,
             self.batch_enable_btn,
             self.batch_disable_btn,
+            self.batch_delete_btn,
+            self.batch_export_btn,
             self.import_btn,
             self.import_native_btn,
             self.export_btn,
@@ -132,8 +148,10 @@ class RulesPanel(QWidget):
         layout.addLayout(toolbar)
 
         self.table = RuleTable(self)
+        # 列布局：勾选框 + 序号 + 名称在前（v1.15 批量操作 redesign：
+        # 勾选的才是批量操作目标；序号与流量列表 MOCK#N 徽标对应）
         self.table.setHorizontalHeaderLabels(
-            ["名称", "启用", "匹配", "动作", "来源", "命中"]
+            ["选", "序号", "名称", "启用", "匹配", "动作", "来源", "命中"]
         )
         # 质感：斑马纹 + 无网格线 + 紧凑行高（全局 QSS 管表头/边框）
         self.table.setAlternatingRowColors(True)
@@ -145,11 +163,14 @@ class RulesPanel(QWidget):
         )
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.verticalHeader().setVisible(False)
+        # 勾选列/序号列定宽（紧凑，不抢名称列空间）
+        self.table.setColumnWidth(0, 32)
+        self.table.setColumnWidth(1, 40)
         self.table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        # 批量操作（v1.15）：Ctrl/Shift 多选后可批量启停/删除/导出选中
+        # 批量操作（v1.15）：首列勾选后出现批量按钮，作用于勾选的规则
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         layout.addWidget(self.table)
@@ -162,6 +183,9 @@ class RulesPanel(QWidget):
         self.export_btn.clicked.connect(self._on_export)
         self.batch_enable_btn.clicked.connect(lambda: self._on_batch_set_enabled(True))
         self.batch_disable_btn.clicked.connect(lambda: self._on_batch_set_enabled(False))
+        self.batch_delete_btn.clicked.connect(self._on_delete)
+        self.batch_export_btn.clicked.connect(self._on_export)
+        self.table.itemChanged.connect(self._on_item_changed)
         self.up_btn.clicked.connect(lambda: self._on_move(-1))
         self.down_btn.clicked.connect(lambda: self._on_move(1))
         self.table.row_dropped.connect(self._on_row_dropped)
@@ -181,21 +205,45 @@ class RulesPanel(QWidget):
     def refresh(self) -> None:
         visible = self._visible_rules()
         self._display_ids = [r.id for r in visible]
+        self._loading = True
         self.table.setRowCount(len(visible))
+        global_index = {r.id: i + 1 for i, r in enumerate(self.store.all())}
         for i, rule in enumerate(visible):
+            # 勾选列：批量操作的目标（勾选状态跨刷新保留）
+            check = QTableWidgetItem()
+            check.setFlags(
+                Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsSelectable
+            )
+            check.setCheckState(
+                Qt.CheckState.Checked
+                if rule.id in self._checked_ids
+                else Qt.CheckState.Unchecked
+            )
+            check.setToolTip("勾选后可对该规则批量启用/停用/删除/导出")
+            self.table.setItem(i, 0, check)
+            # 序号列：规则在完整列表中的位置（1 起），与流量列表的
+            # MOCK#N 徽标一致，方便定位「命中的是第几条」
+            seq = QTableWidgetItem(str(global_index.get(rule.id, i + 1)))
+            seq.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            seq.setForeground(QBrush(theme.color("hint")))
+            self.table.setItem(i, 1, seq)
             enabled_item = QTableWidgetItem("✔" if rule.enabled else "—")
             enabled_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             name = rule.name + (" ⚠" if rule.error else "")
-            self.table.setItem(i, 0, QTableWidgetItem(name))
-            self.table.setItem(i, 1, enabled_item)
-            self.table.setItem(i, 2, QTableWidgetItem(_match_summary(rule)))
-            self.table.setItem(i, 3, QTableWidgetItem(_action_summary(rule)))
+            self.table.setItem(i, 2, QTableWidgetItem(name))
+            self.table.setItem(i, 3, enabled_item)
+            self.table.setItem(i, 4, QTableWidgetItem(_match_summary(rule)))
+            self.table.setItem(i, 5, QTableWidgetItem(_action_summary(rule)))
             self.table.setItem(
-                i, 4, QTableWidgetItem(SOURCE_LABELS.get(rule.source, rule.source))
+                i, 6, QTableWidgetItem(SOURCE_LABELS.get(rule.source, rule.source))
             )
             self._fill_hits(i, rule)
             if rule.error:
-                self.table.item(i, 0).setToolTip(rule.error)
+                self.table.item(i, 2).setToolTip(rule.error)
+        self._loading = False
+        self._update_batch_buttons()
 
     def _fill_hits(self, row: int, rule) -> None:
         """命中列：0 次显示「—」（没干活过），有次数显示数字 + 最近命中时间提示。"""
@@ -204,7 +252,43 @@ class RulesPanel(QWidget):
         if rule.hits:
             when = datetime.fromtimestamp(rule.last_hit).strftime("%H:%M:%S")
             item.setToolTip(f"最近命中 {when}")
-        self.table.setItem(row, 5, item)
+        self.table.setItem(row, 7, item)
+
+    # ------------------------------------------------------------ 批量勾选
+
+    def _on_item_changed(self, item: QTableWidgetItem) -> None:
+        """勾选框变化 → 维护 _checked_ids + 批量按钮显隐。"""
+        if self._loading or item.column() != 0:
+            return
+        rule_id = (
+            self._display_ids[item.row()]
+            if 0 <= item.row() < len(self._display_ids)
+            else None
+        )
+        if rule_id is None:
+            return
+        if item.checkState() == Qt.CheckState.Checked:
+            self._checked_ids.add(rule_id)
+        else:
+            self._checked_ids.discard(rule_id)
+        self._update_batch_buttons()
+
+    def _update_batch_buttons(self) -> None:
+        """勾选数 > 0 时才显示批量按钮，按钮文字带上数量。"""
+        n = len(self._checked_ids)
+        has = n > 0
+        self.batch_enable_btn.setVisible(has)
+        self.batch_disable_btn.setVisible(has)
+        self.batch_delete_btn.setVisible(has)
+        self.batch_export_btn.setVisible(has)
+        self.batch_enable_btn.setText(f"启用({n})")
+        self.batch_disable_btn.setText(f"停用({n})")
+        self.batch_delete_btn.setText(f"删除({n})")
+        self.batch_export_btn.setText(f"导出({n})")
+
+    def _selected_rule_ids(self) -> list[str]:
+        """批量操作目标 = 勾选的规则（按显示顺序）。"""
+        return [rid for rid in self._display_ids if rid in self._checked_ids]
 
     def update_hit(self, rule_id: str) -> None:
         """代理线程命中后的实时刷新（经信号桥到主线程）。
@@ -229,7 +313,7 @@ class RulesPanel(QWidget):
         except (ValueError, AttributeError):
             return
         rule = self.store.get(rule_id)
-        item = self.table.item(row, 0)
+        item = self.table.item(row, 2)  # 名称列（列 0=勾选，列 1=序号）
         if rule is None or item is None:
             return
         if message:
@@ -344,19 +428,10 @@ class RulesPanel(QWidget):
 
     # ------------------------------------------------------------ 批量操作
 
-    def _selected_rule_ids(self) -> list[str]:
-        """当前多选中的规则 id（按显示行序；只在可见行内选择）。"""
-        rows = sorted({idx.row() for idx in self.table.selectionModel().selectedRows()})
-        return [
-            self._display_ids[row]
-            for row in rows
-            if 0 <= row < len(self._display_ids)
-        ]
-
     def _on_batch_set_enabled(self, enabled: bool) -> None:
         ids = self._selected_rule_ids()
         if not ids:
-            QMessageBox.information(self, "提示", "请先选中规则（Ctrl/Shift 可多选）")
+            QMessageBox.information(self, "提示", "请先勾选规则（首列复选框）")
             return
         for rule_id in ids:
             self.store.update(rule_id, enabled=enabled)
@@ -440,7 +515,7 @@ class RulesPanel(QWidget):
         ids = self._selected_rule_ids()
         if ids:
             rules = [r for r in (self.store.get(i) for i in ids) if r is not None]
-            scope = f"选中的 {len(rules)} 条"
+            scope = f"勾选的 {len(rules)} 条"
         else:
             rules = self.store.all()
             scope = f"全部 {len(rules)} 条"

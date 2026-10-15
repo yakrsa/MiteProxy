@@ -201,25 +201,38 @@ class TestMockRowColoring:
         store.append(_row(marked="MOCK:rule-a"))
         for col in (0, COL_HOST, COL_STATUS, COL_MARK):
             bg = store.data(store.index(0, col), Qt.ItemDataRole.BackgroundRole)
-            assert bg == MOCK_ROW_BG, col
+            assert bg.color() == MOCK_ROW_BG, col  # 必须是 QBrush 才上色
 
     def test_unmarked_row_has_no_background(self):
         store = FlowStore()
         store.append(_row())
         assert store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole) is None
 
+    def test_mock_hash_badge_prefix_also_detected(self):
+        """MOCK#N:名称 徽标（v1.15 序号化）同样算 mock 行——前缀别只认 MOCK:。"""
+        store = FlowStore()
+        store.append(_row(marked="MOCK#2:规则乙"))
+        bg = store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole)
+        assert bg is not None and bg.color() == MOCK_ROW_BG
+
+    def test_local_marked_row_not_colored(self):
+        """MapLocal 的 LOCAL: 标记不算 mock 行（不能被误染成琥珀底）。"""
+        store = FlowStore()
+        store.append(_row(marked="LOCAL:/tmp/x.json"))
+        assert store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole) is None
+
     def test_marked_row_text_color_on_data_columns(self):
         store = FlowStore()
         store.append(_row(marked="MOCK:rule-a"))
         fg = store.data(store.index(0, COL_HOST), Qt.ItemDataRole.ForegroundRole)
-        assert fg == MOCK_ROW_FG
+        assert fg.color() == MOCK_ROW_FG
 
     def test_status_semantic_color_wins_over_mock_color(self):
         """状态列保留绿/橙/红语义色，不被 mock 行色盖掉。"""
         store = FlowStore()
         store.append(_row(marked="MOCK:rule-a", status=503))
         fg = store.data(store.index(0, COL_STATUS), Qt.ItemDataRole.ForegroundRole)
-        assert fg == status_color(503)
+        assert fg.color() == status_color(503)
 
     def test_mock_badge_still_shown_and_bold(self):
         store = FlowStore()
@@ -235,6 +248,17 @@ class TestMockRowColoring:
         assert store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole) is None
         assert store.data(store.index(0, COL_MARK)) == "REPLAY"
 
+    def test_zebra_from_model_on_odd_rows(self):
+        """斑马纹由模型在奇数行返回（QSS 不再设 alternate-background-color）。"""
+        from app.ui.flow_store import ALT_ROW_BG
+
+        store = FlowStore()
+        store.append(_row(id="even"))
+        store.append(_row(id="odd"))
+        assert store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole) is None
+        odd = store.data(store.index(1, COL_HOST), Qt.ItemDataRole.BackgroundRole)
+        assert odd is not None and odd.color() == ALT_ROW_BG
+
 
 # --------------------------------------------- URL 关键字高亮（v1.15）
 
@@ -249,29 +273,30 @@ class TestHighlightKeyword:
     def _bg(self, store, row_idx):
         from app.ui.flow_store import COLUMNS
 
-        return store.data(store.index(row_idx, 0),
-                          __import__("PySide6.QtCore", fromlist=["Qt"]).Qt.ItemDataRole.BackgroundRole)
+        bg = store.data(store.index(row_idx, 0),
+                        __import__("PySide6.QtCore", fromlist=["Qt"]).Qt.ItemDataRole.BackgroundRole)
+        return bg.color() if bg is not None else None
 
     def test_highlight_matches_url_case_insensitive(self):
-        from app.ui.flow_store import FlowStore
+        from app.ui.flow_store import HL_ROW_BG, FlowStore
 
         store = FlowStore()
         store.append(self._row("https://a.com/api/user/list"))
         store.append(self._row("https://b.com/other"))
         store.set_highlight("USER")
-        assert self._bg(store, 0) is not None   # URL 含 user（忽略大小写）
-        assert self._bg(store, 1) is None
+        assert self._bg(store, 0) == HL_ROW_BG   # URL 含 user（忽略大小写）
+        assert self._bg(store, 1) != HL_ROW_BG
 
     def test_realtime_for_new_traffic(self):
         """先开高亮，之后新到的流量同样命中（append 即生效，无需刷新）。"""
-        from app.ui.flow_store import FlowStore
+        from app.ui.flow_store import HL_ROW_BG, FlowStore
 
         store = FlowStore()
         store.set_highlight("pay")
         store.append(self._row("https://a.com/pay/confirm"))
         store.append(self._row("https://a.com/order"))
-        assert self._bg(store, 0) is not None
-        assert self._bg(store, 1) is None
+        assert self._bg(store, 0) == HL_ROW_BG
+        assert self._bg(store, 1) != HL_ROW_BG
 
     def test_clear_keyword_removes_highlight(self):
         from app.ui.flow_store import FlowStore
@@ -284,12 +309,12 @@ class TestHighlightKeyword:
 
     def test_highlight_wins_over_mock_bg(self):
         """同时命中高亮与 mock 行时，高亮底色优先（用户主动关注点）。"""
-        from app.ui.flow_store import FlowStore, HL_ROW_BG, MOCK_ROW_BG
+        from app.ui.flow_store import HL_ROW_BG, MOCK_ROW_BG, FlowStore
 
         store = FlowStore()
         row = self._row("https://a.com/api/pay")
         row["marked"] = "MOCK#1:规则"
         store.append(row)
         store.set_highlight("pay")
-        bg = self._bg(store, 0)
-        assert bg is HL_ROW_BG and bg is not MOCK_ROW_BG
+        assert self._bg(store, 0) == HL_ROW_BG
+        assert self._bg(store, 0) != MOCK_ROW_BG

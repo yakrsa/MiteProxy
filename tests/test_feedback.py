@@ -50,6 +50,33 @@ class TestDiagnostics:
         assert fb.build_issue_body("  内容  ", "   ") == "内容"
 
 
+class TestNickname:
+    """昵称必填、≤64 字符，进 issue 标题（作者只能是 token 账号本人）。"""
+
+    def test_title_prefixed_with_nickname(self):
+        assert fb.build_issue_title("小明", "导入乱码") == "[小明] 导入乱码"
+
+    def test_title_without_nickname(self):
+        assert fb.build_issue_title("  ", "导入乱码") == "导入乱码"
+
+    def test_nickname_truncated_to_64(self):
+        title = fb.build_issue_title("昵" * 100, "x")
+        assert title.startswith("[")
+        assert title.index("]") <= fb.NICKNAME_MAX_LEN + 1
+
+    def test_body_contains_nickname(self):
+        body = fb.build_issue_body("内容", "", "user@example.com")
+        assert "**反馈人：user@example.com**" in body
+        assert body.index("反馈人") < body.index("内容")
+
+    def test_dialog_maxlength(self, qapp):
+        from app.ui.feedback_dialog import FeedbackDialog
+
+        d = FeedbackDialog()
+        assert d.nick_edit.maxLength() == fb.NICKNAME_MAX_LEN
+        d.deleteLater()
+
+
 class TestParseResponse:
     def test_created(self):
         raw = json.dumps({"html_url": "https://github.com/yakrsa/MiteProxy/issues/9"}).encode()
@@ -140,15 +167,24 @@ class TestFeedbackDialog:
         assert not dialog.status_label.isHidden()
         assert dialog._transport.calls == []  # 未发请求
 
+    def test_missing_nickname_rejected(self, dialog):
+        dialog.title_edit.setText("崩溃")
+        dialog.body_edit.setPlainText("启动就崩")
+        dialog._on_submit()  # 昵称未填
+        assert dialog._transport.calls == []
+        assert "昵称" in dialog.status_label.text()
+
     def test_submit_sends_payload_with_diag(self, dialog):
+        dialog.nick_edit.setText("小明")
         dialog.title_edit.setText("崩溃")
         dialog.body_edit.setPlainText("启动就崩")
         dialog._on_submit()
         assert len(dialog._transport.calls) == 1
         url, data, headers = dialog._transport.calls[0]
         assert url == fb.ISSUES_API
-        assert data["title"] == "崩溃"
+        assert data["title"] == "[小明] 崩溃"
         assert "启动就崩" in data["body"]
+        assert "**反馈人：小明**" in data["body"]
         assert "```text" in data["body"]
         assert headers["Authorization"] == "Bearer test-token"
 
@@ -157,6 +193,7 @@ class TestFeedbackDialog:
         from PySide6.QtWidgets import QMessageBox
 
         monkeypatch.setattr(QMessageBox, "exec", lambda self: None)
+        dialog.nick_edit.setText("小红")
         dialog.title_edit.setText("建议")
         dialog.body_edit.setPlainText("加个功能")
         dialog._on_submit()
@@ -165,6 +202,7 @@ class TestFeedbackDialog:
         assert dialog.result() == dialog.DialogCode.Accepted
 
     def test_failure_shows_error_and_reenables(self, dialog):
+        dialog.nick_edit.setText("x")
         dialog.title_edit.setText("x")
         dialog.body_edit.setPlainText("y")
         dialog._on_submit()

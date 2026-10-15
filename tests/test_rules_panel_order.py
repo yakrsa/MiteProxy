@@ -18,6 +18,7 @@ import pytest  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from app.rules import Match, Rule, RuleStore  # noqa: E402
@@ -55,21 +56,35 @@ def three_rules(store):
 
 
 class TestColumnLayout:
-    def test_name_is_first_column(self, qapp, three_rules):
+    def test_checkbox_and_seq_are_first_columns(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
-        assert panel.table.horizontalHeaderItem(0).text() == "名称"
-        assert panel.table.horizontalHeaderItem(1).text() == "启用"
+        headers = [panel.table.horizontalHeaderItem(i).text() for i in range(8)]
+        assert headers == ["选", "序号", "名称", "启用", "匹配", "动作", "来源", "命中"]
 
     def test_refresh_fills_name_column(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
-        assert panel.table.item(0, 0).text() == "规则甲"
-        assert panel.table.item(1, 0).text() == "规则乙"
-        assert panel.table.item(2, 0).text() == "规则丙"
+        assert panel.table.item(0, 2).text() == "规则甲"
+        assert panel.table.item(1, 2).text() == "规则乙"
+        assert panel.table.item(2, 2).text() == "规则丙"
+
+    def test_seq_matches_global_position(self, qapp, three_rules):
+        """序号 = 规则在完整列表中的位置（与 MOCK#N 徽标对应）。"""
+        panel = RulesPanel(three_rules)
+        assert [panel.table.item(i, 1).text() for i in range(3)] == ["1", "2", "3"]
+
+    def test_seq_keeps_global_number_under_filter(self, qapp, three_rules):
+        """过滤后序号仍显示全局位置（甲1、乙2 停用 → 丙仍显示 3）。"""
+        panel = RulesPanel(three_rules)
+        three_rules.update(three_rules.all()[1].id, enabled=False)
+        panel.only_enabled_cb.setChecked(True)
+        assert panel.table.rowCount() == 2
+        assert panel.table.item(0, 1).text() == "1"
+        assert panel.table.item(1, 1).text() == "3"
 
     def test_hits_column_unchanged(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
-        assert panel.table.horizontalHeaderItem(5).text() == "命中"
-        assert panel.table.item(0, 5).text() == "—"
+        assert panel.table.horizontalHeaderItem(7).text() == "命中"
+        assert panel.table.item(0, 7).text() == "—"
 
 
 # ---------------------------------------------------------------- 拖拽排序
@@ -218,7 +233,7 @@ class TestEnabledFilter:
         assert panel.table.rowCount() == 3        # 未开过滤，全显
         panel.only_enabled_cb.setChecked(True)
         assert panel.table.rowCount() == 2
-        names = [panel.table.item(i, 0).text() for i in range(2)]
+        names = [panel.table.item(i, 2).text() for i in range(2)]
         assert names == ["规则甲", "规则丙"]
 
     def test_filter_keeps_hidden_rules_in_place_on_move(self, qapp, three_rules):
@@ -301,7 +316,10 @@ class TestTablePolish:
         for key in ("alt_row", "header_bg", "grid_line"):
             assert key in theme.COLORS
         qss = theme.stylesheet()
-        assert "alternate-background-color" in qss
+        # 回归守卫：视图级背景属性会压制模型 BackgroundRole（v1.15 高亮/
+        # mock 行底色集体失效的根因），QSS 里不能再出现（带冒号=实际属性）
+        assert "alternate-background-color:" not in qss
+        assert "QTableView::item" not in qss
         assert "QHeaderView::section" in qss
 
 
@@ -383,19 +401,17 @@ class TestNativeExportImport:
         assert len(three_rules.all()) == 3  # 坏文件不进数据
 
 
-# ------------------------------------------------- 批量选中操作（v1.15）
+# ------------------------------------------------- 批量勾选操作（v1.15）
 
 class TestBatchOperations:
-    """多选后批量启用/停用/删除/导出选中。"""
+    """首列复选框勾选后出现批量按钮，作用于勾选的规则。"""
 
     @staticmethod
-    def _select(panel, rows):
-        from PySide6.QtCore import QItemSelectionModel
-
-        sel = panel.table.selectionModel()
-        flag = QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+    def _check(panel, rows):
+        """模拟用户点击首列复选框（勾选指定行）。"""
         for row in rows:
-            sel.select(panel.table.model().index(row, 0), flag)
+            item = panel.table.item(row, 0)
+            item.setCheckState(Qt.CheckState.Checked)
 
     @staticmethod
     def _stub_confirm(monkeypatch):
@@ -409,9 +425,30 @@ class TestBatchOperations:
             QMessageBox, "information", staticmethod(lambda *a, **k: None)
         )
 
-    def test_batch_disable_selected_only(self, qapp, three_rules):
+    def test_batch_buttons_hidden_initially(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
-        self._select(panel, [0, 2])  # 甲、丙
+        assert panel.batch_enable_btn.isHidden()
+        assert panel.batch_disable_btn.isHidden()
+        assert panel.batch_delete_btn.isHidden()
+        assert panel.batch_export_btn.isHidden()
+
+    def test_batch_buttons_appear_on_check(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        self._check(panel, [0, 2])
+        assert not panel.batch_enable_btn.isHidden()
+        assert "2" in panel.batch_enable_btn.text()  # 按钮文字带数量
+
+    def test_batch_buttons_hide_on_uncheck(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        self._check(panel, [0])
+        self._check(panel, [])  # 无操作
+        panel.table.item(0, 0).setCheckState(Qt.CheckState.Unchecked)
+        assert panel.batch_enable_btn.isHidden()
+        assert panel._selected_rule_ids() == []
+
+    def test_batch_disable_checked_only(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        self._check(panel, [0, 2])  # 甲、丙
         panel._on_batch_set_enabled(False)
         states = [r.enabled for r in three_rules.all()]
         assert states == [False, True, False]  # 乙不受影响
@@ -420,23 +457,31 @@ class TestBatchOperations:
         panel = RulesPanel(three_rules)
         for r in three_rules.all():
             three_rules.update(r.id, enabled=False)
-        self._select(panel, [1])
+        self._check(panel, [1])
         panel._on_batch_set_enabled(True)
         assert [r.enabled for r in three_rules.all()] == [False, True, False]
 
-    def test_batch_delete_selected(self, qapp, three_rules, monkeypatch):
+    def test_batch_delete_checked(self, qapp, three_rules, monkeypatch):
         self._stub_confirm(monkeypatch)
         panel = RulesPanel(three_rules)
-        self._select(panel, [0, 1])
+        self._check(panel, [0, 1])
         panel._on_delete()
         assert [r.name for r in three_rules.all()] == ["规则丙"]
 
-    def test_selected_ids_follow_display_mapping(self, qapp, three_rules):
+    def test_selected_ids_are_checked_in_display_order(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
-        self._select(panel, [1])
+        self._check(panel, [1])
         assert panel._selected_rule_ids() == [three_rules.all()[1].id]
 
-    def test_export_only_selected(self, qapp, three_rules, tmp_path, monkeypatch):
+    def test_checked_survives_refresh(self, qapp, three_rules):
+        """刷新（如命中更新）后勾选状态保留。"""
+        panel = RulesPanel(three_rules)
+        self._check(panel, [1])
+        panel.refresh()
+        assert panel.table.item(1, 0).checkState() == Qt.CheckState.Checked
+        assert panel._selected_rule_ids() == [three_rules.all()[1].id]
+
+    def test_export_only_checked(self, qapp, three_rules, tmp_path, monkeypatch):
         import json as _json
 
         self._stub_confirm(monkeypatch)
@@ -446,12 +491,12 @@ class TestBatchOperations:
             staticmethod(lambda *a, **k: (str(out), "")),
         )
         panel = RulesPanel(three_rules)
-        self._select(panel, [0, 2])
+        self._check(panel, [0, 2])
         panel._on_export()
         data = _json.loads(out.read_text(encoding="utf-8"))
         assert [r["name"] for r in data["rules"]] == ["规则甲", "规则丙"]
 
-    def test_export_all_when_no_selection(self, qapp, three_rules, tmp_path, monkeypatch):
+    def test_export_all_when_none_checked(self, qapp, three_rules, tmp_path, monkeypatch):
         import json as _json
 
         self._stub_confirm(monkeypatch)

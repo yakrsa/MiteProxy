@@ -43,6 +43,11 @@ class FeedbackDialog(QDialog):
         layout = QVBoxLayout(self)
 
         layout.addWidget(QLabel("遇到问题或有功能建议？描述越具体越容易定位："))
+        self.nick_edit = QLineEdit()
+        self.nick_edit.setPlaceholderText("你的昵称（必填，≤64 字符；会显示在 issue 标题上）")
+        self.nick_edit.setMaxLength(fb.NICKNAME_MAX_LEN)
+        layout.addWidget(self.nick_edit)
+
         self.title_edit = QLineEdit()
         self.title_edit.setPlaceholderText("一句话概括（必填），如：导入 Fiddler 规则后中文乱码")
         layout.addWidget(self.title_edit)
@@ -55,7 +60,8 @@ class FeedbackDialog(QDialog):
 
         hint = QLabel(
             f"提交后会自动附带 App 版本 / 系统信息，并以公开 issue 形式"
-            f"创建到 GitHub（{fb.GITHUB_REPO}）。"
+            f"创建到 GitHub（{fb.GITHUB_REPO}）。昵称会显示在 issue 标题上，"
+            f"便于我们回复与追溯。"
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -94,8 +100,12 @@ class FeedbackDialog(QDialog):
             self.submit_btn.setEnabled(False)
 
     def _on_submit(self) -> None:
+        nickname = self.nick_edit.text().strip()
         title = self.title_edit.text().strip()
         content = self.body_edit.toPlainText().strip()
+        if not nickname:
+            self._show_status("请填写昵称（必填，会显示在 issue 标题上）。", error=True)
+            return
         if not title or not content:
             self._show_status("标题和内容都需要填写。", error=True)
             return
@@ -103,8 +113,8 @@ class FeedbackDialog(QDialog):
             return  # 已在提交中
         self.submit_btn.setEnabled(False)
         self._show_status("正在提交…")
-        body = fb.build_issue_body(content, fb.collect_diagnostics())
-        data = fb.payload(title, body)
+        body = fb.build_issue_body(content, fb.collect_diagnostics(), nickname)
+        data = fb.payload(fb.build_issue_title(nickname, title), body)
         headers = fb.headers(fb.get_token())
         if self._transport is not None:
             self._transport(fb.ISSUES_API, data, headers)
