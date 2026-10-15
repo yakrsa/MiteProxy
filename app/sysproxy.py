@@ -207,14 +207,24 @@ def _win_takeover(port: int, run) -> tuple[bool, str]:
     return True, "已接管系统代理"
 
 
-def restore(run=_run) -> tuple[bool, str]:
-    """还原接管前的系统代理；没有接管记录时是幂等 no-op。"""
+def restore(run=_run, port: int | None = None) -> tuple[bool, str]:
+    """还原接管前的系统代理；没有接管记录时是幂等 no-op。
+
+    `port` 是兜底参数：快照文件丢失/损坏时（如被清理工具删掉），无法
+    知道接管前的原始设置，但可以识别「当前代理仍指向 127.0.0.1:port
+    （我们自己的端口）」并直接关闭——这只可能移除我们自己的接管，不会
+    碰用户手动配置的其他代理。
+    """
     if not STATE_PATH.exists():
+        if port is not None:
+            return _clear_local_proxy(run, port)
         return True, "无接管记录"
     try:
         state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         STATE_PATH.unlink(missing_ok=True)
+        if port is not None:
+            return _clear_local_proxy(run, port)
         return False, f"接管记录损坏，跳过还原: {e}"
 
     if state.get("platform") == "windows":
@@ -243,10 +253,47 @@ def restore(run=_run) -> tuple[bool, str]:
     return True, "已还原系统代理"
 
 
-def recover_if_needed(run=_run) -> bool:
+def _clear_local_proxy(run, port: int) -> tuple[bool, str]:
+    """无快照兜底：关闭所有指向 127.0.0.1:port 的系统代理。
+
+    只精确匹配本机回环地址 + 我们的端口——用户手动配的其他代理
+    （哪怕也是 127.0.0.1 但端口不同）一律不动。
+    """
+    changed = 0
+    if platform.system() == "Windows":
+        current = _win_current(run)
+        server = str(current.get("server") or "")
+        if current.get("enabled") and (
+            server.endswith(f":{port}")
+            and server.split(":")[0] in ("127.0.0.1", "localhost")
+        ):
+            run(["reg", "add", _WIN_KEY, "/v", "ProxyEnable",
+                 "/t", "REG_DWORD", "/d", "0", "/f"])
+            changed += 1
+    else:
+        for svc in _macos_services(run):
+            for secure in (False, True):
+                cur = _macos_get_proxy(run, svc, secure)
+                if (cur.get("enabled")
+                        and cur.get("server") in ("127.0.0.1", "localhost")
+                        and cur.get("port") == port):
+                    _macos_set(run, svc, secure, "", 0, False)
+                    changed += 1
+    if changed:
+        return True, f"已还原系统代理（无接管记录，按端口 {port} 兜底关闭）"
+    return True, "无接管记录"
+
+
+def recover_if_needed(run=_run, port: int | None = None) -> bool:
     """启动时调用：上次异常退出没还原的，这里补还原。返回是否做了还原。"""
     if not STATE_PATH.exists():
+        # 快照不存在也可能有残留接管（快照被外部删除等），按端口兜底扫一遍
+        if port is not None:
+            ok, msg = _clear_local_proxy(run, port)
+            if "兜底" in msg:
+                log.info("崩溃恢复系统代理: %s", msg)
+                return ok
         return False
-    ok, msg = restore(run)
+    ok, msg = restore(run, port=port)
     log.info("崩溃恢复系统代理: %s", msg)
     return ok

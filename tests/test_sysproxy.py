@@ -269,10 +269,10 @@ class TestMainWindowWiring:
         )
         monkeypatch.setattr(
             "app.sysproxy.restore",
-            lambda run=None: calls.append(("restore",)) or (True, "已还原"),
+            lambda run=None, port=None: calls.append(("restore",)) or (True, "已还原"),
         )
         monkeypatch.setattr(
-            "app.sysproxy.recover_if_needed", lambda run=None: calls.append(("recover",)) or False
+            "app.sysproxy.recover_if_needed", lambda run=None, port=None: calls.append(("recover",)) or False
         )
         window.start_proxy()
         assert ("recover",) in calls
@@ -284,7 +284,7 @@ class TestMainWindowWiring:
         calls = []
         monkeypatch.setattr(
             "app.sysproxy.restore",
-            lambda run=None: calls.append(("restore",)) or (True, "已还原"),
+            lambda run=None, port=None: calls.append(("restore",)) or (True, "已还原"),
         )
         window._restore_sysproxy_sync()
         assert calls == [("restore",)]
@@ -328,10 +328,10 @@ class TestPortChange:
         )
         monkeypatch.setattr(
             "app.sysproxy.restore",
-            lambda run=None: (True, "已还原"),
+            lambda run=None, port=None: (True, "已还原"),
         )
         monkeypatch.setattr(
-            "app.sysproxy.recover_if_needed", lambda run=None: False
+            "app.sysproxy.recover_if_needed", lambda run=None, port=None: False
         )
         monkeypatch.setattr(
             window, "_app_restart_command", lambda: ["/fake/MiteProxy.app"]
@@ -373,11 +373,11 @@ class TestPortChange:
         )
         monkeypatch.setattr(
             "app.sysproxy.restore",
-            lambda run=None: calls.append(("restore",)) or (True, "已还原"),
+            lambda run=None, port=None: calls.append(("restore",)) or (True, "已还原"),
         )
         monkeypatch.setattr(
             "app.sysproxy.recover_if_needed",
-            lambda run=None: False,
+            lambda run=None, port=None: False,
         )
         window.start_proxy()
         old_port = window.settings.proxy_port
@@ -417,10 +417,10 @@ class TestPortChange:
         )
         monkeypatch.setattr(
             "app.sysproxy.restore",
-            lambda run=None: calls.append(("restore",)) or (True, "已还原"),
+            lambda run=None, port=None: calls.append(("restore",)) or (True, "已还原"),
         )
         monkeypatch.setattr(
-            "app.sysproxy.recover_if_needed", lambda run=None: False
+            "app.sysproxy.recover_if_needed", lambda run=None, port=None: False
         )
         window.start_proxy()
         old_port = window.settings.proxy_port
@@ -444,7 +444,7 @@ class TestPortChange:
         )
         monkeypatch.setattr(
             "app.sysproxy.restore",
-            lambda run=None: calls.append("restore") or (True, "ok"),
+            lambda run=None, port=None: calls.append("restore") or (True, "ok"),
         )
         new_port = window.settings.proxy_port + 11
         window.port_spin.setValue(new_port)
@@ -517,7 +517,7 @@ class TestCaptureStatusIndicator:
         sp_mod.takeover = lambda port, run=None, elevate=False: (
             calls.append(("takeover", port)) or (True, "ok")
         )
-        sp_mod.restore = lambda run=None: (
+        sp_mod.restore = lambda run=None, port=None: (
             calls.append(("restore",)) or (True, "已还原")
         )
         try:
@@ -544,7 +544,7 @@ class TestCaptureStatusIndicator:
         sp_mod.takeover = lambda port, run=None, elevate=False: (
             calls.append(("takeover", port)) or (True, "ok")
         )
-        sp_mod.restore = lambda run=None: (
+        sp_mod.restore = lambda run=None, port=None: (
             calls.append(("restore",)) or (True, "已还原")
         )
         try:
@@ -574,3 +574,65 @@ class TestCaptureStatusIndicator:
         finally:
             window.stop_proxy()
             sp_mod.takeover = orig_takeover
+
+
+class TestRestoreFallbackByPort:
+    """快照丢失时的端口兜底：只关闭指向 127.0.0.1:<我们的端口> 的代理。"""
+
+    def _runner_with(self, server, port):
+        r = FakeRunner()
+        for secure in (False, True):
+            r.state["Wi-Fi"][secure] = {
+                "enabled": True, "server": server, "port": port,
+            }
+        return r
+
+    def test_no_snapshot_clears_our_proxy(self, state_path):
+        """无快照 + 系统代理指向 127.0.0.1:8888（我们的端口）→ 兜底关闭。"""
+        r = self._runner_with("127.0.0.1", 8888)
+        assert not state_path.exists()
+        ok, msg = sysproxy.restore(run=r, port=8888)
+        assert ok and "兜底" in msg
+        state_offs = [c for c in r.calls if c[1] == "-setwebproxystate"
+                      or c[1] == "-setsecurewebproxystate"]
+        # Wi-Fi 的 HTTP/HTTPS 被关；Ethernet（10.0.0.1:7890，非我们的）不动
+        assert len(state_offs) == 2
+        assert all(c[2] == "Wi-Fi" and c[3] == "off" for c in state_offs)
+
+    def test_no_snapshot_keeps_foreign_proxy(self, state_path):
+        """无快照 + 代理端口不是我们的 → 不动用户配置。"""
+        r = self._runner_with("127.0.0.1", 9999)
+        ok, msg = sysproxy.restore(run=r, port=8888)
+        assert ok and msg == "无接管记录"
+        assert not [c for c in r.calls if "proxystate" in c[1]]
+
+    def test_no_snapshot_keeps_non_loopback(self, state_path):
+        """无快照 + 代理是其他服务器（哪怕端口相同）→ 不动。"""
+        r = self._runner_with("192.168.1.1", 8888)
+        ok, msg = sysproxy.restore(run=r, port=8888)
+        assert msg == "无接管记录"
+
+    def test_recover_sweeps_when_snapshot_missing(self, state_path):
+        """启动崩溃恢复：无快照也按端口兜底扫一遍。"""
+        r = self._runner_with("localhost", 8888)   # localhost 同样算我们的
+        assert sysproxy.recover_if_needed(run=r, port=8888) is True
+        assert [c for c in r.calls if "proxystate" in c[1]]
+
+    def test_recover_noop_when_clean(self, state_path):
+        r = FakeRunner()   # 默认没有指向我们的代理
+        assert sysproxy.recover_if_needed(run=r, port=8888) is False
+
+    def test_snapshot_still_wins_over_fallback(self, state_path):
+        """有快照时走原还原逻辑（按记录恢复原值），兜底不参与。"""
+        r = self._runner_with("127.0.0.1", 8888)
+        state_path.write_text(json.dumps({
+            "platform": "macos",
+            "services": {"Wi-Fi": {
+                "web": {"enabled": True, "server": "10.0.0.1", "port": 7890},
+                "secure": {"enabled": True, "server": "10.0.0.1", "port": 7890},
+            }},
+        }), encoding="utf-8")
+        ok, msg = sysproxy.restore(run=r, port=8888)
+        assert ok and "兜底" not in msg
+        # 恢复成快照里的原值而不是直接关
+        assert r.state["Wi-Fi"][True]["server"] == "10.0.0.1"
