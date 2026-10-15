@@ -44,7 +44,7 @@ class RuleTable(QTableWidget):
     row_dropped = Signal(int, int)  # (源行, 目标插入位置-原始列表语义)
 
     def __init__(self, parent=None):
-        # 列：选 / 序号 / 名称 / 启用 / 匹配 / 动作 / 来源 / 命中 / 创建时间（v1.15+）
+        # 列：选择(全选框) / 序号 / 名称 / 启用 / 匹配 / 动作 / 来源 / 命中 / 创建时间（v1.15+）
         super().__init__(0, 9, parent)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
@@ -152,9 +152,11 @@ class RulesPanel(QWidget):
 
         self.table = RuleTable(self)
         # 列布局：勾选框 + 序号 + 名称在前（v1.15 批量操作 redesign：
-        # 勾选的才是批量操作目标；序号与流量列表 MOCK#N 徽标对应）
+        # 勾选的才是批量操作目标；序号与流量列表 MOCK#N 徽标对应）。
+        # 第 0 列表头文字留空——「选择」标题由表头上的全选组合控件绘制，
+        # 避免原生表头文字与覆盖的勾选框叠在一起。
         self.table.setHorizontalHeaderLabels(
-            ["选", "序号", "名称", "启用", "匹配", "动作", "来源", "命中", "创建时间"]
+            ["", "序号", "名称", "启用", "匹配", "动作", "来源", "命中", "创建时间"]
         )
         # 质感：斑马纹 + 无网格线 + 紧凑行高（全局 QSS 管表头/边框）
         self.table.setAlternatingRowColors(True)
@@ -171,7 +173,7 @@ class RulesPanel(QWidget):
         self.table.horizontalHeader().setStretchLastSection(False)
         # 勾选列/序号列定宽（紧凑，不抢名称列空间）；名称列 Stretch，
         # 其余给合理初值，用户仍可拖拽调整
-        self.table.setColumnWidth(0, 32)   # 选
+        self.table.setColumnWidth(0, 60)   # 选择（标题 + 全选框）
         self.table.setColumnWidth(1, 40)   # 序号
         self.table.horizontalHeader().setSectionResizeMode(
             2, QHeaderView.ResizeMode.Stretch
@@ -182,13 +184,22 @@ class RulesPanel(QWidget):
         self.table.setColumnWidth(6, 70)   # 来源
         self.table.setColumnWidth(7, 52)   # 命中
         self.table.setColumnWidth(8, 130)  # 创建时间
-        # 全选：表头第 0 列勾选框，点击切换当前列表全部勾选状态；
-        # 子控件定位到表头几何上，随表头宽高/滚动实时跟随。
+        # 全选：表头第 0 列用「选择 + 勾选框」组合控件（覆盖在表头几何上，
+        # 随表头宽高/滚动实时跟随）。原生表头文字留空，避免与控件重叠。
+        # 点击勾选框 = 全选当前列表，再次点击 = 全部取消。
         header = self.table.horizontalHeader()
-        self.select_all_cb = QCheckBox(self.table)
+        self._select_all_host = QWidget(self.table)
+        host_layout = QHBoxLayout(self._select_all_host)
+        host_layout.setContentsMargins(6, 0, 0, 0)
+        host_layout.setSpacing(2)
+        title = QLabel("选择")
+        self.select_all_cb = QCheckBox()
         self.select_all_cb.setObjectName("selectAllCb")
         self.select_all_cb.setToolTip("全选 / 取消全选当前列表（含「只显示启用」过滤后的可见行）")
         self.select_all_cb.setTristate(True)
+        host_layout.addWidget(title)
+        host_layout.addWidget(self.select_all_cb)
+        host_layout.addStretch(1)
         self._updating_select_all = False
         self.select_all_cb.stateChanged.connect(self._on_select_all_state_changed)
         header.geometriesChanged.connect(self._position_select_all)
@@ -333,22 +344,17 @@ class RulesPanel(QWidget):
     # ------------------------------------------------------------ 全选
 
     def _position_select_all(self) -> None:
-        """把全选勾选框定位到表头第 0 列居中（随表头几何变化实时跟随）。"""
+        """把「选择 + 全选框」组合控件定位到表头第 0 列（随几何变化实时跟随）。
+
+        不要按 isVisible 早退：show 前后的多次几何回调都要跟随，
+        否则会停在构造期的旧尺寸上（实测宽度卡在 50px）。
+        """
         header = self.table.horizontalHeader()
-        cb = self.select_all_cb
-        if not cb.isVisible():
-            return
+        host = self._select_all_host
         x = header.sectionViewportPosition(0)
         w = header.sectionSize(0)
-        h = header.height()
-        sz = cb.sizeHint()
-        cb.setGeometry(
-            int(x + (w - sz.width()) / 2),
-            int((h - sz.height()) / 2),
-            sz.width(),
-            sz.height(),
-        )
-        cb.raise_()  # 盖在表头绘制之上
+        host.setGeometry(x, 0, w, header.height())
+        host.raise_()  # 盖在表头绘制之上
 
     def _on_select_all_state_changed(self, state) -> None:
         """表头全选框状态变化：跳过程序内部更新，其余切换全部行。
