@@ -158,14 +158,27 @@ class RulesPanel(QWidget):
         self.table.setShowGrid(False)
         self.table.verticalHeader().setDefaultSectionSize(22)
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
-        )
-        self.table.horizontalHeader().setStretchLastSection(True)
         self.table.verticalHeader().setVisible(False)
-        # 勾选列/序号列定宽（紧凑，不抢名称列空间）
-        self.table.setColumnWidth(0, 32)
-        self.table.setColumnWidth(1, 40)
+        # 表头必须用 Interactive 定宽，不能用 ResizeToContents：
+        # 后者每 setItem 一次就触发整表头重算，refresh 全表重建时是
+        # O(N²)——500 条规则实测 58 秒（转圈根因）；Interactive 15ms。
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        self.table.horizontalHeader().setStretchLastSection(False)
+        # 勾选列/序号列定宽（紧凑，不抢名称列空间）；名称列 Stretch，
+        # 其余给合理初值，用户仍可拖拽调整
+        self.table.setColumnWidth(0, 32)   # 选
+        self.table.setColumnWidth(1, 40)   # 序号
+        self.table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch
+        )                                  # 名称（吃掉剩余空间）
+        self.table.setColumnWidth(3, 44)   # 启用
+        self.table.setColumnWidth(4, 220)  # 匹配
+        self.table.setColumnWidth(5, 200)  # 动作
+        self.table.setColumnWidth(6, 70)   # 来源
+        self.table.setColumnWidth(7, 52)   # 命中
+        self.table.setColumnWidth(8, 130)  # 创建时间
         self.table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
@@ -206,6 +219,8 @@ class RulesPanel(QWidget):
         visible = self._visible_rules()
         self._display_ids = [r.id for r in visible]
         self._loading = True
+        # 重建期间关掉重绘：几百行时避免每个 item 都触发一次中间布局
+        self.table.setUpdatesEnabled(False)
         self.table.setRowCount(len(visible))
         global_index = {r.id: i + 1 for i, r in enumerate(self.store.all())}
         for i, rule in enumerate(visible):
@@ -244,6 +259,7 @@ class RulesPanel(QWidget):
             if rule.error:
                 self.table.item(i, 2).setToolTip(rule.error)
         self._loading = False
+        self.table.setUpdatesEnabled(True)
         self._update_batch_buttons()
 
     def _fill_hits(self, row: int, rule) -> None:

@@ -212,13 +212,21 @@ class TrafficTable(QTableView):
         self.verticalHeader().setVisible(False)
         self.verticalHeader().setDefaultSectionSize(22)   # Fiddler 式紧凑行高
         header = self.horizontalHeader()
+        header.setSortIndicatorShown(True)
+        self.setSortingEnabled(True)
+        # 注意：列宽策略不能只在这里设一次——QHeaderView::setModel() 会把
+        # 按列设置的 resize 模式与宽度全部重置回默认（120px），而主窗口是
+        # 构造之后才 setModel()。所以真正的配置在 setModel() 里做。
+
+    def _apply_column_layout(self) -> None:
+        """列宽策略（v1.15）：序号/方法/状态/大小/耗时 这类短内容列给紧凑
+        定宽；主机与路径是主要阅读区，设为 Stretch 平分剩余空间，窗口
+        越宽看得越多；标记列定宽可拖。
+        """
+        header = self.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
         header.setDefaultSectionSize(120)
-        header.setSortIndicatorShown(True)
-        # 列宽策略（v1.15）：序号/方法/状态/大小/耗时 这类短内容列给紧凑
-        # 定宽；主机与路径是主要阅读区，设为 Stretch 平分剩余空间，窗口
-        # 越宽看得越多；标记列定宽可拖。
         header.setSectionResizeMode(COL_HOST, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(COL_PATH, QHeaderView.ResizeMode.Stretch)
         self.setColumnWidth(COL_ID, 40)
@@ -229,17 +237,18 @@ class TrafficTable(QTableView):
         self.setColumnWidth(COL_RESP_SIZE, 64)
         self.setColumnWidth(COL_DURATION, 64)
         self.setColumnWidth(COL_MARK, 140)
-        self.setSortingEnabled(True)
 
     def setModel(self, model):  # noqa: N802
         """接入模型后清掉初始排序指示（section=-1 → 保持抓包到达顺序）。
 
         QTableView.setSortingEnabled(True) 会立刻按「当前指示列」排一次；
         默认指示列是 0，虽然按 # 升序恰好等于到达顺序，但显式清掉更不容易
-        在后续改动里悄悄变味。
+        在后续改动里悄悄变味。同时必须在 setModel 之后应用列宽策略——
+        QHeaderView 换模型时会重置全部按列配置。
         """
         super().setModel(model)
         if model is not None:
+            self._apply_column_layout()
             self.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
             model.sort(-1)
 
