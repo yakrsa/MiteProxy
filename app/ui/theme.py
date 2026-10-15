@@ -48,6 +48,9 @@ COLORS: dict[str, tuple[str, str]] = {
     #    整行看不见的 bug），token 显式取色 + apply() 重建样式表才稳
     "sel_bg":      ("#0969da", "#4493f8"),   # 选中行底色
     "sel_fg":      ("#ffffff", "#ffffff"),   # 选中行文字
+    # -- URL 关键字高亮行（顶部「高亮」框实时命中，v1.15）：青蓝底，
+    #    与 mock 琥珀、搜索黄、选中蓝区分开
+    "hl_row_bg":   ("#d9eef7", "#12384f"),   # 高亮行底色
 }
 
 #: 当前档位（apply() 后与 settings.theme 一致）

@@ -132,6 +132,11 @@ class CaptureAddon:
         content_type = ""
         if res is not None:
             content_type = res.headers.get("content-type", "") or ""
+        # 请求体大小（v1.15，列表单独一列）；raw_content 为 None 时按 0
+        try:
+            req_size = len(req.raw_content or b"")
+        except Exception:
+            req_size = 0
         return {
             "id": flow.id,
             "method": req.method,
@@ -142,6 +147,7 @@ class CaptureAddon:
             "url": req.pretty_url,
             "status": status,
             "size": size,
+            "req_size": req_size,
             "duration_ms": round(duration_ms, 1),
             "content_type": content_type,
             "marked": getattr(flow, "marked", "") or "",

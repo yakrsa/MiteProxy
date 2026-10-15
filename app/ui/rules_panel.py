@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 from PySide6.QtCore import Qt, Signal
@@ -91,17 +92,36 @@ class RulesPanel(QWidget):
         self.edit_btn = QPushButton("编辑")
         self.delete_btn = QPushButton("删除")
         self.import_btn = QPushButton("导入 Fiddler 规则")
+        self.export_btn = QPushButton("导出规则")
+        self.import_native_btn = QPushButton("导入规则")
+        self.batch_enable_btn = QPushButton("批量启用")
+        self.batch_disable_btn = QPushButton("批量停用")
         self.up_btn = QPushButton("上移")
         self.down_btn = QPushButton("下移")
         self.only_enabled_cb = QCheckBox("只显示启用")
         self.only_enabled_cb.setToolTip(
             "勾选后列表只显示启用中的规则；停用规则仍在存储中，取消勾选即可看到。"
         )
+        self.export_btn.setToolTip(
+            "选中行时只导出选中的规则；未选中时导出全部。"
+            "MiteProxy 原生 .json 格式，启停状态与顺序一并保存。"
+        )
+        self.import_native_btn.setToolTip(
+            "导入 MiteProxy 导出的 .json 规则文件（追加到现有规则之后，"
+            "不覆盖已有规则）。要导 Fiddler 的 .farx 请用旁边的按钮。"
+        )
+        self.delete_btn.setToolTip(
+            "删除选中的规则（支持 Ctrl/Shift 多选批量删除）。"
+        )
         for b in (
             self.add_btn,
             self.edit_btn,
             self.delete_btn,
+            self.batch_enable_btn,
+            self.batch_disable_btn,
             self.import_btn,
+            self.import_native_btn,
+            self.export_btn,
             self.up_btn,
             self.down_btn,
         ):
@@ -129,6 +149,8 @@ class RulesPanel(QWidget):
             QAbstractItemView.SelectionBehavior.SelectRows
         )
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        # 批量操作（v1.15）：Ctrl/Shift 多选后可批量启停/删除/导出选中
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         layout.addWidget(self.table)
 
@@ -136,6 +158,10 @@ class RulesPanel(QWidget):
         self.edit_btn.clicked.connect(self._on_edit)
         self.delete_btn.clicked.connect(self._on_delete)
         self.import_btn.clicked.connect(self._on_import)
+        self.import_native_btn.clicked.connect(self._on_import_native)
+        self.export_btn.clicked.connect(self._on_export)
+        self.batch_enable_btn.clicked.connect(lambda: self._on_batch_set_enabled(True))
+        self.batch_disable_btn.clicked.connect(lambda: self._on_batch_set_enabled(False))
         self.up_btn.clicked.connect(lambda: self._on_move(-1))
         self.down_btn.clicked.connect(lambda: self._on_move(1))
         self.table.row_dropped.connect(self._on_row_dropped)
@@ -254,40 +280,8 @@ class RulesPanel(QWidget):
         rule = self.store.get(rule_id)
         if rule is None:
             return
-        if rule.enabled:
-            self._warn_duplicate_matches(rule)
         self.store.update(rule_id, enabled=not rule.enabled)
         self.refresh()
-
-    @staticmethod
-    def _same_match(a, b) -> bool:
-        """两条规则的匹配条件是否完全一样（类型 + 值 + 方法）。"""
-        return (
-            a.match.type == b.match.type
-            and a.match.value == b.match.value
-            and a.match.method == b.match.method
-        )
-
-    def _warn_duplicate_matches(self, rule) -> None:
-        """停用规则时，若有相同匹配条件的启用规则仍会命中，明确告知。
-
-        「先声明先匹配」下常见困惑：导入了重叠的 Fiddler 规则，停用
-        其中一条后请求仍被另一条 mock——看起来像"停用不生效"。
-        """
-        dupes = [
-            r for r in self.store.all()
-            if r.enabled and r.id != rule.id and self._same_match(r, rule)
-        ]
-        if not dupes:
-            return
-        names = "、".join(d.name for d in dupes[:3])
-        more = f" 等 {len(dupes)} 条" if len(dupes) > 3 else ""
-        QMessageBox.information(
-            self,
-            "注意：仍有规则会命中",
-            f"停用「{rule.name}」后，相同匹配的启用规则仍会命中同样请求：\n"
-            f"{names}{more}\n\n如需完全放行，请一并停用这些规则。",
-        )
 
     def _on_filter_toggled(self) -> None:
         """切换「只显示启用」：重建视图，尽量保住当前选中的规则。"""
@@ -348,15 +342,48 @@ class RulesPanel(QWidget):
         if dialog.exec():
             self.refresh()
 
-    def _on_delete(self) -> None:
-        rule = self._current_rule()
-        if rule is None:
+    # ------------------------------------------------------------ 批量操作
+
+    def _selected_rule_ids(self) -> list[str]:
+        """当前多选中的规则 id（按显示行序；只在可见行内选择）。"""
+        rows = sorted({idx.row() for idx in self.table.selectionModel().selectedRows()})
+        return [
+            self._display_ids[row]
+            for row in rows
+            if 0 <= row < len(self._display_ids)
+        ]
+
+    def _on_batch_set_enabled(self, enabled: bool) -> None:
+        ids = self._selected_rule_ids()
+        if not ids:
+            QMessageBox.information(self, "提示", "请先选中规则（Ctrl/Shift 可多选）")
             return
-        reply = QMessageBox.question(
-            self, "确认删除", f"确定删除规则「{rule.name}」？"
+        for rule_id in ids:
+            self.store.update(rule_id, enabled=enabled)
+        self.refresh()
+
+    def _on_delete(self) -> None:
+        ids = self._selected_rule_ids()
+        if not ids:
+            rule = self._current_rule()
+            if rule is None:
+                return
+            ids = [rule.id]
+        names = []
+        for rule_id in ids:
+            rule = self.store.get(rule_id)
+            if rule is not None:
+                names.append(rule.name)
+        if not names:
+            return
+        target = (
+            f"「{names[0]}」" if len(names) == 1
+            else f"{len(names)} 条规则（{('、'.join(names[:3]))}{'…' if len(names) > 3 else ''}）"
         )
+        reply = QMessageBox.question(self, "确认删除", f"确定删除{target}？")
         if reply == QMessageBox.StandardButton.Yes:
-            self.store.delete(rule.id)
+            for rule_id in ids:
+                self.store.delete(rule_id)
             self.refresh()
 
     # ------------------------------------------------------------ Fiddler 导入
@@ -402,3 +429,76 @@ class RulesPanel(QWidget):
                     self, "导入完成", f"成功导入 {count} 条规则"
                 )
             self.import_requested.emit()  # 只在真正走完导入流程后通知
+
+    # -------------------------------------------------------- 原生导入/导出
+
+    def _on_export(self) -> None:
+        """导出规则为 MiteProxy 原生 .json（与 rules.json 同格式）。
+
+        选中了若干行时只导出选中的；未选中导出全部。
+        """
+        ids = self._selected_rule_ids()
+        if ids:
+            rules = [r for r in (self.store.get(i) for i in ids) if r is not None]
+            scope = f"选中的 {len(rules)} 条"
+        else:
+            rules = self.store.all()
+            scope = f"全部 {len(rules)} 条"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出规则",
+            "miteproxy-rules.json",
+            "MiteProxy 规则 (*.json);;所有文件 (*)",
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".json"):
+            path += ".json"
+        try:
+            payload = {
+                "version": 1,
+                "exported_from": "MiteProxy",
+                "rules": [r.to_dict() for r in rules],
+            }
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+        except OSError as e:
+            QMessageBox.critical(self, "导出失败", str(e))
+            return
+        QMessageBox.information(
+            self, "导出完成", f"已导出{scope}规则到\n{path}"
+        )
+
+    def _on_import_native(self) -> None:
+        """导入 MiteProxy 导出的 .json 规则文件（追加，不覆盖现有规则）。"""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "导入规则",
+            "",
+            "MiteProxy 规则 (*.json);;所有文件 (*)",
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError) as e:
+            QMessageBox.critical(self, "导入失败", f"文件读取/解析失败：{e}")
+            return
+        raw_rules = data.get("rules") if isinstance(data, dict) else data
+        if not isinstance(raw_rules, list) or not raw_rules:
+            QMessageBox.information(self, "无可导入规则", "文件里没有规则数据。")
+            return
+        rules = []
+        for raw in raw_rules:
+            try:
+                rules.append(Rule.from_dict(raw))
+            except Exception:
+                continue  # 单条坏数据跳过，不影响其余
+        if not rules:
+            QMessageBox.information(self, "无可导入规则", "文件里的规则格式无法识别。")
+            return
+        count, _ = self.store.merge(rules)
+        self.refresh()
+        self.import_requested.emit()
+        QMessageBox.information(self, "导入完成", f"成功导入 {count} 条规则")

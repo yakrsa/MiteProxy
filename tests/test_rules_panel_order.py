@@ -305,56 +305,162 @@ class TestTablePolish:
         assert "QHeaderView::section" in qss
 
 
-# ------------------------------------------------- 停用时的重复匹配提示
 
-class TestToggleDuplicateWarning:
-    """停用规则时若还有相同匹配的启用规则，必须明确告知（防"停用不生效"困惑）。"""
+# --------------------------------------------- 原生规则导出 / 导入（v1.15）
 
-    @pytest.fixture
-    def dup_store(self, tmp_path):
-        s = RuleStore(path=tmp_path / "rules.json")
-        for name in ("规则一", "规则二"):
-            r = Rule.create(name)
-            r.match = Match(type="contains", value="/api/same")
-            s.add(r)
-        return s
-
-    def _captured_info(self, monkeypatch):
+class TestNativeExportImport:
+    @staticmethod
+    def _stub_info(monkeypatch):
+        """导出/导入成功路径会弹模态提示框，offscreen 测试必须吞掉。"""
         from PySide6.QtWidgets import QMessageBox
 
+        monkeypatch.setattr(
+            QMessageBox, "information", staticmethod(lambda *a, **k: None)
+        )
+
+    def test_export_writes_native_json(self, qapp, three_rules, tmp_path, monkeypatch):
+        from app.ui.rules_panel import RulesPanel
+
+        self._stub_info(monkeypatch)
+        out = tmp_path / "out.json"
+        monkeypatch.setattr(
+            "app.ui.rules_panel.QFileDialog.getSaveFileName",
+            staticmethod(lambda *a, **k: (str(out), "")),
+        )
+        panel = RulesPanel(three_rules)
+        panel._on_export()
+        import json as _json
+
+        data = _json.loads(out.read_text(encoding="utf-8"))
+        assert data["version"] == 1
+        assert [r["name"] for r in data["rules"]] == ["规则甲", "规则乙", "规则丙"]
+
+    def test_import_appends_without_overwrite(self, qapp, three_rules, tmp_path, monkeypatch):
+        import json as _json
+
+        self._stub_info(monkeypatch)
+        src = tmp_path / "in.json"
+        src.write_text(
+            _json.dumps(
+                {"version": 1, "rules": [
+                    {"id": "r_x", "name": "外来规则", "enabled": False,
+                     "match": {"type": "contains", "value": "/imported/"},
+                     "action": {"status": 200, "body": "hi"}},
+                ]},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            "app.ui.rules_panel.QFileDialog.getOpenFileName",
+            staticmethod(lambda *a, **k: (str(src), "")),
+        )
+        panel = RulesPanel(three_rules)
+        panel._on_import_native()
+        names = [r.name for r in three_rules.all()]
+        assert names == ["规则甲", "规则乙", "规则丙", "外来规则"]  # 追加不覆盖
+        imported = three_rules.all()[3]
+        assert imported.enabled is False  # 启停状态保留
+        assert imported.id != "r_x"       # merge 重生成 id，避免撞车
+
+    def test_import_bad_file_shows_error(self, qapp, three_rules, tmp_path, monkeypatch):
+        from PySide6.QtWidgets import QMessageBox
+
+        bad = tmp_path / "bad.json"
+        bad.write_text("not-json", encoding="utf-8")
+        monkeypatch.setattr(
+            "app.ui.rules_panel.QFileDialog.getOpenFileName",
+            staticmethod(lambda *a, **k: (str(bad), "")),
+        )
         calls = []
         monkeypatch.setattr(
-            QMessageBox, "information",
-            staticmethod(lambda *a, **k: calls.append(a) or QMessageBox.StandardButton.Ok),
+            QMessageBox, "critical",
+            staticmethod(lambda *a, **k: calls.append(a)),
         )
-        return calls
+        panel = RulesPanel(three_rules)
+        panel._on_import_native()
+        assert len(calls) == 1
+        assert len(three_rules.all()) == 3  # 坏文件不进数据
+
+
+# ------------------------------------------------- 批量选中操作（v1.15）
+
+class TestBatchOperations:
+    """多选后批量启用/停用/删除/导出选中。"""
 
     @staticmethod
-    def _all_text(args) -> str:
-        return " ".join(str(x) for x in args)
+    def _select(panel, rows):
+        from PySide6.QtCore import QItemSelectionModel
 
-    def test_disable_warns_when_duplicate_enabled(self, qapp, dup_store, monkeypatch):
-        calls = self._captured_info(monkeypatch)
-        panel = RulesPanel(dup_store)
-        first = dup_store.all()[0]
-        panel._toggle_enable(first.id)
-        assert dup_store.get(first.id).enabled is False  # 停用照常生效
-        assert len(calls) == 1
-        assert "规则二" in self._all_text(calls[0])  # 提示里点出仍会命中的规则
+        sel = panel.table.selectionModel()
+        flag = QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+        for row in rows:
+            sel.select(panel.table.model().index(row, 0), flag)
 
-    def test_disable_no_warning_without_duplicate(self, qapp, dup_store, monkeypatch):
-        calls = self._captured_info(monkeypatch)
-        panel = RulesPanel(dup_store)
-        # 先停用规则二，再停用规则一就没有重复启用了
-        second = dup_store.all()[1]
-        dup_store.update(second.id, enabled=False)
-        panel._toggle_enable(dup_store.all()[0].id)
-        assert calls == []
+    @staticmethod
+    def _stub_confirm(monkeypatch):
+        from PySide6.QtWidgets import QMessageBox
 
-    def test_enable_never_warns(self, qapp, dup_store, monkeypatch):
-        calls = self._captured_info(monkeypatch)
-        panel = RulesPanel(dup_store)
-        first = dup_store.all()[0]
-        dup_store.update(first.id, enabled=False)
-        panel._toggle_enable(first.id)  # 这是"启用"方向
-        assert calls == []
+        monkeypatch.setattr(
+            QMessageBox, "question",
+            staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes),
+        )
+        monkeypatch.setattr(
+            QMessageBox, "information", staticmethod(lambda *a, **k: None)
+        )
+
+    def test_batch_disable_selected_only(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        self._select(panel, [0, 2])  # 甲、丙
+        panel._on_batch_set_enabled(False)
+        states = [r.enabled for r in three_rules.all()]
+        assert states == [False, True, False]  # 乙不受影响
+
+    def test_batch_enable(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        for r in three_rules.all():
+            three_rules.update(r.id, enabled=False)
+        self._select(panel, [1])
+        panel._on_batch_set_enabled(True)
+        assert [r.enabled for r in three_rules.all()] == [False, True, False]
+
+    def test_batch_delete_selected(self, qapp, three_rules, monkeypatch):
+        self._stub_confirm(monkeypatch)
+        panel = RulesPanel(three_rules)
+        self._select(panel, [0, 1])
+        panel._on_delete()
+        assert [r.name for r in three_rules.all()] == ["规则丙"]
+
+    def test_selected_ids_follow_display_mapping(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        self._select(panel, [1])
+        assert panel._selected_rule_ids() == [three_rules.all()[1].id]
+
+    def test_export_only_selected(self, qapp, three_rules, tmp_path, monkeypatch):
+        import json as _json
+
+        self._stub_confirm(monkeypatch)
+        out = tmp_path / "sel.json"
+        monkeypatch.setattr(
+            "app.ui.rules_panel.QFileDialog.getSaveFileName",
+            staticmethod(lambda *a, **k: (str(out), "")),
+        )
+        panel = RulesPanel(three_rules)
+        self._select(panel, [0, 2])
+        panel._on_export()
+        data = _json.loads(out.read_text(encoding="utf-8"))
+        assert [r["name"] for r in data["rules"]] == ["规则甲", "规则丙"]
+
+    def test_export_all_when_no_selection(self, qapp, three_rules, tmp_path, monkeypatch):
+        import json as _json
+
+        self._stub_confirm(monkeypatch)
+        out = tmp_path / "all.json"
+        monkeypatch.setattr(
+            "app.ui.rules_panel.QFileDialog.getSaveFileName",
+            staticmethod(lambda *a, **k: (str(out), "")),
+        )
+        panel = RulesPanel(three_rules)
+        panel._on_export()
+        data = _json.loads(out.read_text(encoding="utf-8"))
+        assert len(data["rules"]) == 3

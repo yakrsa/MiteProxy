@@ -34,7 +34,7 @@ def qapp():
 
 from addons.capture import CaptureAddon  # noqa: E402
 from app.settings import Settings, load_settings, save_settings  # noqa: E402
-from app.ui.flow_store import COL_ID, COL_MARK, COL_SIZE, FlowStore  # noqa: E402
+from app.ui.flow_store import COL_ID, COL_MARK, COL_RESP_SIZE, FlowStore  # noqa: E402
 from app.ui.signals import FlowBridge  # noqa: E402
 
 
