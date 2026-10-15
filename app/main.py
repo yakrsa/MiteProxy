@@ -8,10 +8,25 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from app.ui.main_window import MainWindow
+
+
+def _app_icon() -> QIcon:
+    """窗口/任务栏图标（Windows 任务栏取自 QApplication.windowIcon）。
+
+    打包后 icon_256.png 由 spec datas 塞进 _internal（sys._MEIPASS），
+    源码运行取仓库 packaging/ 下。
+    """
+    base = Path(getattr(sys, "_MEIPASS", "")) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+    for candidate in (base / "icon_256.png", base / "packaging" / "icon_256.png"):
+        if candidate.is_file():
+            return QIcon(str(candidate))
+    return QIcon()
 
 
 def main() -> int:
@@ -22,6 +37,7 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setApplicationName("MiteProxy")
+    app.setWindowIcon(_app_icon())
 
     # 代理由 MainWindow 统一持有（含 MockAddon / CaptureAddon），
     # 入口不再单独创建 ProxyService，否则会出现两个代理实例：
