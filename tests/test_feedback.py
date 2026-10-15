@@ -4,6 +4,7 @@
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -175,6 +176,8 @@ class TestFeedbackDialog:
     def test_no_token_disables_submit(self, qapp, monkeypatch):
         monkeypatch.delenv(fb.TOKEN_ENV, raising=False)
         monkeypatch.setattr(fb, "EMBEDDED_FEEDBACK_TOKEN", "")
+        # 本机可能存在 ~/.miteproxy/feedback_token（开发机联调用），一并屏蔽
+        monkeypatch.setattr(fb, "TOKEN_FILE", Path("/nonexistent/feedback_token"))
         from app.ui.feedback_dialog import FeedbackDialog
 
         d = FeedbackDialog()

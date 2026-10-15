@@ -30,8 +30,11 @@ ISSUES_API = f"https://api.github.com/repos/{GITHUB_REPO}/issues"
 NEW_ISSUE_URL = f"https://github.com/{GITHUB_REPO}/issues/new"
 
 TOKEN_ENV = "MITEPROXY_FEEDBACK_TOKEN"
-# 打包前填入 fine-grained PAT（仅本仓库 Issues 写权限）
-EMBEDDED_FEEDBACK_TOKEN = ""
+# fine-grained PAT（仅 yakrsa/MiteProxy 的 Issues 写权限，泄露最坏影响=灌垃圾 issue）
+EMBEDDED_FEEDBACK_TOKEN = (
+    "github_pat_11AAVC4IA0IsytIfwzjjk0_"
+    "y27Zbdzqpup1PDejteHrm7Hh6vE0Xgz1nDo7W7wDYT3ZJPPS7RIsDS4y5it"
+)
 # 本机 token 文件（开发机覆盖用，优先级介于环境变量与内置常量之间；
 # 打包版用户机器上没有该文件，自然回落到内置 token）
 TOKEN_FILE = Path("~/.miteproxy/feedback_token").expanduser()
