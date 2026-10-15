@@ -18,8 +18,8 @@ import pytest  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtWidgets import QApplication, QPushButton  # noqa: E402
+from PySide6.QtCore import QPoint, Qt  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton  # noqa: E402
 
 from app.rules import Action, Match, Rule, RuleStore  # noqa: E402
 from app.ui.rules_panel import RuleTable, RulesPanel  # noqa: E402
@@ -60,7 +60,7 @@ class TestColumnLayout:
         panel = RulesPanel(three_rules)
         headers = [panel.table.horizontalHeaderItem(i).text() for i in range(9)]
         assert headers == [
-            "选", "序号", "名称", "启用", "匹配", "动作", "来源", "命中", "创建时间"
+            "", "序号", "名称", "启用", "匹配", "动作", "来源", "命中", "创建时间"
         ]
 
     def test_created_at_column_new_rule_shows_time(self, qapp, three_rules):
@@ -579,14 +579,25 @@ class TestSelectAll:
     def test_select_all_checkbox_in_header(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
         panel.show()
+        host = panel._select_all_host
         cb = panel.select_all_cb
         assert cb is not None and cb.isWidgetType()
+        assert host is not None and host.isWidgetType()
         header = panel.table.horizontalHeader()
         sec_x = header.sectionViewportPosition(0)
         sec_w = header.sectionSize(0)
-        # 勾选框必须落在表头第 0 列横向区间内，纵向落在表头高度内
-        assert sec_x <= cb.x() <= sec_x + sec_w
-        assert 0 <= cb.y() <= header.height()
+        # 「选择 + 全选框」组合控件必须恰好覆盖表头第 0 列，且在表头高度内
+        assert host.x() == sec_x
+        assert host.width() == sec_w
+        assert 0 <= host.y() and host.y() + host.height() <= header.height()
+        # 组合控件里有「选择」标题，勾选框在控件内部可见
+        labels = host.findChildren(QLabel)
+        assert any(l.text() == "选择" for l in labels)
+        assert host.geometry().contains(
+            cb.mapTo(host.parentWidget(), QPoint(0, 0))
+        )
+        # 原生表头第 0 列文字必须为空（否则与覆盖控件文字叠印）
+        assert panel.table.horizontalHeaderItem(0).text() == ""
 
     def test_select_all_checks_every_row(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
