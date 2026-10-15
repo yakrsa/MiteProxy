@@ -234,3 +234,62 @@ class TestMockRowColoring:
         store.append(_row(is_replay=True))
         assert store.data(store.index(0, COL_HOST), Qt.ItemDataRole.BackgroundRole) is None
         assert store.data(store.index(0, COL_MARK)) == "REPLAY"
+
+
+# --------------------------------------------- URL 关键字高亮（v1.15）
+
+class TestHighlightKeyword:
+    """顶部「高亮」框：URL 子串匹配整行青蓝底，实时 + 对新流量生效。"""
+
+    def _row(self, url):
+        return {"id": url, "url": url, "method": "GET", "host": "a.com",
+                "path": "/", "status": 200, "size": 10, "duration_ms": 1.0,
+                "marked": ""}
+
+    def _bg(self, store, row_idx):
+        from app.ui.flow_store import COLUMNS
+
+        return store.data(store.index(row_idx, 0),
+                          __import__("PySide6.QtCore", fromlist=["Qt"]).Qt.ItemDataRole.BackgroundRole)
+
+    def test_highlight_matches_url_case_insensitive(self):
+        from app.ui.flow_store import FlowStore
+
+        store = FlowStore()
+        store.append(self._row("https://a.com/api/user/list"))
+        store.append(self._row("https://b.com/other"))
+        store.set_highlight("USER")
+        assert self._bg(store, 0) is not None   # URL 含 user（忽略大小写）
+        assert self._bg(store, 1) is None
+
+    def test_realtime_for_new_traffic(self):
+        """先开高亮，之后新到的流量同样命中（append 即生效，无需刷新）。"""
+        from app.ui.flow_store import FlowStore
+
+        store = FlowStore()
+        store.set_highlight("pay")
+        store.append(self._row("https://a.com/pay/confirm"))
+        store.append(self._row("https://a.com/order"))
+        assert self._bg(store, 0) is not None
+        assert self._bg(store, 1) is None
+
+    def test_clear_keyword_removes_highlight(self):
+        from app.ui.flow_store import FlowStore
+
+        store = FlowStore()
+        store.append(self._row("https://a.com/pay"))
+        store.set_highlight("pay")
+        store.set_highlight("")   # 清空 = 关闭
+        assert self._bg(store, 0) is None
+
+    def test_highlight_wins_over_mock_bg(self):
+        """同时命中高亮与 mock 行时，高亮底色优先（用户主动关注点）。"""
+        from app.ui.flow_store import FlowStore, HL_ROW_BG, MOCK_ROW_BG
+
+        store = FlowStore()
+        row = self._row("https://a.com/api/pay")
+        row["marked"] = "MOCK#1:规则"
+        store.append(row)
+        store.set_highlight("pay")
+        bg = self._bg(store, 0)
+        assert bg is HL_ROW_BG and bg is not MOCK_ROW_BG

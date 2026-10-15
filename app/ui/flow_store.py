@@ -14,13 +14,15 @@ COLUMNS = [
     "服务器 IP",
     "路径",
     "状态",
-    "大小",
+    "请求体",
+    "响应",
     "耗时(ms)",
     "标记",
 ]
 COL_ID, COL_METHOD, COL_HOST, COL_SERVER_IP = 0, 1, 2, 3
-COL_PATH, COL_STATUS, COL_SIZE = 4, 5, 6
-COL_DURATION, COL_MARK = 7, 8
+COL_PATH, COL_STATUS = 4, 5
+COL_REQ_SIZE, COL_RESP_SIZE = 6, 7
+COL_DURATION, COL_MARK = 8, 9
 
 #: 排序专用 role。DisplayRole 里「大小」是 `4.2 KB`、「耗时」是格式化过的字符串，
 #: 直接按显示文本排会出现 `1.3 MB` 排在 `812 B` 前面的笑话——所以排序一律走这个
@@ -38,6 +40,10 @@ DEFAULT_MAX_ROWS = 5000
 MOCK_ROW_BG = theme.dynamic("mock_row_bg")
 MOCK_ROW_FG = theme.dynamic("mock_row_fg")
 MOCK_MARK_PREFIX = "MOCK:"
+
+# URL 关键字高亮行整行底色（顶部「高亮」框实时命中，v1.15）。
+# 青蓝底与 mock 琥珀、搜索黄、选中蓝区分；theme.dynamic 随主题切换就地更新。
+HL_ROW_BG = theme.dynamic("hl_row_bg")
 
 
 def _is_mock_row(row: dict) -> bool:
@@ -69,6 +75,30 @@ class FlowStore(QAbstractTableModel):
         super().__init__(parent)
         self.rows: list[dict] = []
         self.max_rows = DEFAULT_MAX_ROWS
+        self.highlight_keyword: str = ""  # URL 关键字高亮（命中行整行着色）
+
+    # ------------------------------------------------------------ 高亮
+
+    def set_highlight(self, keyword: str) -> None:
+        """设置/清空 URL 关键字高亮（大小写不敏感的子串匹配）。
+
+        空串 = 关闭高亮。实时生效：已显示的行走 dataChanged 重绘，
+        新到达的流量在 data() 里即时比对（append 后无需任何额外处理）。
+        """
+        keyword = (keyword or "").strip()
+        if keyword == self.highlight_keyword:
+            return
+        self.highlight_keyword = keyword
+        if self.rows:
+            top_left = self.index(0, 0)
+            bottom_right = self.index(len(self.rows) - 1, len(COLUMNS) - 1)
+            self.dataChanged.emit(top_left, bottom_right)
+
+    def _is_highlighted(self, row: dict) -> bool:
+        kw = self.highlight_keyword
+        if not kw:
+            return False
+        return kw.lower() in (row.get("url") or "").lower()
 
     # ------------------------------------------------------------ Qt 模型接口
 
@@ -98,7 +128,9 @@ class FlowStore(QAbstractTableModel):
                 return row["path"]
             if col == COL_STATUS:
                 return row["status"] or "-"
-            if col == COL_SIZE:
+            if col == COL_REQ_SIZE:
+                return format_size(row.get("req_size") or 0)
+            if col == COL_RESP_SIZE:
                 return format_size(row["size"])
             if col == COL_DURATION:
                 return row["duration_ms"]
@@ -115,9 +147,13 @@ class FlowStore(QAbstractTableModel):
                 return "REPLAY" if row.get("is_replay") else ""
             return None
 
-        if role == Qt.ItemDataRole.BackgroundRole and _is_mock_row(row):
-            # mock 命中的整行底色（含未选中态；选中时由系统选择色覆盖）
-            return MOCK_ROW_BG
+        if role == Qt.ItemDataRole.BackgroundRole:
+            # URL 关键字高亮优先于 mock 底色（用户主动指定的关注点更醒目）
+            if self._is_highlighted(row):
+                return HL_ROW_BG
+            if _is_mock_row(row):
+                # mock 命中的整行底色（含未选中态；选中时由系统选择色覆盖）
+                return MOCK_ROW_BG
 
         if role == Qt.ItemDataRole.ForegroundRole:
             # 状态列保留语义色（绿/蓝/橙/红），优先于 mock 行色
@@ -153,7 +189,9 @@ class FlowStore(QAbstractTableModel):
                 return (row["path"] or "").lower()
             if col == COL_STATUS:
                 return int(row["status"] or 0)
-            if col == COL_SIZE:
+            if col == COL_REQ_SIZE:
+                return int(row.get("req_size") or 0)
+            if col == COL_RESP_SIZE:
                 return int(row["size"] or 0)
             if col == COL_DURATION:
                 return float(row["duration_ms"] or 0.0)

@@ -25,6 +25,18 @@ from app.ui.filter_model import (
     FlowFilterProxyModel,
     SearchConfig,
 )
+from app.ui.flow_store import (
+    COL_DURATION,
+    COL_HOST,
+    COL_ID,
+    COL_MARK,
+    COL_METHOD,
+    COL_PATH,
+    COL_REQ_SIZE,
+    COL_RESP_SIZE,
+    COL_SERVER_IP,
+    COL_STATUS,
+)
 
 
 class FilterBar(QWidget):
@@ -201,17 +213,22 @@ class TrafficTable(QTableView):
         self.verticalHeader().setDefaultSectionSize(22)   # Fiddler 式紧凑行高
         header = self.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setStretchLastSection(True)
+        header.setStretchLastSection(False)
         header.setDefaultSectionSize(120)
         header.setSortIndicatorShown(True)
-        self.setColumnWidth(0, 50)   # #
-        self.setColumnWidth(1, 60)   # 方法
-        self.setColumnWidth(2, 180)  # 主机
-        self.setColumnWidth(3, 120)  # 服务器 IP
-        self.setColumnWidth(4, 300)  # 路径
-        self.setColumnWidth(5, 55)   # 状态
-        self.setColumnWidth(6, 80)   # 大小
-        self.setColumnWidth(7, 80)   # 耗时
+        # 列宽策略（v1.15）：序号/方法/状态/大小/耗时 这类短内容列给紧凑
+        # 定宽；主机与路径是主要阅读区，设为 Stretch 平分剩余空间，窗口
+        # 越宽看得越多；标记列定宽可拖。
+        header.setSectionResizeMode(COL_HOST, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(COL_PATH, QHeaderView.ResizeMode.Stretch)
+        self.setColumnWidth(COL_ID, 40)
+        self.setColumnWidth(COL_METHOD, 56)
+        self.setColumnWidth(COL_SERVER_IP, 110)
+        self.setColumnWidth(COL_STATUS, 48)
+        self.setColumnWidth(COL_REQ_SIZE, 64)
+        self.setColumnWidth(COL_RESP_SIZE, 64)
+        self.setColumnWidth(COL_DURATION, 64)
+        self.setColumnWidth(COL_MARK, 140)
         self.setSortingEnabled(True)
 
     def setModel(self, model):  # noqa: N802

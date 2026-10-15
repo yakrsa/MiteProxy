@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -266,6 +267,20 @@ class MainWindow(QMainWindow):
         idx = self.limit_combo.findData(self.settings.max_flows)
         self.limit_combo.setCurrentIndex(max(idx, 0))
         toolbar_row.addWidget(self.limit_combo)
+
+        # URL 关键字高亮（v1.15）：实时生效，对新到的流量也生效——
+        # 与「搜索」（只针对当时的历史请求）互补
+        toolbar_row.addSpacing(12)
+        toolbar_row.addWidget(QLabel("高亮:"))
+        self.highlight_edit = QLineEdit()
+        self.highlight_edit.setPlaceholderText("URL 关键字")
+        self.highlight_edit.setClearButtonEnabled(True)
+        self.highlight_edit.setFixedWidth(150)
+        self.highlight_edit.setToolTip(
+            "URL 包含该关键字的请求整行青蓝高亮。\n"
+            "实时生效：正在显示的与之后新到的流量都会高亮；清空即关闭。"
+        )
+        toolbar_row.addWidget(self.highlight_edit)
 
         toolbar_row.addSpacing(12)
         self.auto_scroll_cb = QCheckBox("自动滚动")
@@ -523,6 +538,7 @@ class MainWindow(QMainWindow):
         self.export_ca_btn.clicked.connect(self._on_export_ca)
         self.clear_btn.clicked.connect(self._on_clear)
         self.limit_combo.currentIndexChanged.connect(self._on_flow_limit_changed)
+        self.highlight_edit.textChanged.connect(self.flow_store.set_highlight)
 
         self.bridge.flow_arrived.connect(self._on_flow_arrived)
         self.bridge.flow_updated.connect(self._on_flow_updated)

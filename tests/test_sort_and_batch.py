@@ -46,7 +46,7 @@ from app.export import (  # noqa: E402
     session_banner,
 )
 from app.ui.filter_model import FlowFilterProxyModel  # noqa: E402
-from app.ui.flow_store import COL_DURATION, COL_SIZE, COL_STATUS, FlowStore  # noqa: E402
+from app.ui.flow_store import COL_DURATION, COL_RESP_SIZE, COL_STATUS, FlowStore  # noqa: E402
 from app.ui.traffic_table import TrafficTable  # noqa: E402
 
 
@@ -99,10 +99,10 @@ class TestSortRole:
             _row(id="c", size=4_300),       # 4.2 KB
         ])
         proxy = _proxy(store)
-        proxy.sort(COL_SIZE, Qt.SortOrder.AscendingOrder)
-        assert _order(proxy, COL_SIZE) == ["812 B", "4.2 KB", "1.3 MB"]
-        proxy.sort(COL_SIZE, Qt.SortOrder.DescendingOrder)
-        assert _order(proxy, COL_SIZE)[0] == "1.3 MB"
+        proxy.sort(COL_RESP_SIZE, Qt.SortOrder.AscendingOrder)
+        assert _order(proxy, COL_RESP_SIZE) == ["812 B", "4.2 KB", "1.3 MB"]
+        proxy.sort(COL_RESP_SIZE, Qt.SortOrder.DescendingOrder)
+        assert _order(proxy, COL_RESP_SIZE)[0] == "1.3 MB"
 
     def test_duration_numeric_not_string(self):
         """按字符串排 `9.0` 会排到 `10.0` 后面。"""
@@ -132,9 +132,9 @@ class TestSortRole:
         """排序后 `#` 仍是抓包到达序号（源行号 + 1），便于按序号回查。"""
         store = _store([_row(id="a", size=900), _row(id="b", size=100)])
         proxy = _proxy(store)
-        proxy.sort(COL_SIZE, Qt.SortOrder.AscendingOrder)
+        proxy.sort(COL_RESP_SIZE, Qt.SortOrder.AscendingOrder)
         assert _order(proxy, 0) == [2, 1]          # b 是第 2 条到达，排在最前
-        assert _order(proxy, COL_SIZE) == ["100 B", "900 B"]
+        assert _order(proxy, COL_RESP_SIZE) == ["100 B", "900 B"]
 
     def test_empty_server_ip_first_in_ascending(self):
         store = _store([
@@ -165,22 +165,22 @@ class TestTrafficTableSorting:
         proxy = _proxy(_store([_row(id="a", size=900), _row(id="b", size=100)]))
         table.setModel(proxy)
         assert table.is_sorted() is False
-        assert _order(proxy, COL_SIZE) == ["900 B", "100 B"]   # 到达顺序
+        assert _order(proxy, COL_RESP_SIZE) == ["900 B", "100 B"]   # 到达顺序
         # 真实交互路径：点表头 → 指示器 + 排序同时发生
-        table.sortByColumn(COL_SIZE, Qt.SortOrder.AscendingOrder)
-        assert _order(proxy, COL_SIZE) == ["100 B", "900 B"]
+        table.sortByColumn(COL_RESP_SIZE, Qt.SortOrder.AscendingOrder)
+        assert _order(proxy, COL_RESP_SIZE) == ["100 B", "900 B"]
         assert table.is_sorted() is True
         # 再点一次反向
-        table.sortByColumn(COL_SIZE, Qt.SortOrder.DescendingOrder)
-        assert _order(proxy, COL_SIZE) == ["900 B", "100 B"]
+        table.sortByColumn(COL_RESP_SIZE, Qt.SortOrder.DescendingOrder)
+        assert _order(proxy, COL_RESP_SIZE) == ["900 B", "100 B"]
 
     def test_new_rows_land_in_sorted_position(self):
         """排序后继续抓包，新行插入到正确位置（dynamicSortFilter）。"""
         store = _store([_row(id="a", size=900), _row(id="b", size=100)])
         proxy = _proxy(store)
-        proxy.sort(COL_SIZE, Qt.SortOrder.AscendingOrder)
+        proxy.sort(COL_RESP_SIZE, Qt.SortOrder.AscendingOrder)
         store.append(_row(id="c", size=300))
-        assert _order(proxy, COL_SIZE) == ["100 B", "300 B", "900 B"]
+        assert _order(proxy, COL_RESP_SIZE) == ["100 B", "300 B", "900 B"]
 
 
 class TestBatchExport:
