@@ -558,7 +558,9 @@ class MainWindow(QMainWindow):
         # 告诉 MockAddon 本代理监听哪：重定向规则指向自己时直接拒绝（死循环）
         self.mock.proxy_addr = ("127.0.0.1", port)
         return ProxyService(
-            host="127.0.0.1",
+            # 监听全部网卡（与证书服务一致）：手机/局域网设备才能通过
+            # 内网 IP 走代理抓包；只绑 127.0.0.1 的话本机能用、手机连不上
+            host="0.0.0.0",
             port=port,
             addons=[self.mock, self.capture, self.throttle, self.maplocal],
             options={"map_remote": specs},

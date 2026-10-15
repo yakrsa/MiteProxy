@@ -31,7 +31,7 @@ class ProxyService:
 
     def __init__(
         self,
-        host: str = "127.0.0.1",
+        host: str = "0.0.0.0",
         port: int = 8080,
         addons: list | None = None,
         options: dict | None = None,

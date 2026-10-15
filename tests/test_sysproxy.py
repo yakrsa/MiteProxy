@@ -636,3 +636,10 @@ class TestRestoreFallbackByPort:
         assert ok and "兜底" not in msg
         # 恢复成快照里的原值而不是直接关
         assert r.state["Wi-Fi"][True]["server"] == "10.0.0.1"
+
+
+class TestProxyBind:
+    def test_proxy_binds_all_interfaces(self, window):
+        """手机/局域网抓包：代理必须监听 0.0.0.0，只绑 127.0.0.1 的话
+        本机能用、手机连不上（2026-10-15 用户现场踩坑）。"""
+        assert window.proxy.host == "0.0.0.0"
