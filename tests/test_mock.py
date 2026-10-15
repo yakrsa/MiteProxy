@@ -53,7 +53,7 @@ class TestMockBasics:
         assert flow.response is not None
         assert flow.response.status_code == 200
         assert flow.response.get_text() == '{"total":0}'
-        assert flow.marked == "MOCK:空列表"
+        assert flow.marked == "MOCK#1:空列表"
 
     def test_first_matching_rule_wins(self, store):
         r1 = Rule.create("r1")
@@ -93,6 +93,47 @@ class TestMockBasics:
         assert flow.response.status_code == 503
         assert flow.response.headers.get("Retry-After") == "30"
         assert flow.response.get_text() == "maintenance"
+
+
+class TestMockNumbering:
+    """流量备注徽标带规则序号（MOCK#序号:名称，v1.15）。"""
+
+    def test_mark_shows_sequence(self, store):
+        r1 = Rule.create("第一条")
+        r1.match = Match(type=CONTAINS, value="/api/a")
+        r1.action = Action(status=200, body="a")
+        store.add(r1)
+        r2 = Rule.create("第二条")
+        r2.match = Match(type=CONTAINS, value="/api/b")
+        r2.action = Action(status=200, body="b")
+        store.add(r2)
+        addon = MockAddon(store)
+        flow = _make_flow("https://a.com/api/b")
+        _run(addon.request(flow))
+        assert flow.marked == "MOCK#2:第二条"
+
+    def test_sequence_follows_reorder(self, store):
+        r1 = Rule.create("甲")
+        r1.match = Match(type=CONTAINS, value="/api/x")
+        r1.action = Action(status=200, body="x")
+        store.add(r1)
+        r2 = Rule.create("乙")
+        r2.match = Match(type=CONTAINS, value="/api/y")
+        r2.action = Action(status=200, body="y")
+        store.add(r2)
+        # 拖拽换位后乙变第 1 条
+        store.reorder([r2.id, r1.id])
+        addon = MockAddon(store)
+        flow = _make_flow("https://a.com/api/y")
+        _run(addon.request(flow))
+        assert flow.marked == "MOCK#1:乙"
+
+    def test_index_of(self, store):
+        r1 = Rule.create("a"); store.add(r1)
+        r2 = Rule.create("b"); store.add(r2)
+        assert store.index_of(r1.id) == 1
+        assert store.index_of(r2.id) == 2
+        assert store.index_of("nope") == 0
 
 
 class TestMockSubstitution:
@@ -278,7 +319,7 @@ class TestMockRedirect:
         assert flow.response is None  # 不造响应，放行到新上游
         # redirect_url 是完整目标（不自动拼原路径；要拼路径用 $1 正则替换）
         assert flow.request.pretty_url == "https://staging.example.com/api/v2/"
-        assert flow.marked == "MOCK:转发"
+        assert flow.marked == "MOCK#1:转发"
 
     def test_redirect_supports_substitution(self, store):
         r = Rule.create("按组转发")

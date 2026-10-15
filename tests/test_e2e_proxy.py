@@ -104,8 +104,8 @@ class TestMockThroughProxy:
                 time.sleep(0.05)
             assert len(capture.flows) == 3
             marked = [f.marked for f in capture.flows.values() if f.marked]
-            assert "MOCK:inline" in marked
-            assert "MOCK:file" in marked
+            assert "MOCK#1:inline" in marked
+            assert "MOCK#2:file" in marked
         finally:
             proxy.stop()
 

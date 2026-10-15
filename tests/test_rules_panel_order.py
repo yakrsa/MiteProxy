@@ -303,3 +303,58 @@ class TestTablePolish:
         qss = theme.stylesheet()
         assert "alternate-background-color" in qss
         assert "QHeaderView::section" in qss
+
+
+# ------------------------------------------------- 停用时的重复匹配提示
+
+class TestToggleDuplicateWarning:
+    """停用规则时若还有相同匹配的启用规则，必须明确告知（防"停用不生效"困惑）。"""
+
+    @pytest.fixture
+    def dup_store(self, tmp_path):
+        s = RuleStore(path=tmp_path / "rules.json")
+        for name in ("规则一", "规则二"):
+            r = Rule.create(name)
+            r.match = Match(type="contains", value="/api/same")
+            s.add(r)
+        return s
+
+    def _captured_info(self, monkeypatch):
+        from PySide6.QtWidgets import QMessageBox
+
+        calls = []
+        monkeypatch.setattr(
+            QMessageBox, "information",
+            staticmethod(lambda *a, **k: calls.append(a) or QMessageBox.StandardButton.Ok),
+        )
+        return calls
+
+    @staticmethod
+    def _all_text(args) -> str:
+        return " ".join(str(x) for x in args)
+
+    def test_disable_warns_when_duplicate_enabled(self, qapp, dup_store, monkeypatch):
+        calls = self._captured_info(monkeypatch)
+        panel = RulesPanel(dup_store)
+        first = dup_store.all()[0]
+        panel._toggle_enable(first.id)
+        assert dup_store.get(first.id).enabled is False  # 停用照常生效
+        assert len(calls) == 1
+        assert "规则二" in self._all_text(calls[0])  # 提示里点出仍会命中的规则
+
+    def test_disable_no_warning_without_duplicate(self, qapp, dup_store, monkeypatch):
+        calls = self._captured_info(monkeypatch)
+        panel = RulesPanel(dup_store)
+        # 先停用规则二，再停用规则一就没有重复启用了
+        second = dup_store.all()[1]
+        dup_store.update(second.id, enabled=False)
+        panel._toggle_enable(dup_store.all()[0].id)
+        assert calls == []
+
+    def test_enable_never_warns(self, qapp, dup_store, monkeypatch):
+        calls = self._captured_info(monkeypatch)
+        panel = RulesPanel(dup_store)
+        first = dup_store.all()[0]
+        dup_store.update(first.id, enabled=False)
+        panel._toggle_enable(first.id)  # 这是"启用"方向
+        assert calls == []

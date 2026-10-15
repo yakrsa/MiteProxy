@@ -33,6 +33,14 @@ class MockAddon:
         self.rules = rule_store
         self.proxy_addr = proxy_addr  # (host, port)，用于拦"重定向指回本代理"的死循环
 
+    def _mark(self, rule: Rule) -> str:
+        """流量列表备注徽标：MOCK#序号:规则名（序号 = 规则列表当前顺序，1 起）。
+
+        序号跟随拖拽排序实时变化，用户能直接对上规则页第几条。
+        """
+        seq = self.rules.index_of(rule.id)
+        return f"MOCK#{seq}:{rule.name}" if seq else f"MOCK:{rule.name}"
+
     # ------------------------------------------------------------ mitmproxy hook
 
     async def request(self, flow) -> None:
@@ -58,7 +66,7 @@ class MockAddon:
                 b"mock redirect failed: target invalid or redirect loop",
                 {"Content-Type": "text/plain; charset=utf-8"},
             )
-            flow.marked = f"MOCK:{rule.name}"
+            flow.marked = self._mark(rule)
             return
 
         try:
@@ -75,7 +83,7 @@ class MockAddon:
             self.rules.set_rule_error(rule.id, None)
 
         flow.response = http.Response.make(status, body, headers)
-        flow.marked = f"MOCK:{rule.name}"
+        flow.marked = self._mark(rule)
         log.info("mock 命中: %s -> %s %s", flow.request.pretty_url, rule.name, status)
 
     # ------------------------------------------------------------ 重定向
@@ -115,7 +123,7 @@ class MockAddon:
 
         original = flow.request.pretty_url
         flow.request.url = target
-        flow.marked = f"MOCK:{rule.name}"
+        flow.marked = self._mark(rule)
         self.rules.set_rule_error(rule.id, None)
         log.info("mock 重定向: %s -> %s", original, target)
         return True

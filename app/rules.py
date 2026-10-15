@@ -320,6 +320,18 @@ class RuleStore:
                     return r
             return None
 
+    def index_of(self, rule_id: str) -> int:
+        """规则在当前列表中的序号（1 起，按优先级顺序；找不到返回 0）。
+
+        供 mock 命中时在流量备注里显示「MOCK#序号」——跟随拖拽排序
+        实时变化，不落盘（与 hits 同理，是运行时展示信息）。
+        """
+        with self._lock:
+            for i, r in enumerate(self._rules, 1):
+                if r.id == rule_id:
+                    return i
+        return 0
+
     def add(self, rule: Rule) -> Rule:
         with self._lock:
             self._rules.append(rule)
