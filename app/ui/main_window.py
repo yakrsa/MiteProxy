@@ -399,6 +399,14 @@ class MainWindow(QMainWindow):
         self.cert_state_label = QLabel("")
         for w in (self.count_label, self.proxy_state_label, self.cert_state_label):
             self.status_bar.addPermanentWidget(w)
+        # Fiddler 式左下角抓包状态：绿点=接管系统代理抓包中，点击切换
+        self.capture_label = QLabel("")
+        self.capture_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.capture_label.setToolTip(
+            "点击开始/停止抓包（接管或还原系统代理，与工具栏「设为系统代理」联动）"
+        )
+        self.capture_label.mousePressEvent = lambda _ev: self._on_capture_clicked()
+        self.status_bar.insertWidget(0, self.capture_label)
 
         # Ctrl+F 全局快捷键
         from PySide6.QtGui import QShortcut
@@ -664,6 +672,7 @@ class MainWindow(QMainWindow):
     def _on_sysproxy_toggled(self, checked: bool) -> None:
         self.settings.auto_system_proxy = checked
         save_settings(self.settings)
+        self._update_capture_status()   # 左下角状态立即跟随
         if self.proxy.running:
             if checked:
                 self._takeover_sysproxy_async()
@@ -1680,6 +1689,40 @@ class MainWindow(QMainWindow):
             self.cert_state_label.setText(f"证书服务 {self.cert_server.url}")
         else:
             self.cert_state_label.setText("")
+
+        self._update_capture_status()
+
+    def _update_capture_status(self) -> None:
+        """左下角抓包状态（对齐 Fiddler 左下 Capturing）：随代理与系统代理状态刷新。
+
+        由 `_update_status` 统一调用——代理启停、主题切换（theme listener 指向
+        `_update_status`）都会走到这里，颜色自动跟随主题。
+        """
+        if self.proxy.running:
+            if self._sysproxy_enabled():
+                self.capture_label.setText(
+                    f"● 抓包中（系统代理 127.0.0.1:{self.settings.proxy_port}）"
+                )
+                self.capture_label.setStyleSheet(
+                    f"color: {theme.css('ok')}; font-weight: bold;"
+                )
+            else:
+                self.capture_label.setText("○ 抓包暂停（未接管系统代理）")
+                self.capture_label.setStyleSheet(f"color: {theme.css('warn')};")
+        else:
+            self.capture_label.setText("○ 未抓包（代理未运行）")
+            self.capture_label.setStyleSheet(f"color: {theme.css('hint')};")
+
+    def _on_capture_clicked(self) -> None:
+        """点击左下角状态切换抓包（对齐 Fiddler 点 Capturing）。
+
+        代理运行中：切换系统代理接管（复用 sysproxy_cb 的 toggled 链路，
+        接管/还原/落盘都在那里）；未运行：直接启动代理。
+        """
+        if self.proxy.running:
+            self.sysproxy_cb.setChecked(not self.sysproxy_cb.isChecked())
+        else:
+            self.start_proxy()
 
     def _on_rules_changed(self) -> None:
         # 规则变更即时生效：mock 引擎每请求都实时读 RuleStore（见 3.3 匹配流程）
