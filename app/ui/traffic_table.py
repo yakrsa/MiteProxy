@@ -219,19 +219,20 @@ class TrafficTable(QTableView):
         # 构造之后才 setModel()。所以真正的配置在 setModel() 里做。
 
     def _apply_column_layout(self) -> None:
-        """列宽策略（v1.15）：序号/方法/状态/大小/耗时 这类短内容列给紧凑
-        定宽；host 默认 220px（约为原平分宽度的一半，可拖动调整），路径
-        设为 Stretch 吃掉全部剩余宽度，窗口越宽看得越多；标记列定宽可拖。
+        """列宽策略（v1.15）：全部 Interactive 定宽、支持拖动，不做任何
+        自动 Stretch——左右分栏等窄布局下 Stretch 列会被挤压到 0（路径
+        整列消失的回归），定宽 + 拖动是最稳的方案。
         """
         header = self.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
+        header.setMinimumSectionSize(24)
         header.setDefaultSectionSize(120)
-        header.setSectionResizeMode(COL_PATH, QHeaderView.ResizeMode.Stretch)
-        self.setColumnWidth(COL_HOST, 220)
         self.setColumnWidth(COL_ID, 40)
         self.setColumnWidth(COL_METHOD, 56)
+        self.setColumnWidth(COL_HOST, 220)
         self.setColumnWidth(COL_SERVER_IP, 110)
+        self.setColumnWidth(COL_PATH, 440)
         self.setColumnWidth(COL_STATUS, 48)
         self.setColumnWidth(COL_REQ_SIZE, 64)
         self.setColumnWidth(COL_RESP_SIZE, 64)
