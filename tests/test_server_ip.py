@@ -146,7 +146,7 @@ class TestStoreColumn:
         assert COL_SERVER_IP == 3
         assert COLUMNS == [
             "#", "方法", "主机", "服务器 IP", "路径",
-            "状态", "大小", "耗时(ms)", "标记",
+            "状态", "请求体", "响应", "耗时(ms)", "标记",
         ]
 
     def test_display_ip_and_dash_fallback(self):
