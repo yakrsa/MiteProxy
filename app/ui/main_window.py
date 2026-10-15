@@ -497,6 +497,9 @@ class MainWindow(QMainWindow):
             self._theme_actions[mode] = action
 
         menu = self.menuBar().addMenu("帮助")
+        feedback_action = QAction("意见反馈…", self)
+        feedback_action.triggered.connect(self._show_feedback)
+        menu.addAction(feedback_action)
         about = QAction("关于", self)
         about.triggered.connect(self._show_about)
         menu.addAction(about)
@@ -1733,11 +1736,18 @@ class MainWindow(QMainWindow):
         # 规则变更即时生效：mock 引擎每请求都实时读 RuleStore（见 3.3 匹配流程）
         pass
 
+    def _show_feedback(self) -> None:
+        from app.ui.feedback_dialog import FeedbackDialog
+
+        FeedbackDialog(self).exec()
+
     def _show_about(self) -> None:
+        from app import feedback as _fb
+
         QMessageBox.about(
             self,
             "关于",
-            "MiteProxy v0.1\n\n"
+            f"MiteProxy {_fb.APP_VERSION}\n\n"
             "基于 mitmproxy + PySide6 的抓包 / Mock 工具。\n"
             "支持 HTTP/HTTPS 抓包、Mock 规则、Fiddler 规则导入。",
         )
