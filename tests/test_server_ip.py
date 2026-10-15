@@ -145,7 +145,7 @@ class TestStoreColumn:
     def test_column_order(self):
         assert COL_SERVER_IP == 3
         assert COLUMNS == [
-            "#", "方法", "主机", "服务器 IP", "路径",
+            "#", "方法", "host", "服务器 IP", "路径",
             "状态", "请求体", "响应", "耗时(ms)", "标记",
         ]
 

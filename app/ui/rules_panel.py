@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QPoint, QTimer, Signal
 from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -463,6 +464,25 @@ class RulesPanel(QWidget):
         # 批量更新走 store.update_many：一次锁 + 一次后台落盘，选中很多条也不卡
         self.store.update_many(ids, enabled=enabled)
         self.refresh()
+        self._toast(f"已将 {len(ids)} 条规则{'启用' if enabled else '停用'}")
+
+    # ------------------------------------------------------------ 轻提示
+    def _toast(self, text: str, msec: int = 1800) -> None:
+        """非阻塞的轻量成功提示：右下角浮层，自动消失（不弹 Modal 框）。"""
+        old = getattr(self, "_toast_w", None)
+        if old is not None:
+            old.deleteLater()
+        w = QLabel(text, self)
+        w.setStyleSheet(
+            "background:rgba(40,44,52,0.94);color:#fff;border-radius:6px;"
+            "padding:8px 14px;font-size:13px;"
+        )
+        w.adjustSize()
+        gp = self.mapToGlobal(self.rect().bottomRight())
+        w.move(gp.x() - w.width() - 16, gp.y() - w.height() - 12)
+        w.show()
+        QTimer.singleShot(msec, w.deleteLater)
+        self._toast_w = w
 
     def _on_delete(self) -> None:
         ids = self._selected_rule_ids()

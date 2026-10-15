@@ -10,7 +10,7 @@ from app.ui import theme
 COLUMNS = [
     "#",
     "方法",
-    "主机",
+    "host",
     "服务器 IP",
     "路径",
     "状态",
