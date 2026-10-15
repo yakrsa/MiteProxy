@@ -18,6 +18,8 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 DEFAULT_PORT = 8081
+#: 端口被占用时向后顺延的最大尝试数（8081 起连续试 100 个）
+PORT_SCAN_TRIES = 100
 CA_PEM_PATH = Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"
 
 PAGE_TEMPLATE = """<!doctype html>
@@ -234,8 +236,7 @@ class CertServer:
             (_Handler,),
             {"ca_pem": pem, "ca_der": der, "proxy_port": self.proxy_port},
         )
-        # allow_reuse_address：重启代理后能立刻占回端口
-        self._server = ThreadingHTTPServer(("0.0.0.0", self.port), handler)
+        self._server = self._bind(handler)
         self._server.daemon_threads = True
         self._thread = threading.Thread(
             target=self._server.serve_forever,
@@ -244,6 +245,32 @@ class CertServer:
         )
         self._thread.start()
         log.info("证书下载服务已启动: %s", self.url)
+
+    def _bind(self, handler) -> ThreadingHTTPServer:
+        """从 self.port 起逐个试绑，端口被占用就自动顺延到下一个可用端口。
+
+        实际绑定成功的端口回写 self.port——url / 弹窗 / 状态栏都从它读，
+        页面正文取的是 server_address[1]，天然就是真实端口。
+        全部试完仍不可用才把最后一次的 OSError 抛出去（调用方已有友好提示）。
+        """
+        last_err: OSError | None = None
+        for offset in range(PORT_SCAN_TRIES):
+            candidate = self.port + offset
+            if candidate > 65535:
+                break
+            try:
+                server = ThreadingHTTPServer(("0.0.0.0", candidate), handler)
+                # allow_reuse_address（HTTPServer 默认开）：重启代理后能立刻占回端口
+                server.daemon_threads = True
+                self.port = candidate
+                if offset:
+                    log.warning("端口 %s 被占用，证书服务自动改用 %s", candidate - offset, candidate)
+                return server
+            except OSError as e:
+                last_err = e
+        if last_err is not None:
+            raise last_err
+        raise OSError(f"从 {self.port} 起没有可绑定的端口")
 
     def stop(self) -> None:
         if self._server is not None:

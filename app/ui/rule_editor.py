@@ -112,6 +112,15 @@ class RuleEditorDialog(QDialog):
             self.method_combo.addItem(METHOD_LABELS.get(m, m), m)
         form.addRow("请求方法:", self.method_combo)
 
+        # 从抓包请求生成 Mock 时带入的原始请求 Body（只读参考，不参与 URL 匹配）
+        self.req_body_edit = QPlainTextEdit()
+        self.req_body_edit.setReadOnly(True)
+        self.req_body_edit.setMaximumHeight(70)
+        self.req_body_edit.setPlaceholderText(
+            "从抓包请求带入的原始请求 Body（仅参考，不参与 URL 匹配）"
+        )
+        form.addRow("请求 Body:", self.req_body_edit)
+
         # 状态码 + 预设
         status_row = QWidget()
         status_layout = QHBoxLayout(status_row)
@@ -228,6 +237,7 @@ class RuleEditorDialog(QDialog):
         self.match_value_edit.setText(r.match.value)
         midx = self.method_combo.findData(r.match.method or "")
         self.method_combo.setCurrentIndex(max(midx, 0))
+        self.req_body_edit.setPlainText(getattr(r, "request_body", ""))
         self.status_edit.setText(str(r.action.status))
         self.latency_edit.setText(str(r.action.latency_ms))
         if r.action.redirect_url:

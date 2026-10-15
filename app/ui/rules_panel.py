@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QPoint, QTimer, Signal
+from PySide6.QtCore import Qt, QPoint, QEvent, QTimer, Signal
 from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -32,6 +32,14 @@ from app.ui.import_dialog import (
 )
 from app.ui.rule_editor import RuleEditorDialog
 from app.ui import theme
+
+
+class _ToastLabel(QLabel):
+    """可点击关闭的轻提示浮层（点击 = 主动忽略）。"""
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt 命名约定)
+        self.deleteLater()
+        event.accept()
 
 
 class RuleTable(QTableWidget):
@@ -186,20 +194,29 @@ class RulesPanel(QWidget):
         self.table.setColumnWidth(8, 130)  # 创建时间
         # 全选：表头第 0 列用「选择 + 勾选框」组合控件（覆盖在表头几何上，
         # 随表头宽高/滚动实时跟随）。原生表头文字留空，避免与控件重叠。
-        # 点击勾选框 = 全选当前列表，再次点击 = 全部取消。
+        # 点勾选框或点「选择」文字任意位置都在「全选/取消全选」间切换，
+        # 一次点击立即生效——三态会让一次点击落在中间态上，看起来没反应。
         header = self.table.horizontalHeader()
         self._select_all_host = QWidget(self.table)
         host_layout = QHBoxLayout(self._select_all_host)
         host_layout.setContentsMargins(6, 0, 0, 0)
         host_layout.setSpacing(2)
         title = QLabel("选择")
+        title.setObjectName("selectAllTitle")
         self.select_all_cb = QCheckBox()
         self.select_all_cb.setObjectName("selectAllCb")
-        self.select_all_cb.setToolTip("全选 / 取消全选当前列表（含「只显示启用」过滤后的可见行）")
-        self.select_all_cb.setTristate(True)
+        self.select_all_cb.setToolTip(
+            "全选 / 取消全选当前列表（含「只显示启用」过滤后的可见行）"
+        )
+        # 不开 setTristate：三态只用于展示部分选中（setCheckState 程序内
+        # 设置仍会画出来），开着会让用户点击陷入「勾→半→不勾」两击才取消
         host_layout.addWidget(title)
         host_layout.addWidget(self.select_all_cb)
         host_layout.addStretch(1)
+        self._select_all_host.setCursor(Qt.CursorShape.PointingHandCursor)
+        title.setCursor(Qt.CursorShape.PointingHandCursor)
+        # 标题/表头空白区不消费鼠标事件会落到父控件：整体过滤成点击切换
+        self._select_all_host.installEventFilter(self)
         self._updating_select_all = False
         self.select_all_cb.stateChanged.connect(self._on_select_all_state_changed)
         header.geometriesChanged.connect(self._position_select_all)
@@ -356,6 +373,24 @@ class RulesPanel(QWidget):
         host.setGeometry(x, 0, w, header.height())
         host.raise_()  # 盖在表头绘制之上
 
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802 (Qt 命名约定)
+        """表头「选择」区域整体可点：按下即在「全选/取消全选」间切换。
+
+        只过滤落在 host 本体/标题标签上的按下事件（空白区、文字）；
+        勾选框是子控件自己消费鼠标事件，不会进到这里，仍走 stateChanged。
+        """
+        if obj is self._select_all_host and event.type() == QEvent.Type.MouseButtonPress:
+            self._toggle_select_all()
+            return True
+        return super().eventFilter(obj, event)
+
+    def _toggle_select_all(self) -> None:
+        """一键切换：当前可见行已全选 → 全部取消；否则 → 全选。"""
+        all_checked = bool(self._display_ids) and all(
+            rid in self._checked_ids for rid in self._display_ids
+        )
+        self._set_all_checked(not all_checked)
+
     def _on_select_all_state_changed(self, state) -> None:
         """表头全选框状态变化：跳过程序内部更新，其余切换全部行。
 
@@ -407,6 +442,14 @@ class RulesPanel(QWidget):
         self._updating_select_all = True
         self.select_all_cb.setCheckState(state)
         self._updating_select_all = False
+
+    def select_rule(self, rule_id: str) -> None:
+        """按 id 选中一条规则并滚动到可见（如刚从抓包「加入 Mock」生成的规则）。"""
+        if rule_id not in self._display_ids:
+            return
+        row = self._display_ids.index(rule_id)
+        self.table.selectRow(row)
+        self.table.scrollTo(self.table.model().index(row, 0))
 
     def _selected_rule_ids(self) -> list[str]:
         """批量操作目标 = 勾选的规则（按显示顺序）。"""
@@ -475,6 +518,7 @@ class RulesPanel(QWidget):
             act_down = menu.addAction("下移", lambda: self._on_move(1))
             act_up.setEnabled(row > 0)
             act_down.setEnabled(row < len(visible) - 1)
+            menu.addAction("置顶", lambda: self._move_to_top(rule.id))
             menu.addSeparator()
             menu.addAction("删除", self._on_delete)
         else:
@@ -486,8 +530,11 @@ class RulesPanel(QWidget):
         rule = self.store.get(rule_id)
         if rule is None:
             return
-        self.store.update(rule_id, enabled=not rule.enabled)
+        now_enabled = not rule.enabled
+        self.store.update(rule_id, enabled=now_enabled)
         self.refresh()
+        # 单条启用/停用也给出轻提示（批量那条已有），否则右键点一下毫无反馈
+        self._toast(f"已{'启用' if now_enabled else '停用'}「{rule.name}」")
 
     def _on_filter_toggled(self) -> None:
         """切换「只显示启用」：重建视图，尽量保住当前选中的规则。"""
@@ -508,6 +555,26 @@ class RulesPanel(QWidget):
         for r in self.store.all():
             full.append(next(remaining) if r.id in display_set else r.id)
         self.store.reorder(full)
+
+    def _move_to_top(self, rule_id: str) -> None:
+        """右键「置顶」：把规则提到全量列表的最前面（优先级最高）。
+
+        与拖拽/上下移走同一条 store.reorder 通路；置顶后在列表顶部选中它，
+        并给出轻提示。
+        """
+        ids = [r.id for r in self.store.all()]
+        if rule_id not in ids:
+            return
+        ids.remove(rule_id)
+        ids.insert(0, rule_id)
+        self.store.reorder(ids)
+        self.refresh()
+        if rule_id in self._display_ids:
+            top = self._display_ids.index(rule_id)
+            self.table.selectRow(top)
+        rule = self.store.get(rule_id)
+        name = rule.name if rule is not None else ""
+        self._toast(f"已置顶「{name}」")
 
     def _on_move(self, delta: int) -> None:
         row = self.table.currentRow()
@@ -562,28 +629,43 @@ class RulesPanel(QWidget):
 
     # ------------------------------------------------------------ 轻提示
     def _toast(self, text: str, msec: int = 2500) -> None:
-        """非阻塞的轻量成功提示：右下角浮层，自动消失（不弹 Modal 框）。
+        """非阻塞的轻量成功提示：面板中央浮层，自动消失（不弹 Modal 框）。
 
-        坐标坑：toast 是 self 的子控件，move() 必须用**面板局部坐标**——
-        此前用 mapToGlobal 的屏幕坐标喂给 move()，窗口不在屏幕左上角时
-        浮层被定位到父控件可视范围之外，整层被裁剪掉（真机上"没提示"
-        的根因）。
+        - 居中显示在面板本地坐标的中央（屏幕不在左上角也不会被裁剪）；
+        - 可点击关闭（主动忽略），超时也会自动消失；
+        - 关键点：上一条提示超时销毁后，self._toast_w 仍指向已销毁的对象，
+          若直接 old.deleteLater() 会在已删除的 C++ 对象上抛 RuntimeError，
+          导致后续再也不弹——这里用 try/except 兜底，并用 _expire_toast
+          在销毁时把引用置空，保证反复操作每次都能正常弹出。
         """
         old = getattr(self, "_toast_w", None)
         if old is not None:
-            old.deleteLater()
-        w = QLabel(text, self)
+            try:
+                old.deleteLater()
+            except RuntimeError:
+                pass  # 上一条已超时销毁，引用已失效，忽略
+        w = _ToastLabel(text, self)
         w.setStyleSheet(
             "background:rgba(40,44,52,0.94);color:#fff;border-radius:6px;"
             "padding:8px 14px;font-size:13px;"
         )
+        w.setCursor(Qt.CursorShape.PointingHandCursor)
         w.adjustSize()
-        br = self.rect().bottomRight()
-        w.move(max(8, br.x() - w.width() - 16), max(8, br.y() - w.height() - 12))
+        c = self.rect().center()
+        w.move(c.x() - w.width() // 2, c.y() - w.height() // 2)
         w.show()
         w.raise_()
-        QTimer.singleShot(msec, w.deleteLater)
         self._toast_w = w
+        QTimer.singleShot(msec, lambda: self._expire_toast(w))
+
+    def _expire_toast(self, w) -> None:
+        """超时或点击关闭后：引用置空并销毁浮层（避免指向已删除对象）。"""
+        if self._toast_w is w:
+            self._toast_w = None
+        try:
+            w.deleteLater()
+        except RuntimeError:
+            pass
 
     def _on_delete(self) -> None:
         ids = self._selected_rule_ids()
