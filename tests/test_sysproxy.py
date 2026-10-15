@@ -499,3 +499,78 @@ class TestNoWindowCreation:
         monkeypatch.setattr("app.sysproxy.subprocess.run", fake_run)
         sysproxy._run(["networksetup", "-getwebproxy", "Wi-Fi"])
         assert "creationflags" not in captured
+
+
+class TestCaptureStatusIndicator:
+    """左下角 Fiddler 式抓包状态：随状态刷新，点击切换系统代理接管。"""
+
+    def test_label_states(self, window):
+        """运行+接管=绿「抓包中」；运行+未接管=黄「抓包暂停」；停止=灰「未抓包」。"""
+        # 未运行
+        window._update_status()
+        assert "未抓包" in window.capture_label.text()
+        # 运行 + 接管
+        calls = []
+        import app.sysproxy as sp_mod
+
+        orig_takeover, orig_restore = sp_mod.takeover, sp_mod.restore
+        sp_mod.takeover = lambda port, run=None, elevate=False: (
+            calls.append(("takeover", port)) or (True, "ok")
+        )
+        sp_mod.restore = lambda run=None: (
+            calls.append(("restore",)) or (True, "已还原")
+        )
+        try:
+            window.sysproxy_cb.setChecked(True)
+            window.start_proxy()
+            window._update_status()
+            assert "抓包中" in window.capture_label.text()
+            assert "127.0.0.1" in window.capture_label.text()
+            # 运行 + 未接管
+            window.sysproxy_cb.setChecked(False)
+            assert "抓包暂停" in window.capture_label.text()
+        finally:
+            window.stop_proxy()
+            sp_mod.takeover, sp_mod.restore = orig_takeover, orig_restore
+        # 停止后
+        assert "未抓包" in window.capture_label.text()
+
+    def test_click_toggles_sysproxy(self, window):
+        """运行中点击状态标签 = 切换 sysproxy_cb（接管→还原）。"""
+        import app.sysproxy as sp_mod
+
+        calls = []
+        orig_takeover, orig_restore = sp_mod.takeover, sp_mod.restore
+        sp_mod.takeover = lambda port, run=None, elevate=False: (
+            calls.append(("takeover", port)) or (True, "ok")
+        )
+        sp_mod.restore = lambda run=None: (
+            calls.append(("restore",)) or (True, "已还原")
+        )
+        try:
+            window.start_proxy()
+            window.sysproxy_cb.setChecked(True)
+            calls.clear()
+            window._on_capture_clicked()          # 接管中点击 → 还原
+            assert not window.sysproxy_cb.isChecked()
+            assert calls == [("restore",)]
+            window._on_capture_clicked()          # 未接管点击 → 重新接管
+            assert window.sysproxy_cb.isChecked()
+            assert calls == [("restore",), ("takeover", window.proxy.port)]
+        finally:
+            window.stop_proxy()
+            sp_mod.takeover, sp_mod.restore = orig_takeover, orig_restore
+
+    def test_click_when_stopped_starts_proxy(self, window):
+        """未运行时点击 = 启动代理。"""
+        import app.sysproxy as sp_mod
+
+        orig_takeover = sp_mod.takeover
+        sp_mod.takeover = lambda port, run=None, elevate=False: (True, "ok")
+        try:
+            assert not window.proxy.running
+            window._on_capture_clicked()
+            assert window.proxy.running
+        finally:
+            window.stop_proxy()
+            sp_mod.takeover = orig_takeover
