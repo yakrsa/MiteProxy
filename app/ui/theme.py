@@ -43,6 +43,11 @@ COLORS: dict[str, tuple[str, str]] = {
     "alt_row":     ("#f6f8fa", "#2d333b"),   # 交替行底色（斑马纹）
     "header_bg":   ("#eff2f5", "#2d333b"),   # 表头底色（扁平）
     "grid_line":   ("#e1e4e8", "#444c56"),   # 表格分隔线
+    # -- 选中行：显式蓝底白字。不能用 palette(highlight)——macOS 原生样式
+    #    下它与 palette(highlighted-text) 可能不同步（浅底配白字 → 选中行
+    #    整行看不见的 bug），token 显式取色 + apply() 重建样式表才稳
+    "sel_bg":      ("#0969da", "#4493f8"),   # 选中行底色
+    "sel_fg":      ("#ffffff", "#ffffff"),   # 选中行文字
 }
 
 #: 当前档位（apply() 后与 settings.theme 一致）
@@ -133,13 +138,15 @@ def stylesheet() -> str:
     alt = css("alt_row")
     header = css("header_bg")
     grid = css("grid_line")
+    sel_bg = css("sel_bg")
+    sel_fg = css("sel_fg")
     return f"""
 QTableView, QTableWidget {{
     background-color: palette(base);
     alternate-background-color: {alt};
     gridline-color: {grid};
-    selection-background-color: palette(highlight);
-    selection-color: palette(highlighted-text);
+    selection-background-color: {sel_bg};
+    selection-color: {sel_fg};
     border: none;
 }}
 QTableView::item, QTableWidget::item {{
