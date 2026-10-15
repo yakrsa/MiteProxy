@@ -13,7 +13,10 @@ a = Analysis(
     [str(PROJECT / "app" / "main.py")],
     pathex=[str(PROJECT)],
     binaries=[],
-    datas=[],
+    datas=[
+        # 运行时窗口/任务栏图标（main.py 按 _MEIPASS 查找）
+        (str(PROJECT / "packaging" / "icon_256.png"), "."),
+    ],
     hiddenimports=[
         # mitmproxy 按平台动态 import 的模块，PyInstaller 静态分析抓不到
         "mitmproxy.platform.osx" if sys.platform == "darwin" else "mitmproxy.platform.windows",
@@ -70,7 +73,7 @@ if sys.platform == "darwin":
         icon=str(PROJECT / "packaging" / "icon.icns"),
         bundle_identifier="com.miteproxy.app",
         info_plist={
-            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleShortVersionString": "1.15.0",
             "CFBundleName": "MiteProxy",
             "NSHighResolutionCapable": True,
         },

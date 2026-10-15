@@ -5,7 +5,7 @@
 #       zip 内是完整的 MiteProxy 文件夹（MiteProxy.exe + _internal 依赖目录），
 #       解压后双击 MiteProxy.exe 即可直接使用，无需安装。
 param(
-    [string]$Version = "1.14"
+    [string]$Version = "1.15"
 )
 $ErrorActionPreference = 'Stop'
 
