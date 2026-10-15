@@ -579,8 +579,9 @@ class MainWindow(QMainWindow):
         """
         if self.proxy.running:
             return True
-        # 上次异常退出没还原的系统代理，先补还原（幂等，无记录时 no-op）
-        sysproxy.recover_if_needed()
+        # 上次异常退出没还原的系统代理，先补还原（幂等，无记录时 no-op；
+        # 快照丢失时按我们的端口兜底扫描关闭）
+        sysproxy.recover_if_needed(port=self.settings.proxy_port)
         self.proxy.port = self.settings.proxy_port
         self.rule_store.load()      # 启动前重载规则（支持外部编辑 rules.json）
         # load() 会重建全部 Rule 对象，规则页表格还是旧引用——不刷新的话
@@ -624,9 +625,11 @@ class MainWindow(QMainWindow):
         threading.Thread(target=work, daemon=True, name="sysproxy-takeover").start()
 
     def _restore_sysproxy_async(self) -> None:
+        port = self.proxy.port
+
         def work():
             with self._sysproxy_lock:
-                ok, msg = sysproxy.restore()
+                ok, msg = sysproxy.restore(port=port)
             if msg != "无接管记录":
                 self.bridge.sysproxy_done.emit(ok, msg)
 
@@ -635,7 +638,7 @@ class MainWindow(QMainWindow):
     def _restore_sysproxy_sync(self) -> None:
         """退出路径用同步还原：必须还原完再关窗口。"""
         with self._sysproxy_lock:
-            ok, msg = sysproxy.restore()
+            ok, msg = sysproxy.restore(port=self.proxy.port)
         if ok and msg != "无接管记录":
             log.info("系统代理已还原: %s", msg)
 
