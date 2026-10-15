@@ -96,13 +96,16 @@ class RulesPanel(QWidget):
         self.add_btn = QPushButton("新增")
         self.edit_btn = QPushButton("编辑")
         self.delete_btn = QPushButton("删除")
-        self.import_btn = QPushButton("导入 Fiddler 规则")
         self.export_btn = QPushButton("导出规则")
         self.import_native_btn = QPushButton("导入规则")
         self.batch_enable_btn = QPushButton("启用")
         self.batch_disable_btn = QPushButton("停用")
         self.batch_delete_btn = QPushButton("删除")
         self.batch_export_btn = QPushButton("导出")
+        self.up_btn = QPushButton("上移")
+        self.down_btn = QPushButton("下移")
+        # 导入 Fiddler 规则：挪到工具栏最后面（见下方末尾 addWidget）
+        self.import_btn = QPushButton("导入 Fiddler 规则")
         for btn in (
             self.batch_enable_btn,
             self.batch_disable_btn,
@@ -111,8 +114,6 @@ class RulesPanel(QWidget):
         ):
             btn.setToolTip("对勾选的规则生效；取消全部勾选后自动隐藏")
             btn.hide()
-        self.up_btn = QPushButton("上移")
-        self.down_btn = QPushButton("下移")
         self.only_enabled_cb = QCheckBox("只显示启用")
         self.only_enabled_cb.setToolTip(
             "勾选后列表只显示启用中的规则；停用规则仍在存储中，取消勾选即可看到。"
@@ -123,7 +124,7 @@ class RulesPanel(QWidget):
         )
         self.import_native_btn.setToolTip(
             "导入 MiteProxy 导出的 .json 规则文件（追加到现有规则之后，"
-            "不覆盖已有规则）。要导 Fiddler 的 .farx 请用旁边的按钮。"
+            "不覆盖已有规则）。要导 Fiddler 的 .farx 请用「导入 Fiddler 规则」按钮。"
         )
         self.delete_btn.setToolTip(
             "删除当前选中的规则；首列勾选了多条时删除勾选的。"
@@ -132,17 +133,18 @@ class RulesPanel(QWidget):
             self.add_btn,
             self.edit_btn,
             self.delete_btn,
+            self.export_btn,
+            self.import_native_btn,
             self.batch_enable_btn,
             self.batch_disable_btn,
             self.batch_delete_btn,
             self.batch_export_btn,
-            self.import_btn,
-            self.import_native_btn,
-            self.export_btn,
             self.up_btn,
             self.down_btn,
         ):
             toolbar.addWidget(b)
+        toolbar.addSpacing(12)
+        toolbar.addWidget(self.import_btn)   # 导入 Fiddler 规则：放到最后面
         toolbar.addSpacing(12)
         toolbar.addWidget(self.only_enabled_cb)
         toolbar.addStretch(1)
@@ -180,6 +182,18 @@ class RulesPanel(QWidget):
         self.table.setColumnWidth(6, 70)   # 来源
         self.table.setColumnWidth(7, 52)   # 命中
         self.table.setColumnWidth(8, 130)  # 创建时间
+        # 全选：表头第 0 列勾选框，点击切换当前列表全部勾选状态；
+        # 子控件定位到表头几何上，随表头宽高/滚动实时跟随。
+        header = self.table.horizontalHeader()
+        self.select_all_cb = QCheckBox(self.table)
+        self.select_all_cb.setObjectName("selectAllCb")
+        self.select_all_cb.setToolTip("全选 / 取消全选当前列表（含「只显示启用」过滤后的可见行）")
+        self.select_all_cb.setTristate(True)
+        self._updating_select_all = False
+        self.select_all_cb.stateChanged.connect(self._on_select_all_state_changed)
+        header.geometriesChanged.connect(self._position_select_all)
+        self.table.horizontalScrollBar().valueChanged.connect(self._position_select_all)
+        self._position_select_all()
         self.table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
@@ -262,6 +276,7 @@ class RulesPanel(QWidget):
         self._loading = False
         self.table.setUpdatesEnabled(True)
         self._update_batch_buttons()
+        self._update_select_all_state()
 
     def _fill_hits(self, row: int, rule) -> None:
         """命中列：0 次显示「—」（没干活过），有次数显示数字 + 最近命中时间提示。"""
@@ -300,6 +315,7 @@ class RulesPanel(QWidget):
         else:
             self._checked_ids.discard(rule_id)
         self._update_batch_buttons()
+        self._update_select_all_state()
 
     def _update_batch_buttons(self) -> None:
         """勾选数 > 0 时才显示批量按钮，按钮文字带上数量。"""
@@ -313,6 +329,78 @@ class RulesPanel(QWidget):
         self.batch_disable_btn.setText(f"停用({n})")
         self.batch_delete_btn.setText(f"删除({n})")
         self.batch_export_btn.setText(f"导出({n})")
+
+    # ------------------------------------------------------------ 全选
+
+    def _position_select_all(self) -> None:
+        """把全选勾选框定位到表头第 0 列居中（随表头几何变化实时跟随）。"""
+        header = self.table.horizontalHeader()
+        cb = self.select_all_cb
+        if not cb.isVisible():
+            return
+        x = header.sectionViewportPosition(0)
+        w = header.sectionSize(0)
+        h = header.height()
+        sz = cb.sizeHint()
+        cb.setGeometry(
+            int(x + (w - sz.width()) / 2),
+            int((h - sz.height()) / 2),
+            sz.width(),
+            sz.height(),
+        )
+        cb.raise_()  # 盖在表头绘制之上
+
+    def _on_select_all_state_changed(self, state) -> None:
+        """表头全选框状态变化：跳过程序内部更新，其余切换全部行。
+
+        注意：本机 PySide6 的 stateChanged 传的是原始 int（且 enum 与 int
+        不相等、int(enum) 会抛错），所以统一走 .value 比较，避免
+        `state == Qt.CheckState.Checked` 恒为 False 导致全选/取消反相。
+        """
+        if self._updating_select_all:
+            return
+        sval = int(getattr(state, "value", state))
+        if sval == Qt.CheckState.PartiallyChecked.value:
+            return  # 程序内部更新的中间态，不触发全选/取消
+        self._set_all_checked(sval == Qt.CheckState.Checked.value)
+
+    def _set_all_checked(self, checked: bool) -> None:
+        """批量勾选/取消勾选当前列表所有可见行，并同步批量按钮与全选框。"""
+        self._loading = True  # 屏蔽每行 setCheckState 触发的 itemChanged
+        for row, rid in enumerate(self._display_ids):
+            item = self.table.item(row, 0)
+            if item is None:
+                continue
+            item.setCheckState(
+                Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+            )
+            if checked:
+                self._checked_ids.add(rid)
+            else:
+                self._checked_ids.discard(rid)
+        self._loading = False
+        self._update_batch_buttons()
+        self._update_select_all_state()
+
+    def _update_select_all_state(self) -> None:
+        """根据当前勾选情况刷新表头全选框：全选/未选/部分（三态）。"""
+        total = len(self._display_ids)
+        if total == 0:
+            state = Qt.CheckState.Unchecked
+        else:
+            n = 0
+            for r in range(self.table.rowCount()):
+                it = self.table.item(r, 0)
+                if it is not None and it.checkState() == Qt.CheckState.Checked:
+                    n += 1
+            state = (
+                Qt.CheckState.Checked if n == total
+                else Qt.CheckState.Unchecked if n == 0
+                else Qt.CheckState.PartiallyChecked
+            )
+        self._updating_select_all = True
+        self.select_all_cb.setCheckState(state)
+        self._updating_select_all = False
 
     def _selected_rule_ids(self) -> list[str]:
         """批量操作目标 = 勾选的规则（按显示顺序）。"""

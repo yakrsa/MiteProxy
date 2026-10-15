@@ -19,7 +19,7 @@ import pytest  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QPushButton  # noqa: E402
 
 from app.rules import Action, Match, Rule, RuleStore  # noqa: E402
 from app.ui.rules_panel import RuleTable, RulesPanel  # noqa: E402
@@ -566,3 +566,84 @@ class TestBatchToast:
         # 面板局部坐标必须完整落在面板 rect 内（被裁剪 = 用户看不见）
         assert panel.rect().contains(w.geometry())
         assert "停用" in w.text()
+
+
+# ---------------------------------------------------------------- 全选 / 工具栏顺序
+
+
+class TestSelectAll:
+    def _check_all_rows(self, panel, state):
+        for r in range(panel.table.rowCount()):
+            panel.table.item(r, 0).setCheckState(state)
+
+    def test_select_all_checkbox_in_header(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        panel.show()
+        cb = panel.select_all_cb
+        assert cb is not None and cb.isWidgetType()
+        header = panel.table.horizontalHeader()
+        sec_x = header.sectionViewportPosition(0)
+        sec_w = header.sectionSize(0)
+        # 勾选框必须落在表头第 0 列横向区间内，纵向落在表头高度内
+        assert sec_x <= cb.x() <= sec_x + sec_w
+        assert 0 <= cb.y() <= header.height()
+
+    def test_select_all_checks_every_row(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        panel.show()
+        panel.select_all_cb.setCheckState(Qt.CheckState.Checked)
+        assert panel._checked_ids == {r.id for r in three_rules.all()}
+        for r in range(panel.table.rowCount()):
+            assert panel.table.item(r, 0).checkState() == Qt.CheckState.Checked
+        assert panel.batch_enable_btn.isVisible()
+
+    def test_select_all_unchecks_every_row(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        panel.select_all_cb.setCheckState(Qt.CheckState.Checked)
+        panel.select_all_cb.setCheckState(Qt.CheckState.Unchecked)
+        assert panel._checked_ids == set()
+        for r in range(panel.table.rowCount()):
+            assert panel.table.item(r, 0).checkState() == Qt.CheckState.Unchecked
+        assert not panel.batch_enable_btn.isVisible()
+
+    def test_partial_state_when_some_checked(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        panel.table.item(0, 0).setCheckState(Qt.CheckState.Checked)
+        panel._update_select_all_state()
+        assert panel.select_all_cb.checkState() == Qt.CheckState.PartiallyChecked
+
+    def test_individual_toggle_updates_select_all(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        assert panel.select_all_cb.checkState() == Qt.CheckState.Unchecked
+        self._check_all_rows(panel, Qt.CheckState.Checked)
+        assert panel.select_all_cb.checkState() == Qt.CheckState.Checked
+        panel.table.item(0, 0).setCheckState(Qt.CheckState.Unchecked)
+        assert panel.select_all_cb.checkState() == Qt.CheckState.PartiallyChecked
+
+    def test_select_all_respects_filter(self, qapp, three_rules):
+        """只显示启用时，全选只作用可见行，不波及隐藏的停用规则。"""
+        three_rules.update(three_rules.all()[1].id, enabled=False)
+        panel = RulesPanel(three_rules)
+        panel.only_enabled_cb.setChecked(True)
+        panel.select_all_cb.setCheckState(Qt.CheckState.Checked)
+        assert len(panel._checked_ids) == 2
+        assert three_rules.all()[1].id not in panel._checked_ids
+
+
+class TestToolbarOrder:
+    def _toolbar_buttons(self, panel):
+        toolbar = panel.layout().itemAt(0).layout()
+        btns = []
+        for i in range(toolbar.count()):
+            w = toolbar.itemAt(i).widget()
+            if isinstance(w, QPushButton):
+                btns.append(w)
+        return btns
+
+    def test_fiddler_import_is_last_button(self, qapp, three_rules):
+        panel = RulesPanel(three_rules)
+        btns = self._toolbar_buttons(panel)
+        assert panel.import_btn in btns
+        # 「导入 Fiddler 规则」是工具栏里最后一个按钮（排在「下移」之后）
+        assert btns.index(panel.import_btn) == len(btns) - 1
+        assert btns.index(panel.down_btn) < btns.index(panel.import_btn)
