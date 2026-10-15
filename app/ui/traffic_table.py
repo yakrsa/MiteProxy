@@ -220,15 +220,15 @@ class TrafficTable(QTableView):
 
     def _apply_column_layout(self) -> None:
         """列宽策略（v1.15）：序号/方法/状态/大小/耗时 这类短内容列给紧凑
-        定宽；主机与路径是主要阅读区，设为 Stretch 平分剩余空间，窗口
-        越宽看得越多；标记列定宽可拖。
+        定宽；host 默认 220px（约为原平分宽度的一半，可拖动调整），路径
+        设为 Stretch 吃掉全部剩余宽度，窗口越宽看得越多；标记列定宽可拖。
         """
         header = self.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
         header.setDefaultSectionSize(120)
-        header.setSectionResizeMode(COL_HOST, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(COL_PATH, QHeaderView.ResizeMode.Stretch)
+        self.setColumnWidth(COL_HOST, 220)
         self.setColumnWidth(COL_ID, 40)
         self.setColumnWidth(COL_METHOD, 56)
         self.setColumnWidth(COL_SERVER_IP, 110)

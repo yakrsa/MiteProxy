@@ -528,3 +528,21 @@ class TestBatchOperations:
         panel._on_export()
         data = _json.loads(out.read_text(encoding="utf-8"))
         assert len(data["rules"]) == 3
+
+
+class TestBatchToast:
+    def test_toast_shown_after_batch_enable(self, qapp, three_rules):
+        from PySide6.QtWidgets import QTableWidgetItem
+        panel = RulesPanel(three_rules)
+        # 勾选全部规则（首列复选框）
+        for r in range(panel.table.rowCount()):
+            item = panel.table.item(r, 0)
+            if item is None:
+                item = QTableWidgetItem()
+                panel.table.setItem(r, 0, item)
+            item.setCheckState(Qt.CheckState.Checked)
+        panel._on_batch_set_enabled(True)
+        # 成功提示浮层已创建，文本含数量与状态
+        assert getattr(panel, "_toast_w", None) is not None
+        assert "3" in panel._toast_w.text()
+        assert "启用" in panel._toast_w.text()
