@@ -31,6 +31,7 @@ from app.ui.import_dialog import (
     _match_summary,
 )
 from app.ui.rule_editor import RuleEditorDialog
+from app.ui import dialogs
 from app.ui import theme
 
 
@@ -631,7 +632,7 @@ class RulesPanel(QWidget):
     def _on_edit(self) -> None:
         rule = self._current_rule()
         if rule is None:
-            QMessageBox.information(self, "提示", "请先选择一条规则")
+            dialogs.information(self, "提示", "请先选择一条规则")
             return
         dialog = RuleEditorDialog(self.store, rule, parent=self)
         if dialog.exec():
@@ -642,7 +643,7 @@ class RulesPanel(QWidget):
     def _on_batch_set_enabled(self, enabled: bool) -> None:
         ids = self._selected_rule_ids()
         if not ids:
-            QMessageBox.information(self, "提示", "请先勾选规则（首列复选框）")
+            dialogs.information(self, "提示", "请先勾选规则（首列复选框）")
             return
         # 批量更新走 store.update_many：一次锁 + 一次后台落盘，选中很多条也不卡
         self.store.update_many(ids, enabled=enabled)
@@ -707,7 +708,7 @@ class RulesPanel(QWidget):
             f"「{names[0]}」" if len(names) == 1
             else f"{len(names)} 条规则（{('、'.join(names[:3]))}{'…' if len(names) > 3 else ''}）"
         )
-        reply = QMessageBox.question(self, "确认删除", f"确定删除{target}？")
+        reply = dialogs.question(self, "确认删除", f"确定删除{target}？")
         if reply == QMessageBox.StandardButton.Yes:
             # 批量删除走 store.delete_many：一次锁 + 一次后台落盘
             self.store.delete_many(ids)
@@ -733,12 +734,12 @@ class RulesPanel(QWidget):
             else:
                 result = jsscript.parse_file(path)
         except (ValueError, OSError) as e:
-            QMessageBox.critical(self, "导入失败", str(e))
+            dialogs.critical(self, "导入失败", str(e))
             return
 
         if result.ok_count == 0:
             reasons = "\n".join(f"• {n}：{r}" for n, r in result.skipped[:10])
-            QMessageBox.information(
+            dialogs.information(
                 self,
                 "无可导入规则",
                 f"没有解析出可导入的规则。\n\n{reasons or '文件为空或格式不符'}",
@@ -755,7 +756,7 @@ class RulesPanel(QWidget):
             if selected:
                 count, _ = self.store.merge(selected)
                 self.refresh()
-                QMessageBox.information(
+                dialogs.information(
                     self, "导入完成", f"成功导入 {count} 条规则"
                 )
             self.import_requested.emit()  # 只在真正走完导入流程后通知
@@ -793,9 +794,9 @@ class RulesPanel(QWidget):
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
         except OSError as e:
-            QMessageBox.critical(self, "导出失败", str(e))
+            dialogs.critical(self, "导出失败", str(e))
             return
-        QMessageBox.information(
+        dialogs.information(
             self, "导出完成", f"已导出{scope}规则到\n{path}"
         )
 
@@ -813,11 +814,11 @@ class RulesPanel(QWidget):
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except (OSError, ValueError) as e:
-            QMessageBox.critical(self, "导入失败", f"文件读取/解析失败：{e}")
+            dialogs.critical(self, "导入失败", f"文件读取/解析失败：{e}")
             return
         raw_rules = data.get("rules") if isinstance(data, dict) else data
         if not isinstance(raw_rules, list) or not raw_rules:
-            QMessageBox.information(self, "无可导入规则", "文件里没有规则数据。")
+            dialogs.information(self, "无可导入规则", "文件里没有规则数据。")
             return
         rules = []
         for raw in raw_rules:
@@ -826,9 +827,9 @@ class RulesPanel(QWidget):
             except Exception:
                 continue  # 单条坏数据跳过，不影响其余
         if not rules:
-            QMessageBox.information(self, "无可导入规则", "文件里的规则格式无法识别。")
+            dialogs.information(self, "无可导入规则", "文件里的规则格式无法识别。")
             return
         count, _ = self.store.merge(rules)
         self.refresh()
         self.import_requested.emit()
-        QMessageBox.information(self, "导入完成", f"成功导入 {count} 条规则")
+        dialogs.information(self, "导入完成", f"成功导入 {count} 条规则")

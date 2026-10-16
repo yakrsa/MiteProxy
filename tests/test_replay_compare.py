@@ -348,7 +348,7 @@ class TestReplayAndCompareEntry:
         import app.ui.main_window as mw
 
         monkeypatch.setattr(
-            mw.QMessageBox, "information", staticmethod(lambda *a, **k: None)
+            mw.dialogs, "information", lambda *a, **k: None
         )
         flow = _flow()
         window.capture.flows[flow.id] = flow

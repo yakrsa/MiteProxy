@@ -349,11 +349,9 @@ class TestNativeExportImport:
     @staticmethod
     def _stub_info(monkeypatch):
         """导出/导入成功路径会弹模态提示框，offscreen 测试必须吞掉。"""
-        from PySide6.QtWidgets import QMessageBox
+        from app.ui import dialogs
 
-        monkeypatch.setattr(
-            QMessageBox, "information", staticmethod(lambda *a, **k: None)
-        )
+        monkeypatch.setattr(dialogs, "information", lambda *a, **k: None)
 
     def test_export_writes_native_json(self, qapp, three_rules, tmp_path, monkeypatch):
         from app.ui.rules_panel import RulesPanel
@@ -401,7 +399,7 @@ class TestNativeExportImport:
         assert imported.id != "r_x"       # merge 重生成 id，避免撞车
 
     def test_import_bad_file_shows_error(self, qapp, three_rules, tmp_path, monkeypatch):
-        from PySide6.QtWidgets import QMessageBox
+        from app.ui import dialogs
 
         bad = tmp_path / "bad.json"
         bad.write_text("not-json", encoding="utf-8")
@@ -411,8 +409,8 @@ class TestNativeExportImport:
         )
         calls = []
         monkeypatch.setattr(
-            QMessageBox, "critical",
-            staticmethod(lambda *a, **k: calls.append(a)),
+            dialogs, "critical",
+            lambda *a, **k: calls.append(a),
         )
         panel = RulesPanel(three_rules)
         panel._on_import_native()
@@ -436,13 +434,13 @@ class TestBatchOperations:
     def _stub_confirm(monkeypatch):
         from PySide6.QtWidgets import QMessageBox
 
+        from app.ui import dialogs
+
         monkeypatch.setattr(
-            QMessageBox, "question",
-            staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes),
+            dialogs, "question",
+            lambda *a, **k: QMessageBox.StandardButton.Yes,
         )
-        monkeypatch.setattr(
-            QMessageBox, "information", staticmethod(lambda *a, **k: None)
-        )
+        monkeypatch.setattr(dialogs, "information", lambda *a, **k: None)
 
     def test_batch_buttons_hidden_initially(self, qapp, three_rules):
         panel = RulesPanel(three_rules)

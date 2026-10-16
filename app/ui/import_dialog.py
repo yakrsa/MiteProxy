@@ -15,13 +15,16 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from app.rules import Rule
+from app.ui import dialogs
 from app.ui import theme
 
 SOURCE_LABELS = {"farx": "FARX", "js": "CustomRules.js", "manual": "手动"}
@@ -98,10 +101,18 @@ class ImportPreviewDialog(QDialog):
 
         self.table = QTableWidget(len(rules), 5)
         self.table.setHorizontalHeaderLabels(["", "名称", "匹配", "动作", "来源"])
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
-        )
-        self.table.horizontalHeader().setStretchLastSection(True)
+        header = self.table.horizontalHeader()
+        # 第 0 列（复选框）固定宽度：绝不被长 URL 经 ResizeToContents 挤没。
+        # 匹配/动作列改 Interactive（可拖动查看、超出省略），不用 ResizeToContents
+        # ——长 URL 会把整表撑爆、把名称/选择列压消失（导入多规则时的压缩 bug）。
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(0, 30)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        self.table.setColumnWidth(2, 240)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self.table.setColumnWidth(3, 150)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -115,7 +126,9 @@ class ImportPreviewDialog(QDialog):
             self.table.setItem(
                 i, 4, QTableWidgetItem(SOURCE_LABELS.get(rule.source, rule.source))
             )
-        layout.addWidget(self.table)
+        # 表格占主要垂直空间（stretch=1）：否则下方长长的跳过清单会把它压成一条，
+        # 「勾选规则」的选择区域高度被吃没（导入多规则时的压缩 bug）。
+        layout.addWidget(self.table, stretch=1)
 
         if skipped:
             skip_lines = "<br>".join(
@@ -123,15 +136,36 @@ class ImportPreviewDialog(QDialog):
             )
             if len(skipped) > 20:
                 skip_lines += f"<br>• ……等共 {len(skipped)} 条"
-            skip_label = QLabel(f"跳过的规则及原因：<br>{skip_lines}")
+            skip_label = QLabel(skip_lines)
             skip_label.setWordWrap(True)
+            skip_label.setContentsMargins(14, 0, 0, 0)
             skip_label.setStyleSheet(f"color: {theme.css('hint')};")
-            layout.addWidget(skip_label)
+            # 跳过清单可折叠、默认收起：26 条原因若平铺会把上面的规则选择区域
+            # 挤压/盖没。默认只占一行标题，需要看原因时点一下展开（内容限高可滚动）。
+            self.skip_scroll = QScrollArea()
+            self.skip_scroll.setWidget(skip_label)
+            self.skip_scroll.setWidgetResizable(True)
+            self.skip_scroll.setMaximumHeight(140)
+            self.skip_scroll.setVisible(False)
+
+            self.skip_toggle = QToolButton()
+            self.skip_toggle.setText(f"跳过的规则及原因（{len(skipped)} 条）")
+            self.skip_toggle.setCheckable(True)
+            self.skip_toggle.setChecked(False)
+            self.skip_toggle.setToolTip("点击展开 / 收起跳过的规则及原因")
+            self.skip_toggle.setArrowType(Qt.ArrowType.RightArrow)
+            self.skip_toggle.setStyleSheet(
+                f"color: {theme.css('hint')}; border: none; text-align: left;"
+            )
+            self.skip_toggle.toggled.connect(self._on_skip_toggled)
+            layout.addWidget(self.skip_toggle)
+            layout.addWidget(self.skip_scroll)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.button(QDialogButtonBox.StandardButton.Ok).setText("导入所选")
+        dialogs.cn_button_box(buttons)     # Cancel → 取消（Ok 已自定义"导入所选"，保留）
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -149,3 +183,10 @@ class ImportPreviewDialog(QDialog):
             cb = self.table.cellWidget(i, 0)
             if isinstance(cb, QCheckBox):
                 cb.setChecked(checked)
+
+    def _on_skip_toggled(self, checked: bool) -> None:
+        """展开/收起跳过清单：内容显隐 + 折叠箭头方向随之切换。"""
+        self.skip_scroll.setVisible(checked)
+        self.skip_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
+        )

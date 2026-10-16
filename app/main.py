@@ -14,6 +14,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app import single_instance
+from app.ui import dialogs
 from app.ui.main_window import MainWindow
 
 
@@ -83,7 +84,7 @@ def main() -> int:
     if not single_instance.acquire():
         if not single_instance.notify_running():
             # 极端情况（锁在但唤醒服务没监听）：至少提示用户别干等
-            QMessageBox.information(
+            dialogs.information(
                 None,
                 "MiteProxy 已在运行",
                 "检测到 MiteProxy 已有一个实例在运行，请切换到已打开的窗口。",

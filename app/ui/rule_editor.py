@@ -40,6 +40,7 @@ from app.rules import (
     Rule,
     RuleStore,
 )
+from app.ui import dialogs
 from app.ui import theme
 
 STATUS_PRESETS = [200, 400, 401, 403, 404, 429, 500, 502, 503, 504]
@@ -222,6 +223,7 @@ class RuleEditorDialog(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        dialogs.cn_button_box(buttons)     # OK/Cancel → 确定/取消
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

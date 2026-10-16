@@ -19,6 +19,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.ui import dialogs
+
 METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
 
 
@@ -87,6 +89,7 @@ class ReplayEditDialog(QDialog):
         buttons.button(QDialogButtonBox.StandardButton.Ok).setText(
             "重放并对比" if self._compare else "重放"
         )
+        dialogs.cn_button_box(buttons)     # Cancel → 取消（Ok 已自定义中文，保留）
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
