@@ -10,8 +10,10 @@ body 视图（3.2.5）：
 - 搜索高亮（`Ctrl+F`）在结构化视图上照样生效：JSON/原文走 QTextDocument 查找，
   表单表格走单元格底色。
 
-大内容的三道闸门（都是实测出来的，见 app/bodyview 注释）：
-- 格式化用完整 body、只截断**渲染结果**（先截断再解析会让大 JSON 全部解析失败）；
+大内容的处理（都是实测出来的，见 app/bodyview 注释）：
+- JSON 用完整 body 完整解析（≤ `JSON_PARSE_LIMIT` 8MB），不再截断渲染结果；
+- 文本超过 `RENDER_TEXT_LIMIT` 走流式渲染：首屏快显（1MB ≈ 25ms）+
+  QTimer 分块追加，切换不卡也能看全（硬上限 `STREAM_HARD_LIMIT`）；
 - 渲染文本超过 `HIGHLIGHT_LIMIT` 就暂停语法着色；
 - 单行超过 `WRAP_MAX_LINE_CHARS` 就临时关闭换行（超长单行换行是超线性开销）。
 
@@ -24,7 +26,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QFont,
@@ -72,6 +74,8 @@ from app.bodyview import (
     VIEW_RAW,
     BODY_PREVIEW_LIMIT,
     HIGHLIGHT_LIMIT,
+    RENDER_TEXT_LIMIT,
+    STREAM_CHUNK,
     WRAP_MAX_LINE_CHARS,
     content_encoding_of,
     decoded_note,
@@ -339,6 +343,14 @@ class BodyPane(QWidget):
         self._mode = VIEW_AUTO          # 手动切过就保持（粘性）
         self._resolved = VIEW_RAW       # 「自动」实际选中的视图
         self._mode_keys = [k for k, _ in view_mode_items()]
+        # 流式加载状态：大文本（>RENDER_TEXT_LIMIT）首屏快显 + 分块追加，
+        # 见 _stream_start。timer interval=0：块间让事件循环跑，界面可响应。
+        self._stream_timer = QTimer(self)
+        self._stream_timer.setInterval(0)
+        self._stream_timer.timeout.connect(self._stream_next)
+        self._stream_text = ""
+        self._stream_pos = 0
+        self._stream_active = False
         theme.add_listener(self._retheme)
 
     # ------------------------------------------------------------ 展示
@@ -364,6 +376,7 @@ class BodyPane(QWidget):
         self._render_body()
 
     def clear(self) -> None:
+        self._stream_stop()
         self._body_bytes = None
         self._content_type = ""
         self._encoding_note = ""
@@ -503,11 +516,71 @@ class BodyPane(QWidget):
         # 而下面的换行闸门是在塞完之后才算的——晚了。NoWrap 状态下塞文本
         # 很便宜，塞完再按闸门决定要不要重新打开（多行短文本重新打开无压力）。
         self.body_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.body_view.setPlainText(text)
-        self._apply_wrap(text)
+        self._stream_stop()      # 取消上一段没流完的加载，防旧内容追上新内容
+        if len(text) <= RENDER_TEXT_LIMIT:
+            self.body_view.setPlainText(text)
+            self._apply_wrap(text)
+        else:
+            # 大文本走流式：首屏只塞 1MB（≈25ms），剩余 QTimer 分块追加，
+            # 一次性 setPlainText(几 MB) 的全文排版才是切换卡顿的元凶。
+            self._stream_start(text)
         # 大文本暂停着色：QSyntaxHighlighter 按 block 走，2 万行约 260ms
         colored = json_mode and len(text) <= HIGHLIGHT_LIMIT
         self._json_highlighter.set_enabled(colored, dark=is_dark(self.body_view))
+
+    # ------------------------------------------------------------ 流式加载
+
+    def _stream_start(self, text: str) -> None:
+        """首屏快显 + 启动分块追加（调用方持有完整 text，只分块喂给编辑器）。"""
+        self._stream_text = text
+        self._stream_pos = RENDER_TEXT_LIMIT
+        self._stream_active = True
+        self.body_view.setPlainText(text[:RENDER_TEXT_LIMIT])
+        # 流式期间锁 NoWrap：appendPlainText 时开着 WidgetWidth 会让每一块
+        # 都触发全文重排（几百 ms/块），加载完再按用户意图恢复换行。
+        self.body_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self._stream_timer.start()
+
+    def _stream_stop(self) -> None:
+        """停止流式加载（换会话/清空/重染时调用；幂等）。"""
+        self._stream_timer.stop()
+        self._stream_active = False
+        self._stream_text = ""
+        self._stream_pos = 0
+
+    def _stream_next(self) -> None:
+        """追加一块（边界对齐换行），完成后收尾（恢复换行 + 清进度提示）。"""
+        if not self._stream_active:
+            return
+        text = self._stream_text
+        pos = self._stream_pos
+        if not text or pos >= len(text):
+            self._stream_finish()
+            return
+        end = min(pos + STREAM_CHUNK, len(text))
+        if end < len(text):
+            # 块边界对齐到下一个换行：劈开一行会多出一个 block，NoWrap 下
+            # 无感，但用户加载后开换行时折行位置会怪
+            nl = text.find("\n", end)
+            if nl != -1 and nl < end + 4096:
+                end = nl + 1
+        # 必须用 QTextCursor.insertText：appendPlainText 每调一次都会多插
+        # 一个 \n（实测 'abc'+'def'→'abc\ndef'），文档就不再等于原文
+        cursor = self.body_view.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(text[pos:end])
+        self._stream_pos = end
+        total_mb = len(text) / 1024 / 1024
+        self._paint_note(f"加载中 {end / 1024 / 1024:.1f}/{total_mb:.1f}MB")
+        if end >= len(text):
+            self._stream_finish()
+
+    def _stream_finish(self) -> None:
+        """收尾：恢复用户换行意图（闸门可能仍拦超长单行）+ 清掉进度提示。"""
+        text = self._stream_text
+        self._stream_stop()
+        self._paint_note("")
+        self._apply_wrap(text if text else None)
 
     def _apply_wrap(self, text: str | None = None) -> None:
         """换行开关 → 真正应用（可能被超长单行闸门拦下）。
@@ -520,6 +593,10 @@ class BodyPane(QWidget):
         if text is None:
             text = self.body_view.toPlainText()
         wrap, reason = should_wrap(text, self.wrap_cb.isChecked())
+        if self._stream_active:
+            # 流式追加期间开换行 = 每块 append 都触发全文重排（几百 ms/块），
+            # 卡顿元凶。先锁 NoWrap，加载完 _stream_finish 会再调一次恢复。
+            wrap, reason = False, "大内容加载中，加载完成后恢复换行"
         self.body_view.setLineWrapMode(
             QPlainTextEdit.LineWrapMode.WidgetWidth
             if wrap else QPlainTextEdit.LineWrapMode.NoWrap

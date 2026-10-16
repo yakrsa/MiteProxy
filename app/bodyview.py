@@ -32,14 +32,25 @@ BODY_PREVIEW_LIMIT = 512 * 1024
 #: 十六进制视图的渲染上限
 HEX_VIEW_LIMIT = 64 * 1024
 
-#: JSON 格式化输入上限：json.loads/dumps 很便宜（4MB 约 30ms），瓶颈不在这，
-#: 所以给得宽松；真正要卡住的是下面的渲染上限。
-JSON_PARSE_LIMIT = 4 * 1024 * 1024
+#: JSON 格式化输入上限：json.loads/dumps 是线性开销（8MB 约 60ms），便宜，
+#: 所以给得宽松，覆盖 4-5MB 的常见大响应体；真正要卡住的是渲染，见下面
+#: RENDER_TEXT_LIMIT / detail_panel 的流式追加。
+JSON_PARSE_LIMIT = 8 * 1024 * 1024
 
-#: 渲染文本上限（多行文本塞进 QPlainTextEdit 的成本：1MB ≈ 25ms、2MB ≈ 50ms）。
-#: 大 JSON 格式化后按此截断显示（附「已截断」提示）——切换大响应体时这段
-#: setPlainText 是卡顿主因，压到 1MB 让切换更跟手；1MB 预览已足够长。
+#: 首屏渲染上限：一次性塞进 QPlainTextEdit 的第一块（1MB ≈ 25ms）。超过
+#: 这个长度的文本由 detail_panel 走流式追加（首屏快显 + QTimer 分块喂入），
+#: 切换不卡也能看全——一次性 setPlainText(5MB) 要 120ms+，且 QPlainTextEdit
+#: 为每个 block 建 layout，20 万行的首屏排版就是切换卡顿的元凶。
 RENDER_TEXT_LIMIT = 1024 * 1024
+
+#: 流式追加的块大小：块间让事件循环跑，界面保持可响应/可滚动。
+STREAM_CHUNK = 512 * 1024
+
+#: 流式追加的绝对上限：超过就真截断（附「已截断」提示）。QPlainTextEdit
+#: 文档内存约 3-4 倍文本膨胀，16MB 文本 ≈ 60MB+ 内存，是调试场景的天花板。
+#: 注意 JSON_PARSE_LIMIT 内仍可能撑到它：紧凑数组 `[1,1,...]` pretty 后
+#: 每个元素膨胀约 2.5 倍（8MB body → 20MB pretty）。
+STREAM_HARD_LIMIT = 16 * 1024 * 1024
 
 #: 语法着色上限：QSyntaxHighlighter 按 block 走，2 万行约 260ms。
 #: 超过就暂停着色——丢了颜色但界面不卡，取舍很清楚。
@@ -191,11 +202,15 @@ class JsonFormat:
 
 
 def format_json_body(body: bytes | None, content_type: str) -> JsonFormat:
-    """把整个 body 当 JSON 格式化——**先完整解析、只截断渲染结果**。
+    """把整个 body 当 JSON 完整格式化——**不再截断渲染结果**。
 
     早期实现先按 512KB 截断再解析，结果任何大于 512KB 的 JSON 都会被截成
     半截、解析失败，用户反而失去格式化还看到一句"解析失败"。解析本身很便宜
-    （4MB 约 30ms），所以这里反过来：完整解析，输出太长才截断。
+    （8MB 约 60ms），所以这里反过来：≤ JSON_PARSE_LIMIT 全部完整解析。
+
+    渲染截断改由 detail_panel 负责：首屏只同步塞 RENDER_TEXT_LIMIT（1MB ≈
+    25ms，切换立刻有内容），剩余部分 QTimer 分块流式追加，界面不冻结也能
+    看全；只有超过 STREAM_HARD_LIMIT 才在这里真截断。
     """
     if not body:
         return JsonFormat(False, "")
@@ -222,9 +237,9 @@ def format_json_body(body: bytes | None, content_type: str) -> JsonFormat:
     if not ok:
         return JsonFormat(False, raw_preview(), f"JSON 解析失败，已显示原文：{pretty}")
 
-    if len(pretty) > RENDER_TEXT_LIMIT:
-        pretty = pretty[:RENDER_TEXT_LIMIT] + truncation_note(
-            len(pretty), limit=RENDER_TEXT_LIMIT
+    if len(pretty) > STREAM_HARD_LIMIT:
+        pretty = pretty[:STREAM_HARD_LIMIT] + truncation_note(
+            len(pretty), limit=STREAM_HARD_LIMIT
         )
         return JsonFormat(True, pretty, "", truncated=True)
     return JsonFormat(True, pretty)
