@@ -79,6 +79,14 @@ def main() -> int:
     app.setApplicationName("MiteProxy")
     app.setWindowIcon(_app_icon())
 
+    # 国际化：按设置的语言装好翻译器。中文是源语言（源码文案即中文），
+    # 不装翻译器即显示中文；英文等需 MiteProxy_<lang>.qm 覆盖。
+    # 必须在创建 MainWindow 之前完成——控件构造时即读取翻译。
+    from app.i18n import load_language
+    from app.settings import load_settings
+
+    load_language(app, load_settings().language)
+
     # 单实例：第二个实例不启动主界面，唤醒已运行实例的主窗口后退出。
     # 多开没有任何收益——只会抢代理/证书端口、互相覆盖系统代理设置。
     if not single_instance.acquire():
@@ -86,8 +94,11 @@ def main() -> int:
             # 极端情况（锁在但唤醒服务没监听）：至少提示用户别干等
             dialogs.information(
                 None,
-                "MiteProxy 已在运行",
-                "检测到 MiteProxy 已有一个实例在运行，请切换到已打开的窗口。",
+                QApplication.translate("main", "MiteProxy 已在运行"),
+                QApplication.translate(
+                    "main",
+                    "检测到 MiteProxy 已有一个实例在运行，请切换到已打开的窗口。",
+                ),
             )
         return 0
 

@@ -517,24 +517,24 @@ class MainWindow(QMainWindow):
         )
 
     def _build_menu(self) -> None:
-        file_menu = self.menuBar().addMenu("文件")
-        save_action = QAction("保存会话…", self)
+        file_menu = self.menuBar().addMenu(self.tr("文件"))
+        save_action = QAction(self.tr("保存会话…"), self)
         save_action.setShortcut(QKeySequence("Ctrl+S"))
         save_action.triggered.connect(self._save_session_dialog)
         file_menu.addAction(save_action)
 
-        open_action = QAction("打开会话…", self)
+        open_action = QAction(self.tr("打开会话…"), self)
         open_action.setShortcut(QKeySequence("Ctrl+O"))
         open_action.triggered.connect(self._open_session_dialog)
         file_menu.addAction(open_action)
 
         file_menu.addSeparator()
-        clear_action = QAction("清除列表", self)
+        clear_action = QAction(self.tr("清除列表"), self)
         clear_action.triggered.connect(self._on_clear)
         file_menu.addAction(clear_action)
 
         file_menu.addSeparator()
-        auto_action = QAction("退出时自动保存会话", self)
+        auto_action = QAction(self.tr("退出时自动保存会话"), self)
         auto_action.setCheckable(True)
         auto_action.setChecked(self.settings.auto_save_session)
         auto_action.toggled.connect(self._on_toggle_autosave)
@@ -542,36 +542,36 @@ class MainWindow(QMainWindow):
         self.autosave_action = auto_action
 
         file_menu.addSeparator()
-        quit_action = QAction("退出", self)
+        quit_action = QAction(self.tr("退出"), self)
         quit_action.setShortcut(QKeySequence("Ctrl+Q"))
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
-        tool_menu = self.menuBar().addMenu("工具")
-        codec_action = QAction("编码转换…", self)
+        tool_menu = self.menuBar().addMenu(self.tr("工具"))
+        codec_action = QAction(self.tr("编码转换…"), self)
         codec_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
         codec_action.triggered.connect(lambda: self._goto_tool("codec"))
         tool_menu.addAction(codec_action)
 
-        json_action = QAction("JSON 格式化 / 提取…", self)
+        json_action = QAction(self.tr("JSON 格式化 / 提取…"), self)
         json_action.setShortcut(QKeySequence("Ctrl+Shift+J"))
         json_action.triggered.connect(lambda: self._goto_tool("json"))
         tool_menu.addAction(json_action)
 
-        compare_action = QAction("JSON 比对…", self)
+        compare_action = QAction(self.tr("JSON 比对…"), self)
         compare_action.setShortcut(QKeySequence("Ctrl+Shift+D"))
         compare_action.triggered.connect(lambda: self._goto_tool("compare"))
         tool_menu.addAction(compare_action)
 
         # -- 外观：跟随系统 / 浅色 / 深色（默认跟随系统，选择随 settings 持久化）
-        view_menu = self.menuBar().addMenu("外观")
+        view_menu = self.menuBar().addMenu(self.tr("外观"))
         self._theme_group = QActionGroup(self)
         self._theme_group.setExclusive(True)
         self._theme_actions: dict[str, QAction] = {}
         for mode, label in (
-            ("system", "跟随系统"),
-            ("light", "浅色模式"),
-            ("dark", "深色模式"),
+            ("system", self.tr("跟随系统")),
+            ("light", self.tr("浅色模式")),
+            ("dark", self.tr("深色模式")),
         ):
             action = QAction(label, self)
             action.setCheckable(True)
@@ -583,13 +583,46 @@ class MainWindow(QMainWindow):
             view_menu.addAction(action)
             self._theme_actions[mode] = action
 
-        menu = self.menuBar().addMenu("帮助")
-        feedback_action = QAction("意见反馈…", self)
+        # -- 语言：中文 / English（切换后重启生效）
+        lang_menu = self.menuBar().addMenu(self.tr("语言"))
+        self._lang_group = QActionGroup(self)
+        self._lang_group.setExclusive(True)
+        self._lang_actions: dict[str, QAction] = {}
+        from app.i18n import available_languages
+
+        for code, label in available_languages().items():
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.setChecked(self.settings.language == code)
+            action.triggered.connect(
+                lambda _=False, c=code: self._on_language_selected(c)
+            )
+            self._lang_group.addAction(action)
+            lang_menu.addAction(action)
+            self._lang_actions[code] = action
+
+        menu = self.menuBar().addMenu(self.tr("帮助"))
+        feedback_action = QAction(self.tr("意见反馈…"), self)
         feedback_action.triggered.connect(self._show_feedback)
         menu.addAction(feedback_action)
-        about = QAction("关于", self)
+        about = QAction(self.tr("关于"), self)
         about.triggered.connect(self._show_about)
         menu.addAction(about)
+
+    def _on_language_selected(self, code: str) -> None:
+        """语言切换：持久化到设置并提示重启生效（翻译器在下次启动时装载）。"""
+        # 同步语言菜单项的勾选态（QActionGroup 的 radio 行为）
+        for c, act in self._lang_actions.items():
+            act.setChecked(c == code)
+        if code == self.settings.language:
+            return
+        self.settings.language = code
+        save_settings(self.settings)
+        dialogs.information(
+            self,
+            self.tr("语言已切换"),
+            self.tr("语言将在重启 MiteProxy 后生效。"),
+        )
 
     def _goto_tool(self, page: str = "codec") -> None:
         """切到工具页的指定子页并把焦点给输入框。"""

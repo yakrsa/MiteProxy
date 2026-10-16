@@ -89,7 +89,7 @@ class RuleEditorDialog(QDialog):
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
 
         self.name_edit = QLineEdit()
-        form.addRow("规则名称:", self.name_edit)
+        form.addRow(self.tr("规则名称:"), self.name_edit)
 
         # URL 值很可能很长：类型下拉单独一行，值输入框另起一行占满整行
         match_type_row = QWidget()
@@ -97,33 +97,35 @@ class RuleEditorDialog(QDialog):
         match_type_layout.setContentsMargins(0, 0, 0, 0)
         self.match_type_combo = QComboBox()
         for mtype, label in MATCH_LABELS:
-            self.match_type_combo.addItem(label, mtype)
+            self.match_type_combo.addItem(self.tr(label), mtype)
         match_type_layout.addWidget(self.match_type_combo)
         match_type_layout.addStretch(1)
         self.match_value_edit = QLineEdit()
-        self.match_value_edit.setPlaceholderText("如 /api/user/list 或 https?://.*/v1/.*")
+        self.match_value_edit.setPlaceholderText(
+            self.tr("如 /api/user/list 或 https?://.*/v1/.*")
+        )
         match_col = QWidget()
         match_layout = QVBoxLayout(match_col)
         match_layout.setContentsMargins(0, 0, 0, 0)
         match_layout.setSpacing(6)
         match_layout.addWidget(match_type_row)
         match_layout.addWidget(self.match_value_edit)
-        form.addRow("URL 匹配:", match_col)
+        form.addRow(self.tr("URL 匹配:"), match_col)
 
         # 请求方法过滤（比 Fiddler 好：不用自己拼正则区分方法）
         self.method_combo = QComboBox()
         for m in METHODS:
-            self.method_combo.addItem(METHOD_LABELS.get(m, m), m)
-        form.addRow("请求方法:", self.method_combo)
+            self.method_combo.addItem(self.tr(METHOD_LABELS.get(m, m)), m)
+        form.addRow(self.tr("请求方法:"), self.method_combo)
 
         # 从抓包请求生成 Mock 时带入的原始请求 Body（只读参考，不参与 URL 匹配）
         self.req_body_edit = QPlainTextEdit()
         self.req_body_edit.setReadOnly(True)
         self.req_body_edit.setMaximumHeight(70)
         self.req_body_edit.setPlaceholderText(
-            "从抓包请求带入的原始请求 Body（仅参考，不参与 URL 匹配）"
+            self.tr("从抓包请求带入的原始请求 Body（仅参考，不参与 URL 匹配）")
         )
-        form.addRow("请求 Body:", self.req_body_edit)
+        form.addRow(self.tr("请求 Body:"), self.req_body_edit)
 
         # 状态码 + 预设
         status_row = QWidget()
@@ -138,7 +140,7 @@ class RuleEditorDialog(QDialog):
             btn.clicked.connect(lambda _=False, c=code: self.status_edit.setText(str(c)))
             status_layout.addWidget(btn)
         status_layout.addStretch(1)
-        form.addRow("状态码(100-599):", status_row)
+        form.addRow(self.tr("状态码(100-599):"), status_row)
 
         # 延迟
         self.latency_edit = QLineEdit("0")
@@ -147,45 +149,47 @@ class RuleEditorDialog(QDialog):
         latency_layout = QHBoxLayout(latency_row)
         latency_layout.setContentsMargins(0, 0, 0, 0)
         latency_layout.addWidget(self.latency_edit)
-        latency_layout.addWidget(QLabel("毫秒（0 = 不延迟）"))
+        latency_layout.addWidget(QLabel(self.tr("毫秒（0 = 不延迟）")))
         latency_layout.addStretch(1)
-        form.addRow("模拟延迟:", latency_row)
+        form.addRow(self.tr("模拟延迟:"), latency_row)
 
         # body 来源（三种模式：内联 / 本地文件 / 重定向到其他 URL）
         source_row = QWidget()
         source_layout = QHBoxLayout(source_row)
         source_layout.setContentsMargins(0, 0, 0, 0)
-        self.inline_radio = QRadioButton("直接输入内容")
-        self.file_radio = QRadioButton("返回本地文件")
-        self.redirect_radio = QRadioButton("重定向到其他 URL")
+        self.inline_radio = QRadioButton(self.tr("直接输入内容"))
+        self.file_radio = QRadioButton(self.tr("返回本地文件"))
+        self.redirect_radio = QRadioButton(self.tr("重定向到其他 URL"))
         self.inline_radio.setChecked(True)
         source_layout.addWidget(self.inline_radio)
         source_layout.addWidget(self.file_radio)
         source_layout.addWidget(self.redirect_radio)
         source_layout.addStretch(1)
-        form.addRow("响应内容:", source_row)
+        form.addRow(self.tr("响应内容:"), source_row)
 
         # 重定向目标（redirect 模式专用）
         self.redirect_edit = QLineEdit()
         self.redirect_edit.setPlaceholderText(
-            "如 https://staging.example.com/api/user，支持 $1 替换（正则捕获组）"
+            self.tr("如 https://staging.example.com/api/user，支持 $1 替换（正则捕获组）")
         )
-        form.addRow("重定向到:", self.redirect_edit)
+        form.addRow(self.tr("重定向到:"), self.redirect_edit)
 
         self.body_edit = QPlainTextEdit()
-        self.body_edit.setPlaceholderText("响应 body，如 JSON / HTML …")
-        form.addRow("Body:", self.body_edit)
+        self.body_edit.setPlaceholderText(self.tr("响应 body，如 JSON / HTML …"))
+        form.addRow(self.tr("Body:"), self.body_edit)
 
         file_row = QWidget()
         file_layout = QHBoxLayout(file_row)
         file_layout.setContentsMargins(0, 0, 0, 0)
         self.file_path_edit = QLineEdit()
-        self.file_path_edit.setPlaceholderText("命中时读取该文件内容返回（请求时读取，改文件即生效）")
-        browse_btn = QPushButton("浏览…")
+        self.file_path_edit.setPlaceholderText(
+            self.tr("命中时读取该文件内容返回（请求时读取，改文件即生效）")
+        )
+        browse_btn = QPushButton(self.tr("浏览…"))
         browse_btn.clicked.connect(self._browse_file)
         file_layout.addWidget(self.file_path_edit, stretch=1)
         file_layout.addWidget(browse_btn)
-        form.addRow("文件路径:", file_row)
+        form.addRow(self.tr("文件路径:"), file_row)
 
         # headers
         headers_row = QWidget()
@@ -204,15 +208,15 @@ class RuleEditorDialog(QDialog):
         hbtn_row = QWidget()
         hbtn_layout = QHBoxLayout(hbtn_row)
         hbtn_layout.setContentsMargins(0, 0, 0, 0)
-        add_h = QPushButton("添加 Header")
+        add_h = QPushButton(self.tr("添加 Header"))
         add_h.clicked.connect(lambda: self.headers_table.insertRow(self.headers_table.rowCount()))
-        del_h = QPushButton("删除选中行")
+        del_h = QPushButton(self.tr("删除选中行"))
         del_h.clicked.connect(self._delete_header_row)
         hbtn_layout.addWidget(add_h)
         hbtn_layout.addWidget(del_h)
         hbtn_layout.addStretch(1)
         headers_layout.addWidget(hbtn_row)
-        form.addRow("Headers:", headers_row)
+        form.addRow(self.tr("Headers:"), headers_row)
 
         layout.addLayout(form)
 

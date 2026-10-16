@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex
+from PySide6.QtCore import QAbstractTableModel, QCoreApplication, Qt, QModelIndex
 from PySide6.QtGui import QColor, QFont, QBrush
 
 from app.ui import theme
@@ -23,6 +23,30 @@ COL_ID, COL_METHOD, COL_HOST, COL_SERVER_IP = 0, 1, 2, 3
 COL_PATH, COL_STATUS = 4, 5
 COL_REQ_SIZE, COL_RESP_SIZE = 6, 7
 COL_DURATION, COL_MARK = 8, 9
+
+#: 列头的翻译文案。**必须懒执行**：翻译器是在 app/main.py 里 QApplication
+#: 创建之后才装载的，若在 import 时求值会永远拿到中文原文。
+#: 字面量写死在这里（而不是 self.tr(变量)）是为了让 pyside6-lupdate 能抽到。
+_column_labels_cache: list[str] | None = None
+
+
+def column_labels() -> list[str]:
+    """返回已翻译的列头文案（首次调用时求值并缓存）。"""
+    global _column_labels_cache
+    if _column_labels_cache is None:
+        _column_labels_cache = [
+            "#",
+            QCoreApplication.translate("FlowStore", "方法"),
+            "host",
+            QCoreApplication.translate("FlowStore", "服务器 IP"),
+            QCoreApplication.translate("FlowStore", "路径"),
+            QCoreApplication.translate("FlowStore", "状态"),
+            QCoreApplication.translate("FlowStore", "请求体"),
+            QCoreApplication.translate("FlowStore", "响应"),
+            QCoreApplication.translate("FlowStore", "耗时(ms)"),
+            QCoreApplication.translate("FlowStore", "标记"),
+        ]
+    return _column_labels_cache
 
 #: 排序专用 role。DisplayRole 里「大小」是 `4.2 KB`、「耗时」是格式化过的字符串，
 #: 直接按显示文本排会出现 `1.3 MB` 排在 `812 B` 前面的笑话——所以排序一律走这个
@@ -263,7 +287,7 @@ class FlowStore(QAbstractTableModel):
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):  # noqa: N802
         if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
-            return COLUMNS[section]
+            return column_labels()[section]
         return None
 
     # ------------------------------------------------------------ 数据操作（UI 线程调用）

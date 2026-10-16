@@ -18,6 +18,9 @@ a = Analysis(
         # ico 含 16-256 全尺寸帧（任务栏/标题栏各 DPI 清晰），png 兜底
         (str(PROJECT / "packaging" / "icon.ico"), "."),
         (str(PROJECT / "packaging" / "icon_256.png"), "."),
+        # 英文界面翻译（app/i18n/__init__.py 按 app/i18n 目录查找；
+        # 中文是源语言、不需要 .qm）。加新语言时在这里再加一行。
+        (str(PROJECT / "app" / "i18n" / "MiteProxy_en.qm"), "app/i18n"),
     ],
     hiddenimports=[
         # mitmproxy 按平台动态 import 的模块，PyInstaller 静态分析抓不到

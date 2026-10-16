@@ -11,6 +11,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.i18n import DEFAULT_LANG, SUPPORTED, normalize
 from app.network import MapRule, ThrottleConfig, rules_from_dicts, rules_to_dicts
 from app.rules import CONFIG_DIR
 from app.ui.filter_model import FilterConfig
@@ -70,6 +71,9 @@ class Settings:
     traffic_side_by_side: bool = True
     #: 主题档位：system（跟随系统）/ light / dark（app/ui/theme.py THEME_MODES）
     theme: str = "system"
+    #: 界面语言：zh_CN（源语言，默认）/ en（app/i18n.SUPPORTED）。
+    #: 切换后重启生效（入口在创建 MainWindow 前装好翻译器）。
+    language: str = DEFAULT_LANG
     #: 流量页分隔条位置（QSplitter.saveState()，base64 落盘）
     splitter_state: bytes | None = None
     window_geometry: bytes | None = None
@@ -90,6 +94,7 @@ class Settings:
             "auto_system_proxy": self.auto_system_proxy,
             "traffic_side_by_side": self.traffic_side_by_side,
             "theme": self.theme,
+            "language": self.language,
             # splitter_state / geometry 是 QByteArray，base64 成文本落盘
             "splitter_state": (
                 base64.b64encode(self.splitter_state).decode("ascii")
@@ -133,6 +138,7 @@ class Settings:
                 data["theme"] if data.get("theme") in ("system", "light", "dark")
                 else "system"
             ),
+            language=normalize(data.get("language", DEFAULT_LANG)),
             splitter_state=cls._decode_b64(data.get("splitter_state")),
             window_geometry=cls._decode_geometry(data.get("window_geometry")),
         )

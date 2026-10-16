@@ -103,28 +103,28 @@ class RulesPanel(QWidget):
         layout.setContentsMargins(6, 6, 6, 6)
 
         toolbar = QHBoxLayout()
-        self.add_btn = QPushButton("新增")
-        self.edit_btn = QPushButton("编辑")
-        self.delete_btn = QPushButton("删除")
-        self.export_btn = QPushButton("导出规则")
-        self.import_native_btn = QPushButton("导入规则")
-        self.batch_enable_btn = QPushButton("启用")
-        self.batch_disable_btn = QPushButton("停用")
-        self.batch_delete_btn = QPushButton("删除")
-        self.batch_export_btn = QPushButton("导出")
-        self.up_btn = QPushButton("上移")
-        self.down_btn = QPushButton("下移")
+        self.add_btn = QPushButton(self.tr("新增"))
+        self.edit_btn = QPushButton(self.tr("编辑"))
+        self.delete_btn = QPushButton(self.tr("删除"))
+        self.export_btn = QPushButton(self.tr("导出规则"))
+        self.import_native_btn = QPushButton(self.tr("导入规则"))
+        self.batch_enable_btn = QPushButton(self.tr("启用"))
+        self.batch_disable_btn = QPushButton(self.tr("停用"))
+        self.batch_delete_btn = QPushButton(self.tr("删除"))
+        self.batch_export_btn = QPushButton(self.tr("导出"))
+        self.up_btn = QPushButton(self.tr("上移"))
+        self.down_btn = QPushButton(self.tr("下移"))
         # 导入 Fiddler 规则：挪到工具栏最后面（见下方末尾 addWidget）
-        self.import_btn = QPushButton("导入 Fiddler 规则")
+        self.import_btn = QPushButton(self.tr("导入 Fiddler 规则"))
         for btn in (
             self.batch_enable_btn,
             self.batch_disable_btn,
             self.batch_delete_btn,
             self.batch_export_btn,
         ):
-            btn.setToolTip("对勾选的规则生效；取消全部勾选后自动隐藏")
+            btn.setToolTip(self.tr("对勾选的规则生效；取消全部勾选后自动隐藏"))
             btn.hide()
-        self.only_enabled_cb = QCheckBox("只显示启用")
+        self.only_enabled_cb = QCheckBox(self.tr("只显示启用"))
         self.only_enabled_cb.setToolTip(
             "勾选后列表只显示启用中的规则；停用规则仍在存储中，取消勾选即可看到。"
         )
@@ -165,7 +165,17 @@ class RulesPanel(QWidget):
         # 末列表头文字留空——「选择」标题由表头上的全选组合控件绘制，
         # 避免原生表头文字与覆盖的勾选框叠在一起（用户截图反馈过叠印）。
         self.table.setHorizontalHeaderLabels(
-            ["序号", "名称", "启用", "匹配", "动作", "来源", "命中", "创建时间", ""]
+            [
+                self.tr("序号"),
+                self.tr("名称"),
+                self.tr("启用"),
+                self.tr("匹配"),
+                self.tr("动作"),
+                self.tr("来源"),
+                self.tr("命中"),
+                self.tr("创建时间"),
+                "",
+            ]
         )
         # 质感：斑马纹 + 无网格线 + 紧凑行高（全局 QSS 管表头/边框）
         self.table.setAlternatingRowColors(True)
@@ -372,10 +382,10 @@ class RulesPanel(QWidget):
         self.batch_disable_btn.setVisible(has)
         self.batch_delete_btn.setVisible(has)
         self.batch_export_btn.setVisible(has)
-        self.batch_enable_btn.setText(f"启用({n})")
-        self.batch_disable_btn.setText(f"停用({n})")
-        self.batch_delete_btn.setText(f"删除({n})")
-        self.batch_export_btn.setText(f"导出({n})")
+        self.batch_enable_btn.setText(self.tr("启用({0})").format(n))
+        self.batch_disable_btn.setText(self.tr("停用({0})").format(n))
+        self.batch_delete_btn.setText(self.tr("删除({0})").format(n))
+        self.batch_export_btn.setText(self.tr("导出({0})").format(n))
 
     # ------------------------------------------------------------ 全选
 
@@ -527,22 +537,22 @@ class RulesPanel(QWidget):
         if 0 <= row < len(visible):
             self.table.selectRow(row)
             rule = visible[row]
-            menu.addAction("编辑", self._on_edit)
+            menu.addAction(self.tr("编辑"), self._on_edit)
             menu.addAction(
-                "停用" if rule.enabled else "启用",
+                self.tr("停用") if rule.enabled else self.tr("启用"),
                 lambda: self._toggle_enable(rule.id),
             )
             menu.addSeparator()
-            act_up = menu.addAction("上移", lambda: self._on_move(-1))
-            act_down = menu.addAction("下移", lambda: self._on_move(1))
+            act_up = menu.addAction(self.tr("上移"), lambda: self._on_move(-1))
+            act_down = menu.addAction(self.tr("下移"), lambda: self._on_move(1))
             act_up.setEnabled(row > 0)
             act_down.setEnabled(row < len(visible) - 1)
-            menu.addAction("置顶", lambda: self._move_to_top(rule.id))
+            menu.addAction(self.tr("置顶"), lambda: self._move_to_top(rule.id))
             menu.addSeparator()
-            menu.addAction("删除", self._on_delete)
+            menu.addAction(self.tr("删除"), self._on_delete)
         else:
-            menu.addAction("新增", self._on_add)
-            menu.addAction("导入 Fiddler 规则", self._on_import)
+            menu.addAction(self.tr("新增"), self._on_add)
+            menu.addAction(self.tr("导入 Fiddler 规则"), self._on_import)
         return menu
 
     def _toggle_enable(self, rule_id: str) -> None:
@@ -598,7 +608,7 @@ class RulesPanel(QWidget):
             self.table.selectRow(top)
         rule = self.store.get(rule_id)
         name = rule.name if rule is not None else ""
-        self._toast(f"已置顶「{name}」")
+        self._toast(self.tr("已置顶「{0}」").format(name))
 
     def _on_move(self, delta: int) -> None:
         row = self.table.currentRow()
@@ -633,7 +643,7 @@ class RulesPanel(QWidget):
     def _on_edit(self) -> None:
         rule = self._current_rule()
         if rule is None:
-            dialogs.information(self, "提示", "请先选择一条规则")
+            dialogs.information(self, self.tr("提示"), self.tr("请先选择一条规则"))
             return
         dialog = RuleEditorDialog(self.store, rule, parent=self)
         if dialog.exec():
@@ -644,12 +654,20 @@ class RulesPanel(QWidget):
     def _on_batch_set_enabled(self, enabled: bool) -> None:
         ids = self._selected_rule_ids()
         if not ids:
-            dialogs.information(self, "提示", "请先勾选规则（首列复选框）")
+            dialogs.information(self, self.tr("提示"), self.tr("请先勾选规则（末尾复选框）"))
             return
         # 批量更新走 store.update_many：一次锁 + 一次后台落盘，选中很多条也不卡
         self.store.update_many(ids, enabled=enabled)
         self.refresh()
-        self._toast(f"已将 {len(ids)} 条规则{'启用' if enabled else '停用'}")
+        # 这里用「已启用/已停用」而非「启用/停用」：后者是按钮上的祈使语气
+        # （Enable/Disable），这里是完成时语态（enabled/disabled）。
+        # 同上下文同源串只能有一条译文，混用会导致英文语法错误。
+        self._toast(
+            self.tr("已将 {0} 条规则{1}").format(
+                len(ids),
+                self.tr("已启用") if enabled else self.tr("已停用"),
+            )
+        )
 
     # ------------------------------------------------------------ 轻提示
     def _toast(self, text: str, msec: int = 2500) -> None:
@@ -709,7 +727,9 @@ class RulesPanel(QWidget):
             f"「{names[0]}」" if len(names) == 1
             else f"{len(names)} 条规则（{('、'.join(names[:3]))}{'…' if len(names) > 3 else ''}）"
         )
-        reply = dialogs.question(self, "确认删除", f"确定删除{target}？")
+        reply = dialogs.question(
+            self, self.tr("确认删除"), self.tr("确定删除{0}？").format(target)
+        )
         if reply == QMessageBox.StandardButton.Yes:
             # 批量删除走 store.delete_many：一次锁 + 一次后台落盘
             self.store.delete_many(ids)
@@ -723,9 +743,12 @@ class RulesPanel(QWidget):
     def _on_import(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "选择 Fiddler 规则文件",
+            self.tr("选择 Fiddler 规则文件"),
             "",
-            "Fiddler 规则 (*.farx *.js);;FARX 规则包 (*.farx);;CustomRules.js (*.js);;所有文件 (*)",
+            self.tr(
+                "Fiddler 规则 (*.farx *.js);;FARX 规则包 (*.farx);;"
+                "CustomRules.js (*.js);;所有文件 (*)"
+            ),
         )
         if not path:
             return
@@ -735,15 +758,17 @@ class RulesPanel(QWidget):
             else:
                 result = jsscript.parse_file(path)
         except (ValueError, OSError) as e:
-            dialogs.critical(self, "导入失败", str(e))
+            dialogs.critical(self, self.tr("导入失败"), str(e))
             return
 
         if result.ok_count == 0:
             reasons = "\n".join(f"• {n}：{r}" for n, r in result.skipped[:10])
             dialogs.information(
                 self,
-                "无可导入规则",
-                f"没有解析出可导入的规则。\n\n{reasons or '文件为空或格式不符'}",
+                self.tr("无可导入规则"),
+                self.tr("没有解析出可导入的规则。\n\n{0}").format(
+                    reasons or self.tr("文件为空或格式不符")
+                ),
             )
             return
 
@@ -758,7 +783,9 @@ class RulesPanel(QWidget):
                 count, _ = self.store.merge(selected)
                 self.refresh()
                 dialogs.information(
-                    self, "导入完成", f"成功导入 {count} 条规则"
+                    self,
+                    self.tr("导入完成"),
+                    self.tr("成功导入 {0} 条规则").format(count),
                 )
             self.import_requested.emit()  # 只在真正走完导入流程后通知
 
@@ -778,9 +805,9 @@ class RulesPanel(QWidget):
             scope = f"全部 {len(rules)} 条"
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "导出规则",
+            self.tr("导出规则"),
             "miteproxy-rules.json",
-            "MiteProxy 规则 (*.json);;所有文件 (*)",
+            self.tr("MiteProxy 规则 (*.json);;所有文件 (*)"),
         )
         if not path:
             return
@@ -798,16 +825,18 @@ class RulesPanel(QWidget):
             dialogs.critical(self, "导出失败", str(e))
             return
         dialogs.information(
-            self, "导出完成", f"已导出{scope}规则到\n{path}"
+            self,
+            self.tr("导出完成"),
+            self.tr("已导出{0}规则到\n{1}").format(scope, path),
         )
 
     def _on_import_native(self) -> None:
         """导入 MiteProxy 导出的 .json 规则文件（追加，不覆盖现有规则）。"""
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "导入规则",
+            self.tr("导入规则"),
             "",
-            "MiteProxy 规则 (*.json);;所有文件 (*)",
+            self.tr("MiteProxy 规则 (*.json);;所有文件 (*)"),
         )
         if not path:
             return
@@ -815,11 +844,11 @@ class RulesPanel(QWidget):
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except (OSError, ValueError) as e:
-            dialogs.critical(self, "导入失败", f"文件读取/解析失败：{e}")
+            dialogs.critical(self, self.tr("导入失败"), self.tr("文件读取/解析失败：{0}").format(e))
             return
         raw_rules = data.get("rules") if isinstance(data, dict) else data
         if not isinstance(raw_rules, list) or not raw_rules:
-            dialogs.information(self, "无可导入规则", "文件里没有规则数据。")
+            dialogs.information(self, self.tr("无可导入规则"), self.tr("文件里没有规则数据。"))
             return
         rules = []
         for raw in raw_rules:
@@ -828,9 +857,13 @@ class RulesPanel(QWidget):
             except Exception:
                 continue  # 单条坏数据跳过，不影响其余
         if not rules:
-            dialogs.information(self, "无可导入规则", "文件里的规则格式无法识别。")
+            dialogs.information(self, self.tr("无可导入规则"), self.tr("文件里的规则格式无法识别。"))
             return
         count, _ = self.store.merge(rules)
         self.refresh()
         self.import_requested.emit()
-        dialogs.information(self, "导入完成", f"成功导入 {count} 条规则")
+        dialogs.information(
+            self,
+            self.tr("导入完成"),
+            self.tr("成功导入 {0} 条规则").format(count),
+        )
