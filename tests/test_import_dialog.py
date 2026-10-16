@@ -66,8 +66,8 @@ def test_selected_rules_roundtrip(qapp):
     assert dlg.selected_rules() == []
 
 
-def test_skip_list_collapsed_by_default(qapp):
-    """选择区域（规则表格）不能被长长的跳过清单挤压/盖没。"""
+def test_skip_list_expanded_by_default(qapp):
+    """跳过清单默认展开（内容一眼可见），同时限高可滚动不挤压选择区域。"""
     from PySide6.QtWidgets import QScrollArea
 
     skipped = [
@@ -78,11 +78,14 @@ def test_skip_list_collapsed_by_default(qapp):
     lay = dlg.layout()
     # 规则表格占 stretch，优先拿垂直空间
     assert lay.stretch(lay.indexOf(dlg.table)) >= 1
-    # 跳过清单默认收起（isHidden），不占选择区域高度
+    # 跳过清单默认展开：内容默认可见（用户反馈"默认没显示要点击才显示"）
+    assert dlg.skip_toggle.isChecked()
     scrolls = dlg.findChildren(QScrollArea)
-    assert scrolls and all(s.isHidden() for s in scrolls)
-    # 展开后才显示，再收起又隐藏
-    dlg.skip_toggle.setChecked(True)
-    assert not any(s.isHidden() for s in scrolls)
+    assert scrolls and all(not s.isHidden() for s in scrolls)
+    # 限高 + 可滚动：26 条原因不会把表格压没，多余的滚动看
+    assert all(0 < s.maximumHeight() <= 200 for s in scrolls)
+    # 仍可折叠收起：规则特别多时点一下把空间全还给表格
     dlg.skip_toggle.setChecked(False)
     assert all(s.isHidden() for s in scrolls)
+    dlg.skip_toggle.setChecked(True)
+    assert all(not s.isHidden() for s in scrolls)

@@ -140,20 +140,21 @@ class ImportPreviewDialog(QDialog):
             skip_label.setWordWrap(True)
             skip_label.setContentsMargins(14, 0, 0, 0)
             skip_label.setStyleSheet(f"color: {theme.css('hint')};")
-            # 跳过清单可折叠、默认收起：26 条原因若平铺会把上面的规则选择区域
-            # 挤压/盖没。默认只占一行标题，需要看原因时点一下展开（内容限高可滚动）。
+            # 跳过清单默认展开、限高可滚动：内容默认可见（导入结果一眼看全），
+            # 又不会像早期平铺那样把上面的规则选择区域挤压/盖没——表格有
+            # stretch=1 优先拿垂直空间，这里最多给 140px，多余的可滚动。
+            # 仍保留折叠能力：规则特别多时点标题收起，把空间全还给表格。
             self.skip_scroll = QScrollArea()
             self.skip_scroll.setWidget(skip_label)
             self.skip_scroll.setWidgetResizable(True)
             self.skip_scroll.setMaximumHeight(140)
-            self.skip_scroll.setVisible(False)
 
             self.skip_toggle = QToolButton()
             self.skip_toggle.setText(f"跳过的规则及原因（{len(skipped)} 条）")
             self.skip_toggle.setCheckable(True)
-            self.skip_toggle.setChecked(False)
-            self.skip_toggle.setToolTip("点击展开 / 收起跳过的规则及原因")
-            self.skip_toggle.setArrowType(Qt.ArrowType.RightArrow)
+            self.skip_toggle.setChecked(True)      # 默认展开：内容要默认可见
+            self.skip_toggle.setToolTip("点击收起 / 展开跳过的规则及原因")
+            self.skip_toggle.setArrowType(Qt.ArrowType.DownArrow)
             self.skip_toggle.setStyleSheet(
                 f"color: {theme.css('hint')}; border: none; text-align: left;"
             )
