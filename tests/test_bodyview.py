@@ -47,6 +47,8 @@ from app.bodyview import (  # noqa: E402
     BODY_PREVIEW_LIMIT,
     HIGHLIGHT_LIMIT,
     JSON_PARSE_LIMIT,
+    RENDER_TEXT_LIMIT,
+    STREAM_HARD_LIMIT,
     WRAP_MAX_LINE_CHARS,
     WRAP_SCAN_LIMIT,
     content_encoding_of,
@@ -437,9 +439,23 @@ class TestLargeBodyGuards:
         assert result.ok
         assert result.text.startswith("[\n  {")
 
-    def test_big_json_render_capped(self):
+    def test_big_json_fully_formatted(self):
+        """4-5MB 的响应体要完整格式化、完整返回（渲染截断由 detail_panel
+        流式层负责，format_json_body 不再截断）。"""
         body = json.dumps({"k": "x" * (3 * 1024 * 1024)}, ensure_ascii=False).encode()
+        assert len(body) > RENDER_TEXT_LIMIT
         result = format_json_body(body, "application/json")
+        assert result.ok and not result.truncated
+        assert len(result.text) > len(body)      # 全文在，没被截
+
+    def test_beyond_hard_limit_truncated(self, monkeypatch):
+        """格式化结果超过 STREAM_HARD_LIMIT 才真截断（紧凑数组 pretty 后
+        每个元素膨胀约 2.5 倍，8MB body 能撑到 20MB pretty）。"""
+        import app.bodyview as bv
+
+        monkeypatch.setattr(bv, "STREAM_HARD_LIMIT", 64 * 1024)
+        body = json.dumps({"k": "x" * (70 * 1024)}, ensure_ascii=False).encode()
+        result = bv.format_json_body(body, "application/json")
         assert result.ok and result.truncated
         assert "已截断" in result.text
 
@@ -459,6 +475,74 @@ class TestLargeBodyGuards:
         pane.show_body(_headers("application/json"), body)
         assert len(pane.body_view.toPlainText()) > HIGHLIGHT_LIMIT
         assert not pane._json_highlighter.enabled
+
+
+# ====================================================================== 流式加载
+
+
+class TestStreamLoad:
+    """大文本（>RENDER_TEXT_LIMIT）流式渲染：首屏快显 + QTimer 分块追加。
+
+    盯三件事：首屏不等事件循环就有内容（≤1MB）、最终全文进文档、
+    切换/清空时旧加载被取消（旧内容不能追赶上新内容）。
+    """
+
+    @staticmethod
+    def _big_json_body() -> bytes:
+        """紧凑 body，pretty 后 > 1MB（15000 个元素 ≈ 1.65MB）。"""
+        return json.dumps(
+            [{"i": i, "pad": "x" * 60} for i in range(15000)], ensure_ascii=False
+        ).encode()
+
+    @staticmethod
+    def _pump(qapp, pane, max_rounds: int = 300) -> None:
+        for _ in range(max_rounds):
+            qapp.processEvents()
+            if not pane._stream_active:
+                return
+        raise AssertionError("流式加载未在预期轮数内完成")
+
+    def test_small_text_renders_synchronously(self):
+        pane = _pane()
+        pane.show_body(_headers("application/json"), b'{"a":1}')
+        assert not pane._stream_active
+        assert pane.body_view.toPlainText() == '{\n  "a": 1\n}'
+
+    def test_big_text_first_screen_then_streams_in(self, qapp):
+        pane = _pane()
+        body = self._big_json_body()
+        # 断言要按 pretty 后的长度算：_show_text 收到的是 format_json_body
+        # 的格式化结果，不是原始紧凑 body
+        pretty = json.dumps(json.loads(body), ensure_ascii=False, indent=2)
+        assert len(pretty) > RENDER_TEXT_LIMIT
+        pane.show_body(_headers("application/json"), body)
+        # 首屏立即就位（≤1MB），无需等事件循环——切换不卡的关键
+        head = pane.body_view.toPlainText()
+        assert 0 < len(head) <= RENDER_TEXT_LIMIT
+        assert head == pretty[:RENDER_TEXT_LIMIT]
+        assert pane._stream_active
+        # 跑完事件循环 → 全文进文档
+        self._pump(qapp, pane)
+        assert pane.body_view.toPlainText() == pretty
+
+    def test_switch_cancels_stream(self, qapp):
+        pane = _pane()
+        pane.show_body(_headers("application/json"), self._big_json_body())
+        assert pane._stream_active
+        # 没流完就切到小 body：旧加载必须取消，不能把旧内容追加回来
+        pane.show_body(_headers("application/json"), b'{"a":1}')
+        assert not pane._stream_active
+        self._pump(qapp, pane, max_rounds=10)
+        assert pane.body_view.toPlainText() == '{\n  "a": 1\n}'
+
+    def test_clear_cancels_stream(self, qapp):
+        pane = _pane()
+        pane.show_body(_headers("application/json"), self._big_json_body())
+        assert pane._stream_active
+        pane.clear()
+        assert not pane._stream_active
+        self._pump(qapp, pane, max_rounds=10)
+        assert pane.body_view.toPlainText() == "（无 body）"
 
 
 # ====================================================================== 换行
