@@ -199,7 +199,15 @@ class TrafficTable(QTableView):
     """流量列表；选中变化由主窗口接去更新详情面板。
 
     多选（Ctrl/Shift 点选）用于批量导出与批量复制；详情面板只跟随第一个选中项。
+
+    键盘快捷键（仅在本表获得焦点时生效）：
+    - R：重放选中请求；E：编辑后重放选中请求（由主窗口接去执行）；
+    - Ctrl+X：清空流量列表（在主窗口绑定）。
     """
+
+    # 选中某条请求后按 R / E 触发的重放信号（无修饰键）
+    replay_requested = Signal()
+    edit_replay_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -280,5 +288,15 @@ class TrafficTable(QTableView):
         self.scrollTo(model.index(row, 0))
 
     def keyPressEvent(self, event):  # noqa: N802
-        # Ctrl+F 由主窗口全局处理；这里不拦截
+        # Ctrl+F 由主窗口全局处理；这里只拦截无修饰键的 R / E 重放快捷键。
+        # 带修饰键（如已有的 Ctrl+R 重放、Ctrl+E 导出）交给主窗口的 QShortcut，
+        # 不要在这里抢，否则会双触发。
+        if event.modifiers() == Qt.KeyboardModifier.NoModifier:
+            key = event.key()
+            if key == Qt.Key.Key_R:
+                self.replay_requested.emit()
+                return
+            if key == Qt.Key.Key_E:
+                self.edit_replay_requested.emit()
+                return
         super().keyPressEvent(event)

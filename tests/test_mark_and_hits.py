@@ -274,22 +274,22 @@ class TestRulesPanelHits:
     def test_column_added(self, qapp, store):
         panel = RulesPanel(store)
         assert panel.table.columnCount() == 9
-        assert panel.table.horizontalHeaderItem(7).text() == "命中"
-        assert panel.table.horizontalHeaderItem(8).text() == "创建时间"
+        assert panel.table.horizontalHeaderItem(6).text() == "命中"
+        assert panel.table.horizontalHeaderItem(7).text() == "创建时间"
 
     def test_refresh_shows_dash_for_zero(self, qapp, store):
         rule = _mock_rule(store)
         panel = RulesPanel(store)
-        assert panel.table.item(0, 7).text() == "—"
-        assert panel.table.item(0, 7).toolTip() == ""
+        assert panel.table.item(0, 6).text() == "—"
+        assert panel.table.item(0, 6).toolTip() == ""
 
     def test_refresh_shows_count(self, qapp, store):
         rule = _mock_rule(store)
         rule.hits = 7
         rule.last_hit = time.time()
         panel = RulesPanel(store)
-        assert panel.table.item(0, 7).text() == "7"
-        assert "最近命中" in panel.table.item(0, 7).toolTip()
+        assert panel.table.item(0, 6).text() == "7"
+        assert "最近命中" in panel.table.item(0, 6).toolTip()
 
     def test_update_hit_live(self, qapp, store):
         rule = _mock_rule(store)
@@ -297,13 +297,13 @@ class TestRulesPanelHits:
         rule.hits = 3
         rule.last_hit = time.time()
         panel.update_hit(rule.id)
-        assert panel.table.item(0, 7).text() == "3"
+        assert panel.table.item(0, 6).text() == "3"
 
     def test_update_hit_unknown_rule_noop(self, qapp, store):
         _mock_rule(store)
         panel = RulesPanel(store)
         panel.update_hit("r_nope")  # 不抛
-        assert panel.table.item(0, 7).text() == "—"  # 命中列未被误改
+        assert panel.table.item(0, 6).text() == "—"  # 命中列未被误改
 
 
 # ---------------------------------------------------------------- 主窗口接线
@@ -388,11 +388,11 @@ class TestMainWindowMark:
         window.rules_panel.refresh()
         # 按 id 找行，不假设在第 0 行（store 里可能有别的用例遗留的规则）
         row = [r.id for r in window.rule_store.all()].index(rule.id)
-        assert window.rules_panel.table.item(row, 7).text() == "—"  # 命中列
+        assert window.rules_panel.table.item(row, 6).text() == "—"  # 命中列
         window.rule_store.record_hit(rule.id)
         qapp.processEvents()
-        assert window.rules_panel.table.item(row, 7).text() == "1"
-        assert "最近命中" in window.rules_panel.table.item(row, 7).toolTip()
+        assert window.rules_panel.table.item(row, 6).text() == "1"
+        assert "最近命中" in window.rules_panel.table.item(row, 6).toolTip()
 
     def test_mark_flow_without_row_falls_back(self, window, monkeypatch):
         """列表里没有这一行（理论边界）时退回整行刷新，不崩。"""

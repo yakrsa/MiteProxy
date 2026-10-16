@@ -1,7 +1,8 @@
 """Mock 规则面板：名称列前置 + 拖拽/按钮调整顺序（DESIGN 3.4.3）。
 
 盯这些点：
-1. 名称列必须在第 0 列（用户第一眼看到规则用途），启用列后移；
+1. 选择列移到末列（v2.0：勾选框原在首列易与序号挤在一起，移到末尾更顺手）；
+   序号列前置（第 0 列），名称列第 1 列；
 2. 拖拽排序语义：dst 为「拖放前列表」的插入位置索引，pop 源行后
    dst > src 需 -1 修正；拖回原位是 no-op；
 3. 排序结果要持久化（重新加载 RuleStore 顺序不变）；
@@ -56,18 +57,18 @@ def three_rules(store):
 
 
 class TestColumnLayout:
-    def test_checkbox_and_seq_are_first_columns(self, qapp, three_rules):
+    def test_column_order(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
         headers = [panel.table.horizontalHeaderItem(i).text() for i in range(9)]
         assert headers == [
-            "", "序号", "名称", "启用", "匹配", "动作", "来源", "命中", "创建时间"
+            "序号", "名称", "启用", "匹配", "动作", "来源", "命中", "创建时间", ""
         ]
 
     def test_created_at_column_new_rule_shows_time(self, qapp, three_rules):
         from datetime import datetime
 
         panel = RulesPanel(three_rules)
-        text = panel.table.item(0, 8).text()
+        text = panel.table.item(0, 7).text()
         assert text != "—"  # 新建规则有创建时间，不是占位符
         datetime.strptime(text, "%Y-%m-%d %H:%M")  # 本地时间格式
 
@@ -76,18 +77,18 @@ class TestColumnLayout:
         r = Rule("x", "老规则", True, Match(), Action())
         store.add(r)
         panel = RulesPanel(store)
-        assert panel.table.item(0, 8).text() == "—"
+        assert panel.table.item(0, 7).text() == "—"
 
     def test_refresh_fills_name_column(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
-        assert panel.table.item(0, 2).text() == "规则甲"
-        assert panel.table.item(1, 2).text() == "规则乙"
-        assert panel.table.item(2, 2).text() == "规则丙"
+        assert panel.table.item(0, 1).text() == "规则甲"
+        assert panel.table.item(1, 1).text() == "规则乙"
+        assert panel.table.item(2, 1).text() == "规则丙"
 
     def test_seq_matches_global_position(self, qapp, three_rules):
         """序号 = 规则在完整列表中的位置（与 MOCK#N 徽标对应）。"""
         panel = RulesPanel(three_rules)
-        assert [panel.table.item(i, 1).text() for i in range(3)] == ["1", "2", "3"]
+        assert [panel.table.item(i, 0).text() for i in range(3)] == ["1", "2", "3"]
 
     def test_seq_keeps_global_number_under_filter(self, qapp, three_rules):
         """过滤后序号仍显示全局位置（甲1、乙2 停用 → 丙仍显示 3）。"""
@@ -95,13 +96,13 @@ class TestColumnLayout:
         three_rules.update(three_rules.all()[1].id, enabled=False)
         panel.only_enabled_cb.setChecked(True)
         assert panel.table.rowCount() == 2
-        assert panel.table.item(0, 1).text() == "1"
-        assert panel.table.item(1, 1).text() == "3"
+        assert panel.table.item(0, 0).text() == "1"
+        assert panel.table.item(1, 0).text() == "3"
 
     def test_hits_column_unchanged(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
-        assert panel.table.horizontalHeaderItem(7).text() == "命中"
-        assert panel.table.item(0, 7).text() == "—"
+        assert panel.table.horizontalHeaderItem(6).text() == "命中"
+        assert panel.table.item(0, 6).text() == "—"
 
 
 # ---------------------------------------------------------------- 拖拽排序
@@ -252,7 +253,7 @@ class TestEnabledFilter:
         assert panel.table.rowCount() == 3        # 未开过滤，全显
         panel.only_enabled_cb.setChecked(True)
         assert panel.table.rowCount() == 2
-        names = [panel.table.item(i, 2).text() for i in range(2)]
+        names = [panel.table.item(i, 1).text() for i in range(2)]
         assert names == ["规则甲", "规则丙"]
 
     def test_filter_keeps_hidden_rules_in_place_on_move(self, qapp, three_rules):
@@ -427,7 +428,7 @@ class TestBatchOperations:
     def _check(panel, rows):
         """模拟用户点击首列复选框（勾选指定行）。"""
         for row in rows:
-            item = panel.table.item(row, 0)
+            item = panel.table.item(row, 8)
             item.setCheckState(Qt.CheckState.Checked)
 
     @staticmethod
@@ -459,7 +460,7 @@ class TestBatchOperations:
         panel = RulesPanel(three_rules)
         self._check(panel, [0])
         self._check(panel, [])  # 无操作
-        panel.table.item(0, 0).setCheckState(Qt.CheckState.Unchecked)
+        panel.table.item(0, 8).setCheckState(Qt.CheckState.Unchecked)
         assert panel.batch_enable_btn.isHidden()
         assert panel._selected_rule_ids() == []
 
@@ -495,7 +496,7 @@ class TestBatchOperations:
         panel = RulesPanel(three_rules)
         self._check(panel, [1])
         panel.refresh()
-        assert panel.table.item(1, 0).checkState() == Qt.CheckState.Checked
+        assert panel.table.item(1, 8).checkState() == Qt.CheckState.Checked
         assert panel._selected_rule_ids() == [three_rules.all()[1].id]
 
     def test_export_only_checked(self, qapp, three_rules, tmp_path, monkeypatch):
@@ -534,10 +535,10 @@ class TestBatchToast:
         panel = RulesPanel(three_rules)
         # 勾选全部规则（首列复选框）
         for r in range(panel.table.rowCount()):
-            item = panel.table.item(r, 0)
+            item = panel.table.item(r, 8)
             if item is None:
                 item = QTableWidgetItem()
-                panel.table.setItem(r, 0, item)
+                panel.table.setItem(r, 8, item)
             item.setCheckState(Qt.CheckState.Checked)
         panel._on_batch_set_enabled(True)
         # 成功提示浮层已创建，文本含数量与状态
@@ -553,10 +554,10 @@ class TestBatchToast:
         panel.resize(900, 500)
         panel.show()
         for r in range(panel.table.rowCount()):
-            item = panel.table.item(r, 0)
+            item = panel.table.item(r, 8)
             if item is None:
                 item = QTableWidgetItem()
-                panel.table.setItem(r, 0, item)
+                panel.table.setItem(r, 8, item)
             item.setCheckState(Qt.CheckState.Checked)
         panel._on_batch_set_enabled(False)
         w = panel._toast_w
@@ -572,7 +573,7 @@ class TestBatchToast:
 class TestSelectAll:
     def _check_all_rows(self, panel, state):
         for r in range(panel.table.rowCount()):
-            panel.table.item(r, 0).setCheckState(state)
+            panel.table.item(r, 8).setCheckState(state)
 
     def test_select_all_checkbox_in_header(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
@@ -582,9 +583,9 @@ class TestSelectAll:
         assert cb is not None and cb.isWidgetType()
         assert host is not None and host.isWidgetType()
         header = panel.table.horizontalHeader()
-        sec_x = header.sectionViewportPosition(0)
-        sec_w = header.sectionSize(0)
-        # 「选择 + 全选框」组合控件必须恰好覆盖表头第 0 列，且在表头高度内
+        sec_x = header.sectionViewportPosition(8)
+        sec_w = header.sectionSize(8)
+        # 「选择 + 全选框」组合控件必须恰好覆盖表头末列（第 8 列），且在表头高度内
         assert host.x() == sec_x
         assert host.width() == sec_w
         assert 0 <= host.y() and host.y() + host.height() <= header.height()
@@ -594,8 +595,10 @@ class TestSelectAll:
         assert host.geometry().contains(
             cb.mapTo(host.parentWidget(), QPoint(0, 0))
         )
-        # 原生表头第 0 列文字必须为空（否则与覆盖控件文字叠印）
-        assert panel.table.horizontalHeaderItem(0).text() == ""
+        # 原生表头末列（第 8 列）文字为「选择」，与覆盖的勾选框控件对应
+        # 末列表头文字必须为空：原生「选择」标题由覆盖其上的全选组合控件绘制，
+        # 否则会与控件文字叠印（曾发生）
+        assert panel.table.horizontalHeaderItem(8).text() == ""
 
     def test_select_all_checks_every_row(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
@@ -603,7 +606,7 @@ class TestSelectAll:
         panel.select_all_cb.setCheckState(Qt.CheckState.Checked)
         assert panel._checked_ids == {r.id for r in three_rules.all()}
         for r in range(panel.table.rowCount()):
-            assert panel.table.item(r, 0).checkState() == Qt.CheckState.Checked
+            assert panel.table.item(r, 8).checkState() == Qt.CheckState.Checked
         assert panel.batch_enable_btn.isVisible()
 
     def test_select_all_unchecks_every_row(self, qapp, three_rules):
@@ -612,12 +615,12 @@ class TestSelectAll:
         panel.select_all_cb.setCheckState(Qt.CheckState.Unchecked)
         assert panel._checked_ids == set()
         for r in range(panel.table.rowCount()):
-            assert panel.table.item(r, 0).checkState() == Qt.CheckState.Unchecked
+            assert panel.table.item(r, 8).checkState() == Qt.CheckState.Unchecked
         assert not panel.batch_enable_btn.isVisible()
 
     def test_partial_state_when_some_checked(self, qapp, three_rules):
         panel = RulesPanel(three_rules)
-        panel.table.item(0, 0).setCheckState(Qt.CheckState.Checked)
+        panel.table.item(0, 8).setCheckState(Qt.CheckState.Checked)
         panel._update_select_all_state()
         assert panel.select_all_cb.checkState() == Qt.CheckState.PartiallyChecked
 
@@ -626,7 +629,7 @@ class TestSelectAll:
         assert panel.select_all_cb.checkState() == Qt.CheckState.Unchecked
         self._check_all_rows(panel, Qt.CheckState.Checked)
         assert panel.select_all_cb.checkState() == Qt.CheckState.Checked
-        panel.table.item(0, 0).setCheckState(Qt.CheckState.Unchecked)
+        panel.table.item(0, 8).setCheckState(Qt.CheckState.Unchecked)
         assert panel.select_all_cb.checkState() == Qt.CheckState.PartiallyChecked
 
     def test_select_all_respects_filter(self, qapp, three_rules):

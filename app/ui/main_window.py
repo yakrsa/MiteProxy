@@ -502,10 +502,19 @@ class MainWindow(QMainWindow):
             self,
             lambda: self._export_selected(FORMAT_RESPONSE),
         )
+        # Ctrl+X 清空流量列表（仅在请求列表获得焦点时生效，避免误删其它输入框文本）
+        QShortcut(QKeySequence("Ctrl+X"), self.traffic_table, self._on_clear)
 
         # 流量表格右键菜单
         self.traffic_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.traffic_table.customContextMenuRequested.connect(self._on_table_context_menu)
+        # 键盘快捷键：R 重放、E 编辑后重放（选中某条请求时，见 traffic_table.py）
+        self.traffic_table.replay_requested.connect(
+            lambda: self._replay_selected(edit=False)
+        )
+        self.traffic_table.edit_replay_requested.connect(
+            lambda: self._replay_selected(edit=True)
+        )
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("文件")
@@ -1260,8 +1269,8 @@ class MainWindow(QMainWindow):
         count = len(flows)
         batch = f"（{count} 条）" if count > 1 else ""
         menu = QMenu(self)
-        replay_action = menu.addAction("重放请求 (Ctrl+R)")
-        edit_replay_action = menu.addAction("编辑并重放…")
+        replay_action = menu.addAction("重放请求 (R / Ctrl+R)")
+        edit_replay_action = menu.addAction("编辑并重放… (E)")
         compare_action = menu.addAction("重放并对比…")
         menu.addSeparator()
         curl_action = menu.addAction(f"复制为 cURL (bash){batch}  Ctrl+Shift+C")

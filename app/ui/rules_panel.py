@@ -53,7 +53,8 @@ class RuleTable(QTableWidget):
     row_dropped = Signal(int, int)  # (源行, 目标插入位置-原始列表语义)
 
     def __init__(self, parent=None):
-        # 列：选择(全选框) / 序号 / 名称 / 启用 / 匹配 / 动作 / 来源 / 命中 / 创建时间（v1.15+）
+        # 列：序号 / 名称 / 启用 / 匹配 / 动作 / 来源 / 命中 / 创建时间 / 选择(全选框)
+        # 选择列放到最后（v2.0：勾选框默认在首列会与序号挤在一起，移到末列更顺手）
         super().__init__(0, 9, parent)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
@@ -160,12 +161,11 @@ class RulesPanel(QWidget):
         layout.addLayout(toolbar)
 
         self.table = RuleTable(self)
-        # 列布局：勾选框 + 序号 + 名称在前（v1.15 批量操作 redesign：
-        # 勾选的才是批量操作目标；序号与流量列表 MOCK#N 徽标对应）。
-        # 第 0 列表头文字留空——「选择」标题由表头上的全选组合控件绘制，
-        # 避免原生表头文字与覆盖的勾选框叠在一起。
+        # 列布局：序号 + 名称在前，选择（勾选）列移到末尾（v2.0）。
+        # 末列表头文字留空——「选择」标题由表头上的全选组合控件绘制，
+        # 避免原生表头文字与覆盖的勾选框叠在一起（用户截图反馈过叠印）。
         self.table.setHorizontalHeaderLabels(
-            ["", "序号", "名称", "启用", "匹配", "动作", "来源", "命中", "创建时间"]
+            ["序号", "名称", "启用", "匹配", "动作", "来源", "命中", "创建时间", ""]
         )
         # 质感：斑马纹 + 无网格线 + 紧凑行高（全局 QSS 管表头/边框）
         self.table.setAlternatingRowColors(True)
@@ -176,24 +176,25 @@ class RulesPanel(QWidget):
         # 表头必须用 Interactive 定宽，不能用 ResizeToContents：
         # 后者每 setItem 一次就触发整表头重算，refresh 全表重建时是
         # O(N²)——500 条规则实测 58 秒（转圈根因）；Interactive 15ms。
+        # 也绝不用 Stretch：分栏/拖动分割条变窄时 Stretch 列会被挤到 0 整列消失。
         self.table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Interactive
         )
         self.table.horizontalHeader().setStretchLastSection(False)
-        # 勾选列/序号列定宽（紧凑，不抢名称列空间）；名称列 Stretch，
-        # 其余给合理初值，用户仍可拖拽调整
-        self.table.setColumnWidth(0, 60)   # 选择（标题 + 全选框）
-        self.table.setColumnWidth(1, 40)   # 序号
-        self.table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.ResizeMode.Stretch
-        )                                  # 名称（吃掉剩余空间）
-        self.table.setColumnWidth(3, 44)   # 启用
-        self.table.setColumnWidth(4, 220)  # 匹配
-        self.table.setColumnWidth(5, 200)  # 动作
-        self.table.setColumnWidth(6, 70)   # 来源
-        self.table.setColumnWidth(7, 52)   # 命中
-        self.table.setColumnWidth(8, 130)  # 创建时间
-        # 全选：表头第 0 列用「选择 + 勾选框」组合控件（覆盖在表头几何上，
+        # 全部 Interactive 定宽（v2.0）：满足「名称列宽度约为原来一半，腾出的
+        # 空间一半给匹配列、一半给动作列」。原来名称列是 Stretch（吃掉全部剩余
+        # 空间），改为定宽后 名称≈240、匹配 220→340、动作 200→320；选择列移到
+        # 末尾（60px）。用户仍可拖拽微调。
+        self.table.setColumnWidth(0, 40)    # 序号
+        self.table.setColumnWidth(1, 240)   # 名称（约为原 Stretch 宽度的一半）
+        self.table.setColumnWidth(2, 44)    # 启用
+        self.table.setColumnWidth(3, 340)   # 匹配（加宽 +120）
+        self.table.setColumnWidth(4, 320)   # 动作（加宽 +120）
+        self.table.setColumnWidth(5, 70)    # 来源
+        self.table.setColumnWidth(6, 52)    # 命中
+        self.table.setColumnWidth(7, 130)   # 创建时间
+        self.table.setColumnWidth(8, 60)    # 选择（标题 + 全选框，末列）
+        # 全选：末列（第 8 列）用「选择 + 勾选框」组合控件（覆盖在表头几何上，
         # 随表头宽高/滚动实时跟随）。原生表头文字留空，避免与控件重叠。
         # 点勾选框或点「选择」文字任意位置都在「全选/取消全选」间切换，
         # 一次点击立即生效——三态会让一次点击落在中间态上，看起来没反应。
@@ -268,7 +269,7 @@ class RulesPanel(QWidget):
         self.table.setRowCount(len(visible))
         global_index = {r.id: i + 1 for i, r in enumerate(self.store.all())}
         for i, rule in enumerate(visible):
-            # 勾选列：批量操作的目标（勾选状态跨刷新保留）
+            # 勾选列（末列）：批量操作的目标（勾选状态跨刷新保留）
             check = QTableWidgetItem()
             check.setFlags(
                 Qt.ItemFlag.ItemIsEnabled
@@ -281,15 +282,15 @@ class RulesPanel(QWidget):
                 else Qt.CheckState.Unchecked
             )
             check.setToolTip("勾选后可对该规则批量启用/停用/删除/导出")
-            self.table.setItem(i, 0, check)
-            # 序号列：规则在完整列表中的位置（1 起），与流量列表的
+            self.table.setItem(i, 8, check)
+            # 序号列（首列）：规则在完整列表中的位置（1 起），与流量列表的
             # MOCK#N 徽标一致，方便定位「命中的是第几条」
             seq = QTableWidgetItem(str(global_index.get(rule.id, i + 1)))
             seq.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             seq.setForeground(QBrush(theme.color("hint")))
-            self.table.setItem(i, 1, seq)
+            self.table.setItem(i, 0, seq)
             name = rule.name + (" ⚠" if rule.error else "")
-            self.table.setItem(i, 2, QTableWidgetItem(name))
+            self.table.setItem(i, 1, QTableWidgetItem(name))
             # 启用列：复选框（勾选 = 启用），点击直接切换启用状态（见 _on_item_changed）
             enabled_item = QTableWidgetItem()
             enabled_item.setFlags(
@@ -302,16 +303,16 @@ class RulesPanel(QWidget):
             )
             enabled_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             enabled_item.setToolTip("勾选 = 启用；点击可切换启用 / 停用")
-            self.table.setItem(i, 3, enabled_item)
-            self.table.setItem(i, 4, QTableWidgetItem(_match_summary(rule)))
-            self.table.setItem(i, 5, QTableWidgetItem(_action_summary(rule)))
+            self.table.setItem(i, 2, enabled_item)
+            self.table.setItem(i, 3, QTableWidgetItem(_match_summary(rule)))
+            self.table.setItem(i, 4, QTableWidgetItem(_action_summary(rule)))
             self.table.setItem(
-                i, 6, QTableWidgetItem(SOURCE_LABELS.get(rule.source, rule.source))
+                i, 5, QTableWidgetItem(SOURCE_LABELS.get(rule.source, rule.source))
             )
             self._fill_hits(i, rule)
             self._fill_created_at(i, rule)
             if rule.error:
-                self.table.item(i, 2).setToolTip(rule.error)
+                self.table.item(i, 1).setToolTip(rule.error)
         self._loading = False
         self.table.setUpdatesEnabled(True)
         self._update_batch_buttons()
@@ -324,7 +325,7 @@ class RulesPanel(QWidget):
         if rule.hits:
             when = datetime.fromtimestamp(rule.last_hit).strftime("%H:%M:%S")
             item.setToolTip(f"最近命中 {when}")
-        self.table.setItem(row, 7, item)
+        self.table.setItem(row, 6, item)
 
     def _fill_created_at(self, row: int, rule) -> None:
         """创建时间列：本地时间格式化；旧规则/导入规则无记录显示「—」。"""
@@ -334,15 +335,15 @@ class RulesPanel(QWidget):
             text = "—"
         item = QTableWidgetItem(text)
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.table.setItem(row, 8, item)
+        self.table.setItem(row, 7, item)
 
     # ------------------------------------------------------------ 批量勾选
 
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
-        """勾选框变化 → 维护 _checked_ids（列0）+ 切换启用状态（列3）。"""
+        """勾选框变化 → 维护 _checked_ids（末列 = 列8）+ 切换启用状态（列2）。"""
         if self._loading:
             return
-        if item.column() == 0:
+        if item.column() == 8:
             rule_id = (
                 self._display_ids[item.row()]
                 if 0 <= item.row() < len(self._display_ids)
@@ -357,7 +358,7 @@ class RulesPanel(QWidget):
             self._update_batch_buttons()
             self._update_select_all_state()
             return
-        if item.column() == 3:
+        if item.column() == 2:
             # 启用列复选框：点击直接切换启用 / 停用
             if 0 <= item.row() < len(self._display_ids):
                 self._toggle_enable(self._display_ids[item.row()])
@@ -379,15 +380,15 @@ class RulesPanel(QWidget):
     # ------------------------------------------------------------ 全选
 
     def _position_select_all(self) -> None:
-        """把「选择 + 全选框」组合控件定位到表头第 0 列（随几何变化实时跟随）。
+        """把「选择 + 全选框」组合控件定位到表头末列（第 8 列，随几何变化实时跟随）。
 
         不要按 isVisible 早退：show 前后的多次几何回调都要跟随，
         否则会停在构造期的旧尺寸上（实测宽度卡在 50px）。
         """
         header = self.table.horizontalHeader()
         host = self._select_all_host
-        x = header.sectionViewportPosition(0)
-        w = header.sectionSize(0)
+        x = header.sectionViewportPosition(8)
+        w = header.sectionSize(8)
         host.setGeometry(x, 0, w, header.height())
         host.raise_()  # 盖在表头绘制之上
 
@@ -427,7 +428,7 @@ class RulesPanel(QWidget):
         """批量勾选/取消勾选当前列表所有可见行，并同步批量按钮与全选框。"""
         self._loading = True  # 屏蔽每行 setCheckState 触发的 itemChanged
         for row, rid in enumerate(self._display_ids):
-            item = self.table.item(row, 0)
+            item = self.table.item(row, 8)
             if item is None:
                 continue
             item.setCheckState(
@@ -449,7 +450,7 @@ class RulesPanel(QWidget):
         else:
             n = 0
             for r in range(self.table.rowCount()):
-                it = self.table.item(r, 0)
+                it = self.table.item(r, 8)
                 if it is not None and it.checkState() == Qt.CheckState.Checked:
                     n += 1
             state = (
@@ -467,7 +468,7 @@ class RulesPanel(QWidget):
             return
         row = self._display_ids.index(rule_id)
         self.table.selectRow(row)
-        self.table.scrollTo(self.table.model().index(row, 0))
+        self.table.scrollTo(self.table.model().index(row, 8))
 
     def _selected_rule_ids(self) -> list[str]:
         """批量操作目标 = 勾选的规则（按显示顺序）。"""
@@ -496,7 +497,7 @@ class RulesPanel(QWidget):
         except (ValueError, AttributeError):
             return
         rule = self.store.get(rule_id)
-        item = self.table.item(row, 2)  # 名称列（列 0=勾选，列 1=序号）
+        item = self.table.item(row, 1)  # 名称列（列 0=序号，列 1=名称）
         if rule is None or item is None:
             return
         if message:
@@ -555,7 +556,7 @@ class RulesPanel(QWidget):
         if rule_id in self._display_ids:
             row = self._display_ids.index(rule_id)
             self.table.selectRow(row)
-            self.table.scrollTo(self.table.model().index(row, 0))
+            self.table.scrollTo(self.table.model().index(row, 8))
         # 单条启用/停用也给出轻提示（批量那条已有），否则右键点一下毫无反馈
         self._toast(f"已{'启用' if now_enabled else '停用'}「{rule.name}」")
 

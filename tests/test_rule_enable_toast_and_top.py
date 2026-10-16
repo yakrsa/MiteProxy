@@ -103,7 +103,7 @@ class TestMoveToTop:
 class TestEnabledCheckbox:
     def test_enabled_column_is_checkable_and_reflects_state(self, panel):
         rid = panel._display_ids[0]
-        item = panel.table.item(0, 3)
+        item = panel.table.item(0, 2)
         assert bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable)
         expected = (
             Qt.CheckState.Checked
@@ -115,15 +115,15 @@ class TestEnabledCheckbox:
     def test_click_checkbox_toggles_enabled(self, panel):
         rid = panel._display_ids[0]
         before = panel.store.get(rid).enabled
-        item = panel.table.item(0, 3)
+        item = panel.table.item(0, 2)
         item.setCheckState(
             Qt.CheckState.Unchecked if before else Qt.CheckState.Checked
         )
-        # itemChanged -> _on_item_changed(列3) -> _toggle_enable：store 翻转 + 提示
+        # itemChanged -> _on_item_changed(列2) -> _toggle_enable：store 翻转 + 提示
         assert panel.store.get(rid).enabled != before
         assert "已" in panel._toast_w.text()
         # 切回原状态仍生效（再点一次）
-        panel.table.item(0, 3).setCheckState(
+        panel.table.item(0, 2).setCheckState(
             Qt.CheckState.Checked if before else Qt.CheckState.Unchecked
         )
         assert panel.store.get(rid).enabled == before
@@ -134,5 +134,5 @@ class TestEnabledCheckbox:
         panel.only_enabled_cb.setChecked(True)
         panel._on_filter_toggled()
         assert rid in panel._display_ids
-        panel.table.item(0, 3).setCheckState(Qt.CheckState.Unchecked)
+        panel.table.item(0, 2).setCheckState(Qt.CheckState.Unchecked)
         assert rid not in panel._display_ids

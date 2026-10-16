@@ -68,7 +68,7 @@ class TestToggleSelectAll:
 
     def test_partial_selection_toggles_to_full(self, panel):
         """只勾了一部分时，点一下应该是「补全选」而不是「清空」。"""
-        panel.table.item(0, 0).setCheckState(Qt.CheckState.Checked)
+        panel.table.item(0, 8).setCheckState(Qt.CheckState.Checked)
         panel._toggle_select_all()
         assert len(panel._checked_ids) == 3
 
