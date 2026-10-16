@@ -83,6 +83,7 @@ from app.settings import (
     sanitize_max_flows,
     save_settings,
 )
+from app.updater import CURRENT_VERSION, UpdateChecker, is_newer
 from app.bodyview import BODY_PREVIEW_LIMIT as BODY_SEND_LIMIT
 from app import sysproxy
 from app.textutil import decode_body
@@ -167,6 +168,10 @@ class MainWindow(QMainWindow):
 
         # ---- 重放并对比（DESIGN 3.6）：pending 等重放响应到达后关联弹框
         self._pending_compare: list[dict] = []
+        #: 更新检测：checker 惰性创建（用到才建 QNetworkAccessManager）；
+        #: _update_manual 标记本次是否用户手动触发（决定无更新/失败要不要提示）
+        self._update_checker: UpdateChecker | None = None
+        self._update_manual = False
         self._compare_dialogs: list[CompareDialog] = []
         self._compare_timer = QTimer(self)
         self._compare_timer.setInterval(5000)
@@ -194,6 +199,12 @@ class MainWindow(QMainWindow):
         # restore_prompt=False 时不挂这个定时器，脚本环境不会有模态框阻塞。
         if self.restore_prompt:
             QTimer.singleShot(0, self._maybe_restore_autosave)
+
+        # 启动时静默检查更新：延后几秒，避免和代理/证书初始化抢网络。
+        # 只有确实发现新版本才弹窗，失败一律静默；测试环境（restore_prompt=False）
+        # 不发起任何网络请求。
+        if self.restore_prompt and self.settings.check_update_on_startup:
+            QTimer.singleShot(3000, self._check_for_updates_silent)
 
     # ================================================================ 窗口状态
 
@@ -602,6 +613,9 @@ class MainWindow(QMainWindow):
             self._lang_actions[code] = action
 
         menu = self.menuBar().addMenu(self.tr("帮助"))
+        update_action = QAction(self.tr("检查更新…"), self)
+        update_action.triggered.connect(self._check_for_updates_manual)
+        menu.addAction(update_action)
         feedback_action = QAction(self.tr("意见反馈…"), self)
         feedback_action.triggered.connect(self._show_feedback)
         menu.addAction(feedback_action)
@@ -2039,6 +2053,51 @@ class MainWindow(QMainWindow):
         from app.ui.feedback_dialog import FeedbackDialog
 
         FeedbackDialog(self).exec()
+
+    # ================================================================ 更新检测
+
+    def _check_for_updates_manual(self) -> None:
+        """帮助菜单「检查更新…」：无论结果如何都给反馈。"""
+        self._start_update_check(manual=True)
+
+    def _check_for_updates_silent(self) -> None:
+        """启动时的静默检查：只在新版本时才弹窗，失败不打扰。"""
+        self._start_update_check(manual=False)
+
+    def _start_update_check(self, manual: bool) -> None:
+        if self._update_checker is None:
+            self._update_checker = UpdateChecker(self)
+            self._update_checker.finished.connect(self._on_update_checked)
+        self._update_manual = manual
+        self._update_checker.check()
+
+    def _on_update_checked(self, info, error: str) -> None:
+        """检测完成：有新版本弹对话框；手动检查时无更新/失败也要说一声。"""
+        from app.ui import dialogs
+        from app.ui.update_dialog import UpdateDialog
+
+        manual = self._update_manual
+        self._update_manual = False
+
+        if info is None:
+            if manual:
+                dialogs.information(
+                    self,
+                    self.tr("检查更新"),
+                    self.tr("暂时无法获取版本信息：{0}").format(
+                        error or self.tr("未知错误")
+                    ),
+                )
+            return
+        if not is_newer(info.version, CURRENT_VERSION):
+            if manual:
+                dialogs.information(
+                    self,
+                    self.tr("检查更新"),
+                    self.tr("当前已是最新版本（{0}）。").format(CURRENT_VERSION),
+                )
+            return
+        UpdateDialog(info, self).exec()
 
     def _show_about(self) -> None:
         from app import feedback as _fb

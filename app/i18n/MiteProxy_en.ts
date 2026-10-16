@@ -48,105 +48,131 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../ui/main_window.py" line="520" />
+        <location filename="../ui/main_window.py" line="531" />
         <source>文件</source>
-        <extracomment>重放并对比：等重放响应到达的超时（秒）。超时说明上游没响应， 清理 pending 并在状态栏告知，避免永远等一个不会来的 flow。 对比对话框保留个数：开太多不关也不至于无限攒着 启动时是否询问恢复上次会话快照（脚本/测试可关掉，避免模态框阻塞） 系统代理接管/还原串行化：停代理与后台接管线程竞争时保证不漏还原</extracomment>
+        <extracomment>重放并对比：等重放响应到达的超时（秒）。超时说明上游没响应， 清理 pending 并在状态栏告知，避免永远等一个不会来的 flow。 对比对话框保留个数：开太多不关也不至于无限攒着 启动时是否询问恢复上次会话快照（脚本/测试可关掉，避免模态框阻塞） 系统代理接管/还原串行化：停代理与后台接管线程竞争时保证不漏还原 更新检测：checker 惰性创建（用到才建 QNetworkAccessManager）； _update_manual 标记本次是否用户手动触发（决定无更新/失败要不要提示）</extracomment>
         <translation>File</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="521" />
+        <location filename="../ui/main_window.py" line="532" />
         <source>保存会话…</source>
         <translation>Save session…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="526" />
+        <location filename="../ui/main_window.py" line="537" />
         <source>打开会话…</source>
         <translation>Open session…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="532" />
+        <location filename="../ui/main_window.py" line="543" />
         <source>清除列表</source>
         <translation>Clear list</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="537" />
+        <location filename="../ui/main_window.py" line="548" />
         <source>退出时自动保存会话</source>
         <translation>Auto-save session on exit</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="545" />
+        <location filename="../ui/main_window.py" line="556" />
         <source>退出</source>
         <translation>Quit</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="550" />
+        <location filename="../ui/main_window.py" line="561" />
         <source>工具</source>
         <translation>Tools</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="551" />
+        <location filename="../ui/main_window.py" line="562" />
         <source>编码转换…</source>
         <translation>Encoding converter…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="556" />
+        <location filename="../ui/main_window.py" line="567" />
         <source>JSON 格式化 / 提取…</source>
         <translation>JSON format / extract…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="561" />
+        <location filename="../ui/main_window.py" line="572" />
         <source>JSON 比对…</source>
         <translation>JSON compare…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="567" />
+        <location filename="../ui/main_window.py" line="578" />
         <source>外观</source>
         <translation>Appearance</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="572" />
+        <location filename="../ui/main_window.py" line="583" />
         <source>跟随系统</source>
         <translation>Follow system</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="573" />
+        <location filename="../ui/main_window.py" line="584" />
         <source>浅色模式</source>
         <translation>Light mode</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="574" />
+        <location filename="../ui/main_window.py" line="585" />
         <source>深色模式</source>
         <translation>Dark mode</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="587" />
+        <location filename="../ui/main_window.py" line="598" />
         <source>语言</source>
         <translation>Language</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="604" />
+        <location filename="../ui/main_window.py" line="615" />
         <source>帮助</source>
         <translation>Help</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="605" />
+        <location filename="../ui/main_window.py" line="616" />
+        <source>检查更新…</source>
+        <translation>Check for updates…</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="619" />
         <source>意见反馈…</source>
         <translation>Feedback…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="608" />
+        <location filename="../ui/main_window.py" line="622" />
         <source>关于</source>
         <translation>About</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="623" />
+        <location filename="../ui/main_window.py" line="637" />
         <source>语言已切换</source>
         <translation>Language changed</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="624" />
+        <location filename="../ui/main_window.py" line="638" />
         <source>语言将在重启 MiteProxy 后生效。</source>
         <translation>The language will take effect after restarting MiteProxy.</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="2086" />
+        <location filename="../ui/main_window.py" line="2096" />
+        <source>检查更新</source>
+        <translation>Check for updates</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="2087" />
+        <source>暂时无法获取版本信息：{0}</source>
+        <translation>Could not retrieve version information: {0}</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="2088" />
+        <source>未知错误</source>
+        <translation>unknown error</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="2097" />
+        <source>当前已是最新版本（{0}）。</source>
+        <translation>You are already on the latest version ({0}).</translation>
     </message>
 </context>
 <context>
@@ -533,6 +559,44 @@
         <location filename="../ui/rules_panel.py" line="860" />
         <source>文件里的规则格式无法识别。</source>
         <translation>The rule format in the file is not recognized.</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateDialog</name>
+    <message>
+        <location filename="../ui/update_dialog.py" line="30" />
+        <source>发现新版本</source>
+        <translation>New version available</translation>
+    </message>
+    <message>
+        <location filename="../ui/update_dialog.py" line="42" />
+        <source>新版本 {0} 已发布（当前 {1}）</source>
+        <translation>Version {0} is now available (current: {1})</translation>
+    </message>
+    <message>
+        <location filename="../ui/update_dialog.py" line="52" />
+        <source>发布日期：{0}</source>
+        <translation>Released: {0}</translation>
+    </message>
+    <message>
+        <location filename="../ui/update_dialog.py" line="56" />
+        <source>本次更新内容：</source>
+        <translation>What's new:</translation>
+    </message>
+    <message>
+        <location filename="../ui/update_dialog.py" line="66" />
+        <source>（该版本未提供变更说明）</source>
+        <translation>(No changelog provided for this version)</translation>
+    </message>
+    <message>
+        <location filename="../ui/update_dialog.py" line="71" />
+        <source>前往下载</source>
+        <translation>Go to download</translation>
+    </message>
+    <message>
+        <location filename="../ui/update_dialog.py" line="75" />
+        <source>关闭</source>
+        <translation>Close</translation>
     </message>
 </context>
 <context>

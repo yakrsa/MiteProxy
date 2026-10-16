@@ -74,6 +74,9 @@ class Settings:
     #: 界面语言：zh_CN（源语言，默认）/ en（app/i18n.SUPPORTED）。
     #: 切换后重启生效（入口在创建 MainWindow 前装好翻译器）。
     language: str = DEFAULT_LANG
+    #: 启动时静默检查更新（读仓库根 version.info）；只在确实有新版时才弹窗，
+    #: 网络不通/文件损坏一律静默，不打扰抓包主流程。手动检查不受此项影响。
+    check_update_on_startup: bool = True
     #: 流量页分隔条位置（QSplitter.saveState()，base64 落盘）
     splitter_state: bytes | None = None
     window_geometry: bytes | None = None
@@ -95,6 +98,7 @@ class Settings:
             "traffic_side_by_side": self.traffic_side_by_side,
             "theme": self.theme,
             "language": self.language,
+            "check_update_on_startup": self.check_update_on_startup,
             # splitter_state / geometry 是 QByteArray，base64 成文本落盘
             "splitter_state": (
                 base64.b64encode(self.splitter_state).decode("ascii")
@@ -139,6 +143,7 @@ class Settings:
                 else "system"
             ),
             language=normalize(data.get("language", DEFAULT_LANG)),
+            check_update_on_startup=bool(data.get("check_update_on_startup", True)),
             splitter_state=cls._decode_b64(data.get("splitter_state")),
             window_geometry=cls._decode_geometry(data.get("window_geometry")),
         )
