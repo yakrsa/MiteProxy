@@ -48,6 +48,7 @@ from app.bodyview import (  # noqa: E402
     HIGHLIGHT_LIMIT,
     JSON_PARSE_LIMIT,
     WRAP_MAX_LINE_CHARS,
+    WRAP_SCAN_LIMIT,
     content_encoding_of,
     decoded_note,
     decompress,
@@ -506,6 +507,27 @@ class TestWrap:
         pane = _pane(wrap=True)
         pane.show_body(_headers("text/plain"), b"A" * (WRAP_MAX_LINE_CHARS + 10))
         assert "临时关闭换行" in pane.view_note.text()
+
+    def test_wrap_scan_window_big_multiline(self):
+        """总长远超扫描窗口、但每行都短 → 仍判可换行（窗口内无超长行）。"""
+        line = "x" * 50 + "\n"
+        text = line * (WRAP_SCAN_LIMIT // len(line) + 10)   # > 256KB
+        assert len(text) > WRAP_SCAN_LIMIT
+        ok, reason = should_wrap(text, True)
+        assert ok and reason == ""
+
+    def test_wrap_scan_window_detects_long_line_inside(self):
+        """窗口内出现超长单行 → 关换行（即便总长远超窗口）。"""
+        text = "s\n" * 1000 + "A" * (WRAP_MAX_LINE_CHARS + 1) + "\n" + "t\n" * 100000
+        ok, reason = should_wrap(text, True)
+        assert not ok and "临时关闭换行" in reason
+
+    def test_longest_line_scan_limit(self):
+        """scan_limit 只扫前 N 字符：长文本不物化全文也能判定。"""
+        text = "ab\n" + "c" * 5000 + "\n" + "d" * 9000
+        assert longest_line(text, 3) == 2       # 窗口只含 "ab\n" → 仅首行
+        assert longest_line(text, 100) == 97    # 窗口含 "ab\n"+97个c，看不到 d 行(9000)
+        assert longest_line(text) == 9000       # 无限制 → 全文精确
 
 
 # ====================================================================== 压缩内容

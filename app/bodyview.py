@@ -36,8 +36,10 @@ HEX_VIEW_LIMIT = 64 * 1024
 #: 所以给得宽松；真正要卡住的是下面的渲染上限。
 JSON_PARSE_LIMIT = 4 * 1024 * 1024
 
-#: 渲染文本上限（多行文本塞进 QPlainTextEdit 很便宜：2MB ≈ 50ms）
-RENDER_TEXT_LIMIT = 2 * 1024 * 1024
+#: 渲染文本上限（多行文本塞进 QPlainTextEdit 的成本：1MB ≈ 25ms、2MB ≈ 50ms）。
+#: 大 JSON 格式化后按此截断显示（附「已截断」提示）——切换大响应体时这段
+#: setPlainText 是卡顿主因，压到 1MB 让切换更跟手；1MB 预览已足够长。
+RENDER_TEXT_LIMIT = 1024 * 1024
 
 #: 语法着色上限：QSyntaxHighlighter 按 block 走，2 万行约 260ms。
 #: 超过就暂停着色——丢了颜色但界面不卡，取舍很清楚。
@@ -46,6 +48,12 @@ HIGHLIGHT_LIMIT = 256 * 1024
 #: 换行闸门：单行超过这个长度就不换行。实测 100KB 单行换行 160ms、
 #: 300KB 单行换行 1.2s（超线性增长），而多行文本换行几乎免费。
 WRAP_MAX_LINE_CHARS = 64 * 1024
+
+#: 换行判定只扫描前这么多字符：换行只需知道"有没有超长单行"，不必精读全篇。
+#: 对大文本（几 MB）全文 split("\n") 会物化几十万临时字符串，是切换卡顿的
+#: 主因（setPlainText 2MB 才 ~50ms，反倒这个扫描更贵）；限定窗口后开销恒定，
+#: 256KB 覆盖多个闸门行，足以判定 JSON(多行短行)/base64(单行在开头) 两类。
+WRAP_SCAN_LIMIT = 256 * 1024
 
 VIEW_AUTO = "auto"
 VIEW_RAW = "raw"
@@ -222,8 +230,15 @@ def format_json_body(body: bytes | None, content_type: str) -> JsonFormat:
     return JsonFormat(True, pretty)
 
 
-def longest_line(text: str) -> int:
-    """最长行的字符数（换行闸门用）。"""
+def longest_line(text: str, scan_limit: int | None = None) -> int:
+    """最长行的字符数（换行闸门用）。
+
+    `scan_limit` 限定只扫描前这么多字符：换行只需判断"有没有超长单行"，
+    不必精读全篇——对大文本限定窗口可避免物化几十万临时行串（见
+    `WRAP_SCAN_LIMIT`）。`None` = 扫全文（保持精确语义，供单测/短文本用）。
+    """
+    if scan_limit is not None and len(text) > scan_limit:
+        text = text[:scan_limit]
     return max((len(seg) for seg in text.split("\n")), default=0)
 
 
@@ -236,7 +251,7 @@ def should_wrap(text: str, enabled: bool) -> tuple[bool, str]:
     """
     if not enabled:
         return False, ""
-    n = longest_line(text)
+    n = longest_line(text, WRAP_SCAN_LIMIT)
     if n > WRAP_MAX_LINE_CHARS:
         return False, (
             f"单行最长 {n // 1024}KB 超过 {WRAP_MAX_LINE_CHARS // 1024}KB，"

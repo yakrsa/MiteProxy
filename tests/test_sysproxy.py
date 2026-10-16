@@ -295,7 +295,7 @@ class TestMainWindowWiring:
 
         monkeypatch.setattr("app.sysproxy.takeover", fail_takeover)
         monkeypatch.setattr(
-            "app.ui.main_window.QMessageBox.question",
+            "app.ui.main_window.dialogs.question",
             lambda *a, **k: __import__("PySide6").QtWidgets.QMessageBox.StandardButton.No,
         )
         window._sysproxy_elevate_asked = False
@@ -311,7 +311,7 @@ class TestPortChange:
         import sys as _sys
 
         monkeypatch.setattr(
-            "app.ui.main_window.QMessageBox.question",
+            "app.ui.main_window.dialogs.question",
             staticmethod(lambda *a, **k: _sys.modules[
                 "PySide6.QtWidgets"].QMessageBox.StandardButton.Yes),
         )
@@ -360,7 +360,7 @@ class TestPortChange:
         import sys as _sys
 
         monkeypatch.setattr(
-            "app.ui.main_window.QMessageBox.question",
+            "app.ui.main_window.dialogs.question",
             staticmethod(lambda *a, **k: _sys.modules[
                 "PySide6.QtWidgets"].QMessageBox.StandardButton.Yes),
         )
@@ -405,7 +405,7 @@ class TestPortChange:
         import sys as _sys
 
         monkeypatch.setattr(
-            "app.ui.main_window.QMessageBox.question",
+            "app.ui.main_window.dialogs.question",
             staticmethod(lambda *a, **k: _sys.modules[
                 "PySide6.QtWidgets"].QMessageBox.StandardButton.No),
         )

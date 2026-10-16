@@ -97,6 +97,7 @@ from app.ui.rule_editor import RuleEditorDialog
 from app.ui.signals import FlowBridge
 from app.ui.log_panel import LogPanel
 from app.ui.traffic_table import FilterBar, SearchBar, TrafficTable
+from app.ui import dialogs
 from app.ui import theme
 
 log = logging.getLogger(__name__)
@@ -766,7 +767,7 @@ class MainWindow(QMainWindow):
         if (platform.system() == "darwin"
                 and not getattr(self, "_sysproxy_elevate_asked", False)):
             self._sysproxy_elevate_asked = True  # 每次会话只问一次，别烦人
-            answer = QMessageBox.question(
+            answer = dialogs.question(
                 self,
                 "系统代理接管失败",
                 f"{msg}\n\n用管理员权限重试？（会弹出密码确认框，与 Charles 行为一致）",
@@ -808,7 +809,7 @@ class MainWindow(QMainWindow):
         self.proxy_btn.setChecked(False)
         self._update_status()
         self._restore_sysproxy_async()   # 可能刚接管完代理就挂了，补还原
-        QMessageBox.critical(
+        dialogs.critical(
             self,
             "代理启动失败",
             f"端口 {self.settings.proxy_port} 可能已被占用，或权限不足。\n"
@@ -850,7 +851,7 @@ class MainWindow(QMainWindow):
                 f"代理端口已保存为 {port}（重启后生效）", 5000
             )
             return
-        answer = QMessageBox.question(
+        answer = dialogs.question(
             self,
             "端口已修改",
             f"代理端口已修改为 {port}，需要重启才能生效。\n\n"
@@ -991,18 +992,18 @@ class MainWindow(QMainWindow):
                 )
             self._show_cert_dialog(server)
         except FileNotFoundError:
-            QMessageBox.critical(
+            dialogs.critical(
                 self,
                 "未找到 CA 证书",
                 f"请先启动一次代理以生成 CA 证书（{CA_PEM_PATH}）",
             )
         except ValueError as e:
             # CA 文件存在但内容为空/损坏：load_ca 解析时抛 ValueError
-            QMessageBox.critical(
+            dialogs.critical(
                 self, "CA 证书损坏", f"证书文件无法解析，删除后重启可重新生成:\n{e}"
             )
         except OSError as e:
-            QMessageBox.critical(
+            dialogs.critical(
                 self,
                 "启动失败",
                 f"从端口 {self.settings.cert_port} 起没有找到可用端口:\n{e}",
@@ -1031,7 +1032,7 @@ class MainWindow(QMainWindow):
         except OSError as e:
             self.cert_server = None
             self._update_status()
-            QMessageBox.critical(
+            dialogs.critical(
                 self,
                 "启动失败",
                 f"从端口 {port} 起没有找到可用端口:\n{e}",
@@ -1115,7 +1116,7 @@ class MainWindow(QMainWindow):
 
     def _on_export_ca(self) -> None:
         if not CA_PEM_PATH.exists():
-            QMessageBox.critical(
+            dialogs.critical(
                 self, "未找到 CA 证书", CA_EXPORT_HINT.format(path=CA_PEM_PATH)
             )
             return
@@ -1124,7 +1125,7 @@ class MainWindow(QMainWindow):
         )
         if path:
             shutil.copy(CA_PEM_PATH, path)
-            QMessageBox.information(
+            dialogs.information(
                 self, "已导出", CA_EXPORT_HINT.format(path=Path(path))
             )
 
@@ -1533,10 +1534,10 @@ class MainWindow(QMainWindow):
     def _export_selected(self, preferred: str | None = None) -> None:
         flows = self._selected_flows()
         if not flows:
-            QMessageBox.information(self, "提示", "请先在流量列表里选中一条会话")
+            dialogs.information(self, "提示", "请先在流量列表里选中一条会话")
             return
         if len(flows) > 1 and preferred in SINGLE_ONLY_FORMATS:
-            QMessageBox.information(
+            dialogs.information(
                 self,
                 "该格式不支持多选",
                 "「仅响应 Body」一个文件只能装一条会话的 body。\n"
@@ -1545,7 +1546,7 @@ class MainWindow(QMainWindow):
             return
         missing = [f for f in flows if getattr(f, "response", None) is None]
         if missing and (preferred in REQUIRES_RESPONSE):
-            QMessageBox.information(
+            dialogs.information(
                 self,
                 "暂无响应",
                 "所选会话里有还没响应的请求（请求进行中或连接已中断），无法导出。",
@@ -1564,20 +1565,20 @@ class MainWindow(QMainWindow):
             return
         fmt = mapping.get(selected, preferred or FORMAT_HAR)
         if len(flows) > 1 and fmt in SINGLE_ONLY_FORMATS:
-            QMessageBox.information(
+            dialogs.information(
                 self, "该格式不支持多选", "「仅响应 Body」请只选一条会话。"
             )
             return
         if fmt in REQUIRES_RESPONSE and any(
             getattr(f, "response", None) is None for f in flows
         ):
-            QMessageBox.information(self, "暂无响应", "所选会话里有还没响应的请求，无法导出。")
+            dialogs.information(self, "暂无响应", "所选会话里有还没响应的请求，无法导出。")
             return
         path = ensure_suffix(path, fmt, flows)
         try:
             Path(path).write_bytes(export_bytes(flows, fmt))
         except (OSError, ValueError) as e:
-            QMessageBox.critical(self, "导出失败", f"写入 {path} 失败:\n{e}")
+            dialogs.critical(self, "导出失败", f"写入 {path} 失败:\n{e}")
             return
         self.status_bar.showMessage(
             f"已导出 {len(flows)} 条 → {path}" if len(flows) > 1 else f"已导出 → {path}",
@@ -1641,7 +1642,7 @@ class MainWindow(QMainWindow):
     def _save_session_dialog(self) -> None:
         flows = self._session_flows()
         if not flows:
-            QMessageBox.information(self, "没有可保存的会话", "当前列表是空的。")
+            dialogs.information(self, "没有可保存的会话", "当前列表是空的。")
             return
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         default = str(Path(self._session_start_dir()) / f"session-{stamp}{SESSION_EXT}")
@@ -1654,7 +1655,7 @@ class MainWindow(QMainWindow):
             path += SESSION_EXT
         result = save_session(path, flows)
         if not result.ok:
-            QMessageBox.critical(self, "保存失败", f"{path}\n\n{result.error}")
+            dialogs.critical(self, "保存失败", f"{path}\n\n{result.error}")
             return
         self._remember_session_dir(path)
 
@@ -1667,7 +1668,7 @@ class MainWindow(QMainWindow):
             )
         elif result.bodies_truncated:
             detail += f"\n\n注意：有 {result.bodies_truncated} 条会话的 body 被截断。"
-        QMessageBox.information(
+        dialogs.information(
             self,
             "已保存",
             f"共 {result.count} 条会话 → {path}\n文件大小 {size}{detail}",
@@ -1685,7 +1686,7 @@ class MainWindow(QMainWindow):
     def _load_session_file(self, path: str, confirm_clear: bool = True) -> bool:
         """把会话文件恢复到列表；返回是否真的恢复了。"""
         if confirm_clear and self.flow_store.rowCount() > 0:
-            answer = QMessageBox.question(
+            answer = dialogs.question(
                 self,
                 "打开会话",
                 f"当前列表有 {self.flow_store.rowCount()} 条会话，"
@@ -1698,10 +1699,10 @@ class MainWindow(QMainWindow):
 
         result = load_session(path)
         if not result.ok:
-            QMessageBox.critical(self, "打开失败", f"{path}\n\n{result.error}")
+            dialogs.critical(self, "打开失败", f"{path}\n\n{result.error}")
             return False
         if not result.flows:
-            QMessageBox.information(
+            dialogs.information(
                 self, "没有可恢复的会话", f"{path}\n\n文件中没有有效会话。"
             )
             return False
@@ -1713,7 +1714,7 @@ class MainWindow(QMainWindow):
             note += f"\n跳过无法解析的行：{result.skipped} 条。"
         if dropped:
             note += f"\n超出保存条数上限，最早的 {dropped} 条未载入。"
-        QMessageBox.information(
+        dialogs.information(
             self,
             "已恢复",
             f"共恢复 {result.count - dropped} 条会话。{note}",
@@ -1746,7 +1747,7 @@ class MainWindow(QMainWindow):
             return
         count = int(meta.get("count") or 0)
         saved_at = str(meta.get("saved_at") or "")
-        answer = QMessageBox.question(
+        answer = dialogs.question(
             self,
             "恢复上次会话",
             f"检测到上次退出时保存的 {count} 条会话"
@@ -1832,7 +1833,7 @@ class MainWindow(QMainWindow):
         if flow is None:
             return
         if not self.proxy.running:
-            QMessageBox.information(self, "提示", "请先启动代理再重放")
+            dialogs.information(self, "提示", "请先启动代理再重放")
             return
         # 副本重放：原会话保留（start_replay 会改 is_replay/清 response，见 app/replay.py）
         copy = make_replay_copy(flow)
