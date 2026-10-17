@@ -1,27 +1,27 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "published_at": "2026-10-17",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "新增中英双语界面：主菜单、规则面板、规则编辑器、流量列表列头（在「语言」菜单切换后重启生效）",
-      "en": "Bilingual UI (Chinese/English): main menu, rules panel, rule editor and traffic-list headers. Switch via the Language menu; restart to apply."
+      "zh": "双击流量列表中的请求，弹出上下结构详情对话框：上半部分显示请求、下半部分显示响应，Fiddler 风格同时可见",
+      "en": "Double-click a request in the traffic list to open a vertical detail dialog: request on top, response on the bottom, shown side by side Fiddler-style."
     },
     {
-      "zh": "mock 规则：选择列移至末列；名称列宽度减半，让出的空间平分给「匹配」与「动作」列",
-      "en": "Mock rules: the selection column moved to the end; the Name column is half as wide, with the freed space split between the Match and Action columns."
+      "zh": "流量列表右键菜单新增「查看详情…」（仅单条选中可点），与双击打开同一个详情对话框",
+      "en": "The traffic-list context menu now has \"View detail…\" (enabled for a single selection), reusing the same detail dialog as double-click."
     },
     {
-      "zh": "请求列表快捷键：R 重放、E 编辑后重放、Ctrl+X 清除列表",
-      "en": "Traffic-list shortcuts: R to replay, E to edit-then-replay, Ctrl+X to clear the list."
+      "zh": "请求一发出即入列（pending 可见）：不再等服务器响应才显示，响应到达后再原地补完该行",
+      "en": "A request now appears in the list the moment it is sent (pending is visible); the row is filled in-place once the response arrives."
     },
     {
-      "zh": "JSON 格式化上限提升到 8MB；超大响应首屏秒开，其余后台流式加载不再卡界面",
-      "en": "JSON formatting limit raised to 8 MB; very large responses paint instantly, with the rest streamed in the background without freezing the UI."
+      "zh": "详情弹窗在尚未收到响应时显示「尚未收到响应…」占位，替代原来误导性的「未选择会话」",
+      "en": "When a response has not arrived yet, the detail dialog shows a \"Response not received yet…\" placeholder instead of the misleading \"No session selected\"."
     },
     {
-      "zh": "导入 Fiddler 规则时，「跳过的内容」清单默认展开显示",
-      "en": "When importing Fiddler rules, the \"skipped content\" list is now expanded by default."
+      "zh": "版本号改为单一事实源（app/version.py），发版更可靠，检查更新判定更准确",
+      "en": "The version number is now defined in a single source (app/version.py), making releases more reliable and the update check more accurate."
     }
   ]
 }

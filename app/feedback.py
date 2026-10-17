@@ -21,9 +21,12 @@ import platform
 import sys
 from pathlib import Path
 
+from app.version import __version__
+
 # ---------------------------------------------------------------- 常量
 
-APP_VERSION = "v2.0.0"
+#: 版本号单一事实源在 app/version.py 的 __version__，这里统一加 "v" 前缀。
+APP_VERSION = "v" + __version__
 GITHUB_REPO = "yakrsa/MiteProxy"
 ISSUES_URL = f"https://github.com/{GITHUB_REPO}/issues"
 ISSUES_API = f"https://api.github.com/repos/{GITHUB_REPO}/issues"
