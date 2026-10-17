@@ -3,10 +3,25 @@
   "published_at": "2026-10-17",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
-    "新增中英双语界面：主菜单、规则面板、规则编辑器、流量列表列头（在「语言」菜单切换后重启生效）",
-    "mock 规则：选择列移至末列；名称列宽度减半，让出的空间平分给「匹配」与「动作」列",
-    "请求列表快捷键：R 重放、E 编辑后重放、Ctrl+X 清除列表",
-    "JSON 格式化上限提升到 8MB；超大响应首屏秒开，其余后台流式加载不再卡界面",
-    "导入 Fiddler 规则时，「跳过的内容」清单默认展开显示"
+    {
+      "zh": "新增中英双语界面：主菜单、规则面板、规则编辑器、流量列表列头（在「语言」菜单切换后重启生效）",
+      "en": "Bilingual UI (Chinese/English): main menu, rules panel, rule editor and traffic-list headers. Switch via the Language menu; restart to apply."
+    },
+    {
+      "zh": "mock 规则：选择列移至末列；名称列宽度减半，让出的空间平分给「匹配」与「动作」列",
+      "en": "Mock rules: the selection column moved to the end; the Name column is half as wide, with the freed space split between the Match and Action columns."
+    },
+    {
+      "zh": "请求列表快捷键：R 重放、E 编辑后重放、Ctrl+X 清除列表",
+      "en": "Traffic-list shortcuts: R to replay, E to edit-then-replay, Ctrl+X to clear the list."
+    },
+    {
+      "zh": "JSON 格式化上限提升到 8MB；超大响应首屏秒开，其余后台流式加载不再卡界面",
+      "en": "JSON formatting limit raised to 8 MB; very large responses paint instantly, with the rest streamed in the background without freezing the UI."
+    },
+    {
+      "zh": "导入 Fiddler 规则时，「跳过的内容」清单默认展开显示",
+      "en": "When importing Fiddler rules, the \"skipped content\" list is now expanded by default."
+    }
   ]
 }

@@ -2097,7 +2097,7 @@ class MainWindow(QMainWindow):
                     self.tr("当前已是最新版本（{0}）。").format(CURRENT_VERSION),
                 )
             return
-        UpdateDialog(info, self).exec()
+        UpdateDialog(info, self, lang=self.settings.language).exec()
 
     def _show_about(self) -> None:
         from app import feedback as _fb

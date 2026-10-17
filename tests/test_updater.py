@@ -17,9 +17,11 @@ from app.ui.update_dialog import UpdateDialog
 from app.updater import (
     CURRENT_VERSION,
     RELEASES_URL,
+    ChangeItem,
     VersionInfo,
     UpdateChecker,
     is_newer,
+    localized_changes,
     parse_version,
     parse_version_info,
 )
@@ -121,15 +123,53 @@ def test_parse_version_info_full():
                 "version": "2.1.0",
                 "published_at": "2026-10-20",
                 "download_url": "https://example.com/dl",
-                "changes": ["新增 A", "修复 B"],
+                "changes": [
+                    {"zh": "新增 A", "en": "Added A"},
+                    {"zh": "修复 B", "en": "Fixed B"},
+                ],
             }
         )
     )
     assert info is not None
     assert info.version == "2.1.0"
-    assert info.changes == ["新增 A", "修复 B"]
+    assert info.changes == [
+        ChangeItem(zh="新增 A", en="Added A"),
+        ChangeItem(zh="修复 B", en="Fixed B"),
+    ]
     assert info.published_at == "2026-10-20"
     assert info.download_url == "https://example.com/dl"
+
+
+def test_parse_version_info_change_missing_en_falls_back():
+    """changes 里缺 en 时回落到 zh，英文界面不会空白。"""
+    info = parse_version_info(
+        _payload(
+            {
+                "version": "2.1.0",
+                "changes": [{"zh": "只有中文"}, {"en": "only english"}],
+            }
+        )
+    )
+    assert info is not None
+    assert info.changes == [
+        ChangeItem(zh="只有中文", en="只有中文"),
+        ChangeItem(zh="only english", en="only english"),
+    ]
+
+
+def test_localized_changes_picks_language():
+    info = VersionInfo(
+        version="2.1.0",
+        changes=[
+            ChangeItem(zh="中文甲", en="English A"),
+            ChangeItem(zh="中文乙", en="English B"),
+        ],
+    )
+    assert localized_changes(info, "zh_CN") == ["中文甲", "中文乙"]
+    assert localized_changes(info, "en") == ["English A", "English B"]
+    # 缺 en 时回落到 zh
+    only_zh = VersionInfo(version="2.1.0", changes=[ChangeItem(zh="仅中文")])
+    assert localized_changes(only_zh, "en") == ["仅中文"]
 
 
 def test_parse_version_info_defaults_download_url():
@@ -143,7 +183,7 @@ def test_parse_version_info_defaults_download_url():
 def test_parse_version_info_changes_as_single_string():
     info = parse_version_info(_payload({"version": "2.1.0", "changes": "只有一条"}))
     assert info is not None
-    assert info.changes == ["只有一条"]
+    assert info.changes == [ChangeItem(zh="只有一条", en="只有一条")]
 
 
 @pytest.mark.parametrize(
@@ -252,13 +292,16 @@ def test_check_timeout_emits_error(qapp):
 def test_update_dialog_shows_changes(qapp):
     info = VersionInfo(
         version="2.1.0",
-        changes=["新增 A", "修复 B"],
+        changes=[
+            ChangeItem(zh="新增 A", en="Added A"),
+            ChangeItem(zh="修复 B", en="Fixed B"),
+        ],
         published_at="2026-10-20",
     )
     dlg = UpdateDialog(info)
     assert dlg.windowTitle() == "发现新版本"
 
-    # 变更条目应逐条展示（带 • 前缀）
+    # 变更条目应逐条展示（带 • 前缀），默认中文
     from PySide6.QtWidgets import QListWidget
 
     texts = []
@@ -268,6 +311,26 @@ def test_update_dialog_shows_changes(qapp):
         texts.append(lst.item(i).text())
     assert any("新增 A" in t for t in texts)
     assert any("修复 B" in t for t in texts)
+
+
+def test_update_dialog_shows_changes_in_english(qapp):
+    """传入 lang="en" 时变更列表应显示英文文案，而非中文。"""
+    info = VersionInfo(
+        version="2.1.0",
+        changes=[
+            ChangeItem(zh="新增 A", en="Added A"),
+            ChangeItem(zh="修复 B", en="Fixed B"),
+        ],
+    )
+    dlg = UpdateDialog(info, lang="en")
+    from PySide6.QtWidgets import QListWidget
+
+    lst = dlg.findChild(QListWidget)
+    assert lst is not None
+    texts = [lst.item(i).text() for i in range(lst.count())]
+    assert any("Added A" in t for t in texts)
+    assert any("Fixed B" in t for t in texts)
+    assert not any("新增 A" in t for t in texts)
 
 
 def test_update_dialog_handles_empty_changes(qapp):

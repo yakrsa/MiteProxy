@@ -19,14 +19,18 @@ from PySide6.QtWidgets import (
 )
 
 from app import updater as up
+from app.i18n import DEFAULT_LANG
 
 
 class UpdateDialog(QDialog):
     """展示远端版本号、发布日期与变更列表，并提供「前往下载」。"""
 
-    def __init__(self, info: up.VersionInfo, parent=None) -> None:
+    def __init__(
+        self, info: up.VersionInfo, parent=None, lang: str = DEFAULT_LANG
+    ) -> None:
         super().__init__(parent)
         self._info = info
+        self._lang = lang
         self.setWindowTitle(self.tr("发现新版本"))
         self.setMinimumWidth(520)
         self.setMinimumHeight(320)
@@ -57,7 +61,7 @@ class UpdateDialog(QDialog):
 
         changes = QListWidget(self)
         if self._info.changes:
-            for line in self._info.changes:
+            for line in up.localized_changes(self._info, self._lang):
                 item = QListWidgetItem("• " + line)
                 item.setToolTip(line)
                 changes.addItem(item)

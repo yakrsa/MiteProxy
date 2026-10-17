@@ -44,14 +44,32 @@ CHECK_TIMEOUT_MS = 15_000
 
 
 @dataclass(frozen=True)
+class ChangeItem:
+    """单条变更说明的双语载体。
+
+    zh / en 分别为中文 / 英文文案；``localized()`` 按当前语言取对应文案，
+    缺一门时回落到另一门，保证更新弹窗永远有内容可显示。
+    """
+
+    zh: str = ""
+    en: str = ""
+
+    def localized(self, lang: str) -> str:
+        if lang == "en":
+            return self.en or self.zh
+        return self.zh or self.en
+
+
+@dataclass(frozen=True)
 class VersionInfo:
     """远端 version.info 解析结果。
 
     version 为必填；changes 允许为空（只发版本号不写变更也照样能提示）。
+    changes 中的每条都是 :class:`ChangeItem`，同时携带中英文案。
     """
 
     version: str
-    changes: list[str] = field(default_factory=list)
+    changes: list[ChangeItem] = field(default_factory=list)
     published_at: str = ""
     download_url: str = RELEASES_URL
 
@@ -106,7 +124,9 @@ def parse_version_info(raw: bytes | str) -> VersionInfo | None:
     raw_changes = data.get("changes") or []
     if isinstance(raw_changes, str):  # 容错：写作单个字符串也接受
         raw_changes = [raw_changes]
-    changes = [str(c).strip() for c in raw_changes if str(c).strip()]
+    changes = [_as_change_item(c) for c in raw_changes]
+    # 中英文案都为空的条目直接丢弃，避免更新弹窗出现空行
+    changes = [c for c in changes if c.zh or c.en]
 
     download = str(data.get("download_url", "")).strip() or RELEASES_URL
     return VersionInfo(
@@ -115,6 +135,31 @@ def parse_version_info(raw: bytes | str) -> VersionInfo | None:
         published_at=str(data.get("published_at", "")).strip(),
         download_url=download,
     )
+
+
+def _as_change_item(c) -> ChangeItem:
+    """把 version.info 里的单条变更归一化为 ChangeItem。
+
+    - 纯字符串：zh / en 同值（兼容旧版格式）。
+    - 对象：分别取 zh / en；任一缺失时回落到另一门，避免空行。
+    """
+    if isinstance(c, str):
+        text = c.strip()
+        return ChangeItem(zh=text, en=text)
+    if isinstance(c, dict):
+        zh = str(c.get("zh", "")).strip()
+        en = str(c.get("en", "")).strip()
+        if not en:
+            en = zh
+        if not zh:
+            zh = en
+        return ChangeItem(zh=zh, en=en)
+    return ChangeItem()
+
+
+def localized_changes(info: VersionInfo, lang: str) -> list[str]:
+    """按语言取出每条变更的展示文案（zh / en 自动选）。"""
+    return [c.localized(lang) for c in info.changes]
 
 
 # ---------------------------------------------------------------- 异步检测
