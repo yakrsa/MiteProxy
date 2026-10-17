@@ -22,6 +22,10 @@
     {
       "zh": "版本号改为单一事实源（app/version.py），发版更可靠，检查更新判定更准确",
       "en": "The version number is now defined in a single source (app/version.py), making releases more reliable and the update check more accurate."
+    },
+    {
+      "zh": "修复流量列表自动滚动偶发滚不到最底部的问题（改用 scrollToBottom 钉住底部）",
+      "en": "Fixed the traffic list auto-scroll occasionally failing to reach the very bottom (now pins to the bottom with scrollToBottom)."
     }
   ]
 }

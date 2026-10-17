@@ -280,12 +280,16 @@ class TrafficTable(QTableView):
         return not bar.isVisible() or bar.value() <= bar.minimum() + 1
 
     def scroll_to_newest(self, newest_first: bool) -> None:
-        """滚到"最新端"：倒序时最新在顶，正序时在底。"""
-        model = self.model()
-        if model is None or model.rowCount() == 0:
-            return
-        row = 0 if newest_first else model.rowCount() - 1
-        self.scrollTo(model.index(row, 0))
+        """滚到"最新端"：倒序时最新在顶，正序时在底。
+
+        必须用 scrollToTop/scrollToBottom 把滚动条钉到端点，不能用
+        ``scrollTo(index)``——后者默认 EnsureVisible 只保证该行可见，
+        当最后一行半露在底边时只做最小位移，导致"有时候滚不到最底部"。
+        """
+        if newest_first:
+            self.scrollToTop()
+        else:
+            self.scrollToBottom()
 
     def keyPressEvent(self, event):  # noqa: N802
         # Ctrl+F 由主窗口全局处理；这里只拦截无修饰键的 R / E 重放快捷键。
