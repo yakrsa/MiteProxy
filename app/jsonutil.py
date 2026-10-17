@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from PySide6.QtCore import QCoreApplication
 
 #: 出错行太长了就只显示出错位置附近这一段（两侧各留这么多字符）
 SNIPPET_CONTEXT = 60
@@ -41,8 +42,8 @@ class JsonError:
         if not self.lineno:
             return ""
         if not self.colno:
-            return f"第 {self.lineno} 行"
-        return f"第 {self.lineno} 行第 {self.colno} 列"
+            return QCoreApplication.translate("jsonutil", '第 {0} 行').format(self.lineno)
+        return QCoreApplication.translate("jsonutil", '第 {0} 行第 {1} 列').format(self.lineno, self.colno)
 
     def report(self) -> str:
         """给人看的完整报告（UI 直接显示这个）。"""
@@ -52,7 +53,7 @@ class JsonError:
         if self.snippet:
             parts.append(self.snippet)
         if self.hint:
-            parts.append(f"可能原因：{self.hint}")
+            parts.append(QCoreApplication.translate("jsonutil", '可能原因：{0}').format(self.hint))
         return "\n".join(parts)
 
 
@@ -73,47 +74,47 @@ class ParseResult:
 _HINTS: tuple[tuple[str, str], ...] = (
     (
         "Expecting property name enclosed in double quotes",
-        "对象的 key 必须用双引号（单引号不行），或这里多了个尾逗号",
+        QCoreApplication.translate("jsonutil", "对象的 key 必须用双引号（单引号不行），或这里多了个尾逗号"),
     ),
     (
         "Expecting ',' delimiter",
-        "两个值之间少了逗号，或者多了个尾逗号",
+        QCoreApplication.translate("jsonutil", "两个值之间少了逗号，或者多了个尾逗号"),
     ),
     (
         "Expecting ':' delimiter",
-        "key 后面少了冒号",
+        QCoreApplication.translate("jsonutil", "key 后面少了冒号"),
     ),
     (
         "Illegal trailing comma",
-        "对象或数组末尾多了个逗号（标准 JSON 不允许尾逗号）",
+        QCoreApplication.translate("jsonutil", "对象或数组末尾多了个逗号（标准 JSON 不允许尾逗号）"),
     ),
     (
         "Expecting value",
-        "这里应该是一个值：常见原因是单引号字符串、写了注释、多了尾逗号，或内容为空",
+        QCoreApplication.translate("jsonutil", "这里应该是一个值：常见原因是单引号字符串、写了注释、多了尾逗号，或内容为空"),
     ),
     (
         "Unterminated string",
-        "字符串的引号没有闭合；字符串里要换行得写成 \\n",
+        QCoreApplication.translate("jsonutil", "字符串的引号没有闭合；字符串里要换行得写成 \\n"),
     ),
     (
         "Invalid control character",
-        "字符串里有未转义的控制字符（比如直接按了回车），应写成 \\n / \\t",
+        QCoreApplication.translate("jsonutil", "字符串里有未转义的控制字符（比如直接按了回车），应写成 \\n / \\t"),
     ),
     (
         "Invalid \\escape",
-        "转义序列不合法，\\\\ 才表示一个反斜杠",
+        QCoreApplication.translate("jsonutil", "转义序列不合法，\\\\ 才表示一个反斜杠"),
     ),
     (
         "Invalid \\uXXXX escape",
-        "\\u 后面必须跟 4 位十六进制",
+        QCoreApplication.translate("jsonutil", "\\u 后面必须跟 4 位十六进制"),
     ),
     (
         "Extra data",
-        "第一个 JSON 结束后还有多余内容：可能是 JSONP 包裹，或多个 JSON 拼在一起",
+        QCoreApplication.translate("jsonutil", "第一个 JSON 结束后还有多余内容：可能是 JSONP 包裹，或多个 JSON 拼在一起"),
     ),
     (
         "Delimiter",
-        "分隔符位置不对，检查逗号与冒号",
+        QCoreApplication.translate("jsonutil", "分隔符位置不对，检查逗号与冒号"),
     ),
 )
 
@@ -155,7 +156,7 @@ def error_snippet(text: str, lineno: int, colno: int) -> str:
 
 
 def _reject_constant(name: str) -> object:
-    raise JsonStrictError(f"不合法的 JSON 常量：{name}")
+    raise JsonStrictError(QCoreApplication.translate("jsonutil", '不合法的 JSON 常量：{0}').format(name))
 
 
 def parse_json(text: str, *, strict: bool = True) -> ParseResult:
@@ -169,7 +170,7 @@ def parse_json(text: str, *, strict: bool = True) -> ParseResult:
     if not cleaned.strip():
         return ParseResult(
             False,
-            error=JsonError("内容为空", 1, 1, hint="先贴一段 JSON 进来"),
+            error=JsonError(QCoreApplication.translate("jsonutil", "内容为空"), 1, 1, hint=QCoreApplication.translate("jsonutil", "先贴一段 JSON 进来")),
             text=raw,
         )
 
@@ -194,7 +195,7 @@ def parse_json(text: str, *, strict: bool = True) -> ParseResult:
             False,
             error=JsonError(
                 str(exc),
-                hint="浏览器 JSON.parse 也不认它；要表示空值就用 null",
+                hint=QCoreApplication.translate("jsonutil", "浏览器 JSON.parse 也不认它；要表示空值就用 null"),
             ),
             text=raw,
         )
@@ -203,8 +204,8 @@ def parse_json(text: str, *, strict: bool = True) -> ParseResult:
         return ParseResult(
             False,
             error=JsonError(
-                "嵌套层级过深，超出解析器递归上限",
-                hint="确认内容没被意外重复包裹；可用 JSONPath 先缩小范围",
+                QCoreApplication.translate("jsonutil", "嵌套层级过深，超出解析器递归上限"),
+                hint=QCoreApplication.translate("jsonutil", "确认内容没被意外重复包裹；可用 JSONPath 先缩小范围"),
             ),
             text=raw,
         )
@@ -230,7 +231,7 @@ def parse_json(text: str, *, strict: bool = True) -> ParseResult:
     if duplicates:
         shown = "、".join(duplicates[:5])
         more = "…" if len(duplicates) > 5 else ""
-        notes.append(f"存在重复 key：{shown}{more}（已保留最后一次出现）")
+        notes.append(QCoreApplication.translate("jsonutil", '存在重复 key：{0}{1}（已保留最后一次出现）').format(shown, more))
     return ParseResult(True, value=value, notes=tuple(notes), text=raw)
 
 
@@ -250,9 +251,9 @@ def dumps_json(value: object, indent: int | None = 2) -> tuple[bool, str]:
             )
         return True, json.dumps(value, ensure_ascii=False, indent=indent)
     except RecursionError:
-        return False, "嵌套层级过深，无法序列化"
+        return False, QCoreApplication.translate("jsonutil", "嵌套层级过深，无法序列化")
     except (ValueError, TypeError, MemoryError) as exc:
-        return False, f"序列化失败：{exc}"
+        return False, QCoreApplication.translate("jsonutil", '序列化失败：{0}').format(exc)
 
 
 # ---------------------------------------------------------------- 规模统计

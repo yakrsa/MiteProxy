@@ -15,6 +15,7 @@ import ssl
 import time
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
+from PySide6.QtCore import QCoreApplication
 
 #: 响应体读取上限：调试工具不是下载器，500MB 兜底防把内存吃光
 MAX_BODY_BYTES = 500 * 1024 * 1024
@@ -53,13 +54,13 @@ def send_request(
     method = (method or "GET").strip().upper() or "GET"
     url = (url or "").strip()
     if not url:
-        return fail("URL 不能为空")
+        return fail(QCoreApplication.translate("httpclient", "URL 不能为空"))
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https"):
-        return fail("URL 必须以 http:// 或 https:// 开头")
+        return fail(QCoreApplication.translate("httpclient", "URL 必须以 http:// 或 https:// 开头"))
     host = parts.hostname
     if not host:
-        return fail("URL 缺少主机名")
+        return fail(QCoreApplication.translate("httpclient", "URL 缺少主机名"))
     port = parts.port or (443 if parts.scheme == "https" else 80)
     target = parts.path or "/"
     if parts.query:
@@ -89,7 +90,7 @@ def send_request(
             resp = conn.getresponse()
             data = resp.read(MAX_BODY_BYTES + 1)
             if len(data) > MAX_BODY_BYTES:
-                return fail(f"响应体超过 {MAX_BODY_BYTES // (1024 * 1024)}MB 上限")
+                return fail(QCoreApplication.translate("httpclient", '响应体超过 {0}MB 上限').format(MAX_BODY_BYTES // (1024 * 1024)))
             return ApiResponse(
                 ok=True,
                 status=resp.status,
@@ -105,6 +106,6 @@ def send_request(
             except Exception:
                 pass
     except OSError as e:
-        return fail(f"连接失败: {e}")
+        return fail(QCoreApplication.translate("httpclient", '连接失败: {0}').format(e))
     except Exception as e:  # ssl.SSLError / http.client 各类异常统一收敛
-        return fail(f"请求失败: {e}")
+        return fail(QCoreApplication.translate("httpclient", '请求失败: {0}').format(e))

@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from app.textutil import decode_body
+from PySide6.QtCore import QCoreApplication
 
 APP_NAME = "MiteProxy"
 APP_VERSION = "0.1"
@@ -30,10 +31,10 @@ EXPORT_FORMATS = (FORMAT_HAR, FORMAT_RAW, FORMAT_RESPONSE, FORMAT_BODY)
 REQUIRES_RESPONSE = (FORMAT_RESPONSE, FORMAT_BODY)
 
 FORMAT_LABELS = {
-    FORMAT_HAR: "HAR 归档 (*.har)",
-    FORMAT_RAW: "原始 HTTP 报文：请求+响应 (*.txt)",
-    FORMAT_RESPONSE: "完整响应：Headers+Body (*.txt)",
-    FORMAT_BODY: "仅响应 Body (*.*)",
+    FORMAT_HAR: QCoreApplication.translate("export", "HAR 归档 (*.har)"),
+    FORMAT_RAW: QCoreApplication.translate("export", "原始 HTTP 报文：请求+响应 (*.txt)"),
+    FORMAT_RESPONSE: QCoreApplication.translate("export", "完整响应：Headers+Body (*.txt)"),
+    FORMAT_BODY: QCoreApplication.translate("export", "仅响应 Body (*.*)"),
 }
 
 # content-type → 扩展名（响应 Body 导出时推断文件名）
@@ -85,7 +86,7 @@ def as_flow_list(flows) -> list:
 
 def session_banner(index: int, total: int, flow) -> str:
     """多条会话拼接时的分隔标题，例如 `########## 会话 2/3 · GET https://a/b ##########`。"""
-    return f"########## 会话 {index}/{total} · {session_banner_labels(flow)} ##########"
+    return QCoreApplication.translate("export", '########## 会话 {0}/{1} · {2} ##########').format(index, total, session_banner_labels(flow))
 
 
 # ====================================================================== 通用取值
@@ -212,7 +213,7 @@ def build_curl_many(flows, style: str = "posix") -> str:
         cmd = build_curl(f, style)
         if not cmd:
             continue
-        lines.append(f"{prefix} 会话 {i}/{len(items)} · {session_banner_labels(f)}")
+        lines.append(QCoreApplication.translate("export", '{0} 会话 {1}/{2} · {3}').format(prefix, i, len(items), session_banner_labels(f)))
         lines.append(cmd)
     return "\n".join(lines)
 
@@ -234,7 +235,7 @@ def _raw_message(start_line: str, msg, body: bytes) -> list[str]:
     if body:
         if text is None:
             lines.append("")
-            lines.append(f"<二进制 body：{len(body)} 字节，未内联；请用「仅响应 Body」导出>")
+            lines.append(QCoreApplication.translate("export", '<二进制 body：{0} 字节，未内联；请用「仅响应 Body」导出>').format(len(body)))
         else:
             lines.append("")
             lines.append(text)
@@ -287,8 +288,8 @@ def _build_raw_one(flow) -> str:
             )
         )
 
-    divider_req = "===== 请求 ====="
-    divider_res = "===== 响应 ====="
+    divider_req = QCoreApplication.translate("export", "===== 请求 =====")
+    divider_res = QCoreApplication.translate("export", "===== 响应 =====")
     text = ""
     if req is not None:
         text += divider_req + "\n" + blocks[0] + "\n\n"
@@ -550,7 +551,7 @@ def default_filename(flow, fmt: str) -> str:
     """导出对话框的默认文件名。传列表时按第一条起名并带上条数。"""
     items = as_flow_list(flow)
     first = items[0] if items else flow
-    suffix = f"_{len(items)}条" if len(items) > 1 else ""
+    suffix = QCoreApplication.translate("export", '_{0}条').format(len(items)) if len(items) > 1 else ""
 
     if fmt == FORMAT_BODY:
         name = body_filename(first)
@@ -613,6 +614,6 @@ def export_bytes(flow, fmt: str) -> bytes:
     if fmt == FORMAT_BODY:
         items = as_flow_list(flow)
         if len(items) != 1:
-            raise ValueError("「仅响应 Body」只支持导出单条会话")
+            raise ValueError(QCoreApplication.translate("export", "「仅响应 Body」只支持导出单条会话"))
         return content(getattr(items[0], "response", None))
-    raise ValueError(f"未知导出格式: {fmt}")
+    raise ValueError(QCoreApplication.translate("export", '未知导出格式: {0}').format(fmt))

@@ -29,10 +29,10 @@ class ToolPanel(QWidget):
         self.json_panel = JsonPanel()
         self.compare_panel = JsonComparePanel()
         self.api_panel = ApiPanel()
-        self.tabs.addTab(self.codec_panel, "编码转换")
+        self.tabs.addTab(self.codec_panel, self.tr("编码转换"))
         self.tabs.addTab(self.json_panel, "JSON")
-        self.tabs.addTab(self.compare_panel, "JSON 比对")
-        self.tabs.addTab(self.api_panel, "API 调试")
+        self.tabs.addTab(self.compare_panel, self.tr("JSON 比对"))
+        self.tabs.addTab(self.api_panel, self.tr("API 调试"))
         layout.addWidget(self.tabs)
 
     # ------------------------------------------------------------ 对外

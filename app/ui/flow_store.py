@@ -193,7 +193,7 @@ class FlowStore(QAbstractTableModel):
                     base = "REPLAY" if row.get("is_replay") else ""
                 throttle_ms = row.get("throttle_ms") or 0
                 if throttle_ms:
-                    tag = f"弱网{int(throttle_ms)}ms"
+                    tag = self.tr('弱网{0}ms').format(int(throttle_ms))
                     return f"{base} · {tag}" if base else tag
                 return base
             return None
@@ -267,17 +267,17 @@ class FlowStore(QAbstractTableModel):
             tip = f"{row['method']} {row['url']}"
             ip = row.get("server_ip")
             if ip:
-                tip += f"\n服务器 IP: {ip}"
+                tip += self.tr('\n服务器 IP: {0}').format(ip)
             if row.get("comment"):
-                tip += f"\n备注: {row['comment']}"
+                tip += self.tr("\n备注: {0}").format(row["comment"])
             if row["marked"]:
                 tip += f"\n{row['marked']}"
             if row.get("throttle_ms"):
-                tip += f"\n弱网延迟: {round(row['throttle_ms'], 1)} ms"
+                tip += self.tr("\n弱网延迟: {0} ms").format(round(row["throttle_ms"], 1))
             if row.get("is_websocket"):
                 tip += (
-                    f"\nWebSocket：{row.get('ws_messages', 0)} 条消息"
-                    + ("（已关闭）" if row.get("ws_closed") else "（连接中）")
+                    self.tr("\nWebSocket：{0} 条消息").format(row.get("ws_messages", 0))
+                    + (self.tr("（已关闭）") if row.get("ws_closed") else self.tr("（连接中）"))
                 )
             return tip
 

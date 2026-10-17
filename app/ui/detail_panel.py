@@ -26,7 +26,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal, QCoreApplication, QT_TRANSLATE_NOOP
 from PySide6.QtGui import (
     QBrush,
     QFont,
@@ -99,7 +99,8 @@ from app.ui.highlight import JsonHighlighter, is_dark
 #: WebSocket 消息表最多渲染的行数（再多的只记在内存里，别把表格撑爆）
 WS_TABLE_LIMIT = 2000
 
-BODY_VIEW_TIP = (
+BODY_VIEW_TIP = QT_TRANSLATE_NOOP(
+    "DetailPanel",
     "自动 = 按 content-type 挑最合适的视图（JSON / 表单 / 图片 / 原文 / 十六进制）。\n"
     "手动切换后会保持，换会话也不回弹。\n"
     "解析失败会退回原文并说明原因，不会丢内容。"
@@ -107,11 +108,11 @@ BODY_VIEW_TIP = (
 
 #: 图片缩放档位：适应窗口 + 固定比例
 IMAGE_ZOOM_ITEMS = (
-    ("fit", "适应窗口"),
-    ("0.25", "25%"),
-    ("0.5", "50%"),
-    ("1", "100%"),
-    ("2", "200%"),
+    ("fit", QT_TRANSLATE_NOOP("DetailPanel", "适应窗口")),
+    ("0.25", QT_TRANSLATE_NOOP("DetailPanel", "25%")),
+    ("0.5", QT_TRANSLATE_NOOP("DetailPanel", "50%")),
+    ("1", QT_TRANSLATE_NOOP("DetailPanel", "100%")),
+    ("2", QT_TRANSLATE_NOOP("DetailPanel", "200%")),
 )
 
 
@@ -123,7 +124,7 @@ def _image_format_label(content_type: str) -> str:
         "jpeg": "JPEG", "jpg": "JPEG", "png": "PNG", "gif": "GIF",
         "bmp": "BMP", "webp": "WEBP", "svg+xml": "SVG",
         "x-icon": "ICO", "vnd.microsoft.icon": "ICO",
-    }.get(sub, sub.upper() or "图片")
+    }.get(sub, sub.upper() or QCoreApplication.translate("DetailPanel", "图片"))
 
 
 class ImageView(QScrollArea):
@@ -160,10 +161,10 @@ class ImageView(QScrollArea):
 
         if ct == "image/svg+xml" or data[:5] in (b"<?xml", b"<svg "):
             if QSvgRenderer is None:
-                return False, "SVG 渲染不可用（缺少 QtSvg）"
+                return False, self.tr("SVG 渲染不可用（缺少 QtSvg）")
             renderer = QSvgRenderer(data)
             if not renderer.isValid():
-                return False, "SVG 内容无法解析"
+                return False, self.tr("SVG 内容无法解析")
             size = renderer.defaultSize()
             self._is_svg = True
             self._svg_data = data
@@ -176,7 +177,7 @@ class ImageView(QScrollArea):
 
         ok = self._image.loadFromData(data)
         if not ok:
-            return False, "无法识别为图片（内容可能已损坏或非图片格式）"
+            return False, self.tr("无法识别为图片（内容可能已损坏或非图片格式）")
         self._render()
         return True, (
             f"{_image_format_label(ct)} · {self._image.width()}×{self._image.height()}"
@@ -274,31 +275,30 @@ class BodyPane(QWidget):
             btn.setText(label)
             btn.setCheckable(True)
             btn.setAutoRaise(True)      # 平时融入工具条，选中才浮起，最接近 Fiddler 观感
-            btn.setToolTip(BODY_VIEW_TIP)
+            btn.setToolTip(QCoreApplication.translate("DetailPanel", BODY_VIEW_TIP))
             self.mode_group.addButton(btn, i)
             row.addWidget(btn)
             self.mode_buttons[key] = btn
         self.mode_buttons[VIEW_AUTO].setChecked(True)
         self.mode_group.idClicked.connect(self._on_mode_clicked)
 
-        self.wrap_cb = QCheckBox("换行")
+        self.wrap_cb = QCheckBox(self.tr("换行"))
         self.wrap_cb.setChecked(wrap_default)
         self.wrap_cb.setToolTip(
-            "超长行自动折行显示。单行超过 "
-            f"{WRAP_MAX_LINE_CHARS // 1024}KB 时会自动临时关闭（换行会让界面卡顿）。"
+            self.tr('超长行自动折行显示。单行超过 {0}KB 时会自动临时关闭（换行会让界面卡顿）。').format(WRAP_MAX_LINE_CHARS // 1024)
         )
         row.addWidget(self.wrap_cb)
 
         self.zoom_combo = QComboBox()
         for key, label in IMAGE_ZOOM_ITEMS:
             self.zoom_combo.addItem(label, key)
-        self.zoom_combo.setToolTip("图片缩放")
+        self.zoom_combo.setToolTip(self.tr("图片缩放"))
         self.zoom_combo.setVisible(False)
         row.addWidget(self.zoom_combo)
 
         self.view_note = QLabel("")
         self.view_note.setStyleSheet(f"color: {theme.css('hint')};")
-        self.view_note.setToolTip(BODY_VIEW_TIP)
+        self.view_note.setToolTip(QCoreApplication.translate("DetailPanel", BODY_VIEW_TIP))
         row.addWidget(self.view_note, stretch=1)
         layout.addLayout(row)
 
@@ -314,7 +314,7 @@ class BodyPane(QWidget):
         self.body_stack.addWidget(self.body_view)
 
         self.form_table = QTableWidget(0, 2)
-        self.form_table.setHorizontalHeaderLabels(["名称", "值"])
+        self.form_table.setHorizontalHeaderLabels([self.tr("名称"), self.tr("值")])
         self.form_table.verticalHeader().setVisible(False)
         self.form_table.setAlternatingRowColors(True)
         self.form_table.setShowGrid(False)
@@ -504,7 +504,7 @@ class BodyPane(QWidget):
             out, kind = sniff_decompress(body)
             if out is not None:
                 return out, decoded_note(kind or ce, raw_len, len(out), "fallback")
-            return body, f"已按 {ce} 压缩，但解压失败，显示的是原始压缩字节"
+            return body, QCoreApplication.translate("BodyPane", '已按 {0} 压缩，但解压失败，显示的是原始压缩字节').format(ce)
         return body, decoded_note(ce, raw_len, len(body), "mitmproxy")
 
     def _show_text(self, text: str, json_mode: bool = False) -> None:
@@ -571,7 +571,7 @@ class BodyPane(QWidget):
         cursor.insertText(text[pos:end])
         self._stream_pos = end
         total_mb = len(text) / 1024 / 1024
-        self._paint_note(f"加载中 {end / 1024 / 1024:.1f}/{total_mb:.1f}MB")
+        self._paint_note(self.tr("加载中 {0:.1f}/{1:.1f}MB").format(end / 1024 / 1024, total_mb))
         if end >= len(text):
             self._stream_finish()
 
@@ -596,7 +596,7 @@ class BodyPane(QWidget):
         if self._stream_active:
             # 流式追加期间开换行 = 每块 append 都触发全文重排（几百 ms/块），
             # 卡顿元凶。先锁 NoWrap，加载完 _stream_finish 会再调一次恢复。
-            wrap, reason = False, "大内容加载中，加载完成后恢复换行"
+            wrap, reason = False, self.tr("大内容加载中，加载完成后恢复换行")
         self.body_view.setLineWrapMode(
             QPlainTextEdit.LineWrapMode.WidgetWidth
             if wrap else QPlainTextEdit.LineWrapMode.NoWrap
@@ -629,12 +629,12 @@ class BodyPane(QWidget):
         if body is None:
             self._resolved = VIEW_RAW
             self._set_note(self._encoding_note)
-            self._show_text("（无 body）")
+            self._show_text(self.tr("（无 body）"))
             return
         if not body:
             self._resolved = VIEW_RAW
             self._set_note(self._encoding_note)
-            self._show_text("（空 body）")
+            self._show_text(self.tr("（空 body）"))
             return
 
         auto = self._mode == VIEW_AUTO
@@ -644,7 +644,7 @@ class BodyPane(QWidget):
         def note(detail: str = "") -> None:
             """提示文案：自动模式下带上「自动 → X」，原因与解压说明依次追加。"""
             label = view_mode_label(mode)
-            prefix = f"自动 → {label}" if auto else label
+            prefix = QCoreApplication.translate("BodyPane", '自动 → {0}').format(label) if auto else label
             parts = [f"{prefix}：{detail}" if detail else prefix]
             if self._encoding_note:
                 parts.append(self._encoding_note)
@@ -660,14 +660,14 @@ class BodyPane(QWidget):
             if self._show_image(body):
                 return
             # 图片加载不了（损坏 / 不支持的格式）→ 老实回落十六进制，别留空白
-            note("无法渲染为图片，已显示十六进制")
+            note(self.tr("无法渲染为图片，已显示十六进制"))
             self._show_text(hex_dump(body, total=len(body)))
             return
 
         if mode == VIEW_JSON:
             result = format_json_body(body, self._content_type)
             if result.ok:
-                extra = "已截断显示" if result.truncated else ""
+                extra = self.tr("已截断显示") if result.truncated else ""
                 note(extra)
                 self._show_text(result.text, json_mode=True)
                 return
@@ -678,7 +678,7 @@ class BodyPane(QWidget):
         text = decode_body(body[:BODY_PREVIEW_LIMIT], self._content_type)
         if text is None:
             # 要文本但解不出来 → 老实给十六进制，并说清楚为什么
-            note("无法按文本解码，已显示十六进制")
+            note(self.tr("无法按文本解码，已显示十六进制"))
             self._show_text(hex_dump(body, total=len(body)))
             return
 
@@ -686,9 +686,9 @@ class BodyPane(QWidget):
             pairs = parse_urlencoded(text.strip())
             if pairs:
                 self._show_form(pairs)
-                note(f"{len(pairs)} 个字段（已 URL 解码）")
+                note(self.tr('{0} 个字段（已 URL 解码）').format(len(pairs)))
                 return
-            note("无法解析为表单，已显示原文")
+            note(self.tr("无法解析为表单，已显示原文"))
             self._show_text(self._with_truncation(text, len(body)))
             return
 
@@ -708,7 +708,7 @@ class MessagePane(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        self.summary_label = QLabel("（未选择会话）")
+        self.summary_label = QLabel(self.tr("（未选择会话）"))
         self.summary_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
@@ -741,7 +741,7 @@ class MessagePane(QWidget):
         self.body_pane.show_body(headers, body_bytes, raw_len)
 
     def clear(self) -> None:
-        self.summary_label.setText("（未选择会话）")
+        self.summary_label.setText(self.tr("（未选择会话）"))
         self.headers_table.setRowCount(0)
         self.body_pane.clear()
 
@@ -793,7 +793,7 @@ class WebSocketPane(QWidget):
 
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
-            ["#", "时间", "方向", "类型", "长度", "内容预览"]
+            ["#", self.tr("时间"), self.tr("方向"), self.tr("类型"), self.tr("长度"), self.tr("内容预览")]
         )
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -890,7 +890,7 @@ class WebSocketPane(QWidget):
         self.table.insertRow(row)
         content = getattr(message, "content", b"") or b""
         is_text = bool(getattr(message, "is_text", False))
-        kind = "文本" if is_text else "二进制"
+        kind = self.tr("文本") if is_text else self.tr("二进制")
         try:
             mtype = getattr(message, "type", None)
             kind = (getattr(mtype, "name", None) or kind).upper()
@@ -900,7 +900,7 @@ class WebSocketPane(QWidget):
         values = [
             str(index),
             datetime.fromtimestamp(ts).strftime("%H:%M:%S.%f")[:-3] if ts else "-",
-            "→ 发送" if getattr(message, "from_client", False) else "← 接收",
+            self.tr("→ 发送") if getattr(message, "from_client", False) else self.tr("← 接收"),
             kind,
             str(len(content)),
             _preview_text(content, is_text),
@@ -926,16 +926,18 @@ class WebSocketPane(QWidget):
             1 for m in (getattr(ws, "messages", []) or [])
             if getattr(m, "from_client", False)
         )
-        parts = [f"{url}", f"共 {total} 条消息（发送 {sent} / 接收 {total - sent}）"]
+        parts = [f"{url}", self.tr('共 {0} 条消息（发送 {1} / 接收 {2}）').format(total, sent, total - sent)]
         if getattr(ws, "timestamp_end", None):
             parts.append(
-                f"已关闭：code={getattr(ws, 'close_code', '')} "
-                f"{getattr(ws, 'close_reason', '') or ''}".strip()
+                self.tr("已关闭：code={0} {1}").format(
+                    getattr(ws, "close_code", ""),
+                    getattr(ws, "close_reason", "") or "",
+                ).strip()
             )
         else:
-            parts.append("连接中…")
+            parts.append(self.tr("连接中…"))
         if self._overflow:
-            parts.append(f"（表格仅显示最近 {WS_TABLE_LIMIT} 条）")
+            parts.append(self.tr('（表格仅显示最近 {0} 条）').format(WS_TABLE_LIMIT))
         self.info_label.setText("  |  ".join(parts))
 
     def _on_selection_changed(self) -> None:
@@ -976,7 +978,7 @@ def _ws_display_url(url: str) -> str:
 def _preview_text(content: bytes, is_text: bool, limit: int = 200) -> str:
     """表格里的消息预览：换行压成空格，超长截断。"""
     if not content:
-        return "（空）"
+        return QCoreApplication.translate("DetailPanel", "（空）")
     if is_text:
         try:
             text = content.decode("utf-8", errors="replace")
@@ -1018,8 +1020,8 @@ class DetailPanel(QWidget):
         self.request_pane = MessagePane(wrap_default=wrap_default)
         self.response_pane = MessagePane(wrap_default=wrap_default)
         self.ws_pane = WebSocketPane(wrap_default=wrap_default)
-        self.tabs.addTab(self.request_pane, "请求")
-        self.tabs.addTab(self.response_pane, "响应")
+        self.tabs.addTab(self.request_pane, self.tr("请求"))
+        self.tabs.addTab(self.response_pane, self.tr("响应"))
         self.ws_index = self.tabs.addTab(self.ws_pane, "WebSocket")
         self.tabs.setTabVisible(self.ws_index, False)
         layout.addWidget(self.tabs)
@@ -1070,7 +1072,7 @@ class DetailPanel(QWidget):
         else:
             # 请求已发出、响应还没回来（pending）：响应半边给一个明确占位，
             # 而不是 show_message 默认的「未选择会话」（那样像没选中，其实只是没响应）。
-            self.response_pane.show_message("尚未收到响应…", {}, None, 0)
+            self.response_pane.show_message(self.tr("尚未收到响应…"), {}, None, 0)
 
         ws = getattr(flow, "websocket", None)
         self.tabs.setTabVisible(self.ws_index, ws is not None)

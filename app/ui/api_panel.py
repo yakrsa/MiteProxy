@@ -71,12 +71,12 @@ class ApiPanel(QWidget):
         self.method_combo.setCurrentText("GET")
         self.url_edit = QLineEdit()
         self.url_edit.setPlaceholderText("https://api.example.com/v1/user?id=1")
-        self.verify_cb = QCheckBox("校验证书")
+        self.verify_cb = QCheckBox(self.tr("校验证书"))
         self.verify_cb.setToolTip(
-            "调试对象常是自签 / 内网证书，默认跳过校验；\n"
-            "要验证正式证书链再勾上。"
+            self.tr("调试对象常是自签 / 内网证书，默认跳过校验；\n"
+            "要验证正式证书链再勾上。")
         )
-        self.send_btn = QPushButton("发送")
+        self.send_btn = QPushButton(self.tr("发送"))
         self.send_btn.clicked.connect(self._on_send)
         row.addWidget(self.method_combo)
         row.addWidget(self.url_edit, stretch=1)
@@ -94,7 +94,7 @@ class ApiPanel(QWidget):
         req_layout.setSpacing(3)
 
         self.headers_table = QTableWidget(0, 2)
-        self.headers_table.setHorizontalHeaderLabels(["请求 Header", "Value"])
+        self.headers_table.setHorizontalHeaderLabels([self.tr("请求 Header"), "Value"])
         self.headers_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
@@ -106,24 +106,24 @@ class ApiPanel(QWidget):
         req_layout.addWidget(self.headers_table)
 
         hbtn_row = QHBoxLayout()
-        add_h = QPushButton("添加 Header")
+        add_h = QPushButton(self.tr("添加 Header"))
         add_h.clicked.connect(
             lambda: self.headers_table.insertRow(self.headers_table.rowCount())
         )
-        del_h = QPushButton("删除选中行")
+        del_h = QPushButton(self.tr("删除选中行"))
         del_h.clicked.connect(self._delete_header_row)
         hbtn_row.addWidget(add_h)
         hbtn_row.addWidget(del_h)
         hbtn_row.addStretch(1)
         req_layout.addLayout(hbtn_row)
 
-        req_layout.addWidget(QLabel("请求 Body（GET / HEAD 时忽略）："))
+        req_layout.addWidget(QLabel(self.tr("请求 Body（GET / HEAD 时忽略）：")))
         self.body_edit = QPlainTextEdit()
         self.body_edit.setMaximumHeight(110)
         font = QFont("ui-monospace, SF Mono, Menlo, Consolas, monospace")
         font.setStyleHint(QFont.StyleHint.Monospace)
         self.body_edit.setFont(font)
-        self.body_edit.setPlaceholderText('如 {"name": "张三"}，或表单 a=1&b=2')
+        self.body_edit.setPlaceholderText(self.tr('如 {"name": "张三"}，或表单 a=1&b=2'))
         req_layout.addWidget(self.body_edit)
         splitter.addWidget(req_widget)
 
@@ -133,7 +133,7 @@ class ApiPanel(QWidget):
         resp_layout.setContentsMargins(0, 0, 0, 0)
         resp_layout.setSpacing(3)
 
-        self.resp_label = QLabel("尚未发送")
+        self.resp_label = QLabel(self.tr("尚未发送"))
         self.resp_label.setStyleSheet(f"color: {theme.css('hint')};")
         self._resp_kind = "hint"        # 主题切换时按最近一次结果重染
         theme.add_listener(self._retheme)
@@ -167,7 +167,7 @@ class ApiPanel(QWidget):
             self.headers_table.setItem(row, 0, QTableWidgetItem(str(k)))
             self.headers_table.setItem(row, 1, QTableWidgetItem(str(v)))
         self.body_edit.setPlainText(body or "")
-        self.resp_label.setText("已带入请求，点击「发送」（或 Ctrl+Return）")
+        self.resp_label.setText(self.tr("已带入请求，点击「发送」（或 Ctrl+Return）"))
         self.resp_pane.clear()
 
     def set_body_text(self, text: str) -> None:
@@ -194,12 +194,12 @@ class ApiPanel(QWidget):
             return
         url = self.url_edit.text().strip()
         if not url:
-            self.resp_label.setText("请先填 URL")
+            self.resp_label.setText(self.tr("请先填 URL"))
             return
         method = self.method_combo.currentData() or "GET"
         body_text = self.body_edit.toPlainText()
         if len(body_text.encode("utf-8")) > MAX_BODY_INPUT:
-            self.resp_label.setText("请求 body 超过 50MB 上限")
+            self.resp_label.setText(self.tr("请求 body 超过 50MB 上限"))
             return
         headers = self._collect_headers()
         body = body_text.encode("utf-8") if body_text else b""
@@ -209,8 +209,8 @@ class ApiPanel(QWidget):
         self._seq += 1
         seq = self._seq
         self.send_btn.setEnabled(False)
-        self.send_btn.setText("发送中…")
-        self.resp_label.setText("请求中…")
+        self.send_btn.setText(self.tr("发送中…"))
+        self.resp_label.setText(self.tr("请求中…"))
 
         thread = threading.Thread(
             target=self._worker,
@@ -233,7 +233,7 @@ class ApiPanel(QWidget):
             return  # 旧请求的结果，丢弃（用户连点时按最后一把算）
         self._sending = False
         self.send_btn.setEnabled(True)
-        self.send_btn.setText("发送")
+        self.send_btn.setText(self.tr("发送"))
         self._show_response(result)
 
     def _show_response(self, result: ApiResponse) -> None:
@@ -248,8 +248,7 @@ class ApiPanel(QWidget):
         self._resp_kind = "ok" if 200 <= result.status < 400 else "error"
         self.resp_label.setStyleSheet(f"color: {theme.css(self._resp_kind)};")
         self.resp_label.setText(
-            f"HTTP {result.status} {result.reason} · {result.elapsed_ms}ms · "
-            f"{size} 字节 · {len(result.headers)} 个响应头"
+            self.tr('HTTP {0} {1} · {2}ms · {3} 字节 · {4} 个响应头').format(result.status, result.reason, result.elapsed_ms, size, len(result.headers))
         )
         self.resp_pane.show_body(headers, result.body, raw_len=size)
 

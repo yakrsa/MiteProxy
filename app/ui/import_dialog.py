@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QCoreApplication, QT_TRANSLATE_NOOP
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -27,38 +27,48 @@ from app.rules import Rule
 from app.ui import dialogs
 from app.ui import theme
 
-SOURCE_LABELS = {"farx": "FARX", "js": "CustomRules.js", "manual": "手动"}
+SOURCE_LABELS = {
+    "farx": "FARX",
+    "js": "CustomRules.js",
+    "manual": QT_TRANSLATE_NOOP("import_dialog", "手动"),
+}
 
 
 def _match_summary(rule: Rule) -> str:
     type_labels = {
-        "exact": "精确",
-        "contains": "包含",
-        "wildcard": "通配",
-        "regex": "正则",
+        "exact": QT_TRANSLATE_NOOP("import_dialog", "精确"),
+        "contains": QT_TRANSLATE_NOOP("import_dialog", "包含"),
+        "wildcard": QT_TRANSLATE_NOOP("import_dialog", "通配"),
+        "regex": QT_TRANSLATE_NOOP("import_dialog", "正则"),
     }
-    t = type_labels.get(rule.match.type, rule.match.type)
+    t = QCoreApplication.translate(
+        "import_dialog", type_labels.get(rule.match.type, rule.match.type)
+    )
     if rule.match.method:
-        return f"[{t}·{rule.match.method}] {rule.match.value}"
-    return f"[{t}] {rule.match.value}"
+        return QCoreApplication.translate(
+            "import_dialog", "[{0}·{1}] {2}"
+        ).format(t, rule.match.method, rule.match.value)
+    return QCoreApplication.translate("import_dialog", "[{0}] {1}").format(
+        t, rule.match.value
+    )
 
 
 def _action_summary(rule: Rule) -> str:
     if rule.action.redirect_url:
-        parts = [f"重定向→{rule.action.redirect_url}"]
+        parts = [QCoreApplication.translate("import_dialog", '重定向→{0}').format(rule.action.redirect_url)]
         if rule.action.latency_ms:
-            parts.append(f"延迟{rule.action.latency_ms}ms")
+            parts.append(QCoreApplication.translate("import_dialog", '延迟{0}ms').format(rule.action.latency_ms))
         return " · ".join(parts)
     parts = [str(rule.action.status)]
     if rule.action.latency_ms:
-        parts.append(f"延迟{rule.action.latency_ms}ms")
+        parts.append(QCoreApplication.translate("import_dialog", '延迟{0}ms').format(rule.action.latency_ms))
     if rule.action.body_source == "file":
-        parts.append(f"文件:{rule.action.file_path}")
+        parts.append(QCoreApplication.translate("import_dialog", '文件:{0}').format(rule.action.file_path))
     elif rule.action.body:
         body = rule.action.body.replace("\n", " ")
         parts.append(body[:40] + ("…" if len(body) > 40 else ""))
     if rule.action.headers:
-        parts.append(f"{len(rule.action.headers)}个header")
+        parts.append(QCoreApplication.translate("import_dialog", '{0}个header').format(len(rule.action.headers)))
     return " · ".join(parts)
 
 
@@ -72,7 +82,7 @@ class ImportPreviewDialog(QDialog):
     ):
         super().__init__(parent)
         self.rules = rules
-        self.setWindowTitle(f"导入 Fiddler 规则 — {source_name}")
+        self.setWindowTitle(self.tr('导入 Fiddler 规则 — {0}').format(source_name))
         self.resize(720, 480)
         self._build_ui(rules, skipped)
 
@@ -81,8 +91,7 @@ class ImportPreviewDialog(QDialog):
 
         layout.addWidget(
             QLabel(
-                f"识别到 <b>{len(rules)}</b> 条可导入规则，"
-                f"<b>{len(skipped)}</b> 条跳过。勾选要导入的规则："
+                self.tr('识别到 <b>{0}</b> 条可导入规则，<b>{1}</b> 条跳过。勾选要导入的规则：').format(len(rules), len(skipped))
             )
         )
 
@@ -90,8 +99,8 @@ class ImportPreviewDialog(QDialog):
         btn_row = QWidget()
         btn_layout = QHBoxLayout(btn_row)
         btn_layout.setContentsMargins(0, 0, 0, 0)
-        select_all = QPushButton("全选")
-        select_none = QPushButton("全不选")
+        select_all = QPushButton(self.tr("全选"))
+        select_none = QPushButton(self.tr("全不选"))
         select_all.clicked.connect(lambda: self._set_all_checked(True))
         select_none.clicked.connect(lambda: self._set_all_checked(False))
         btn_layout.addWidget(select_all)
@@ -100,7 +109,7 @@ class ImportPreviewDialog(QDialog):
         layout.addWidget(btn_row)
 
         self.table = QTableWidget(len(rules), 5)
-        self.table.setHorizontalHeaderLabels(["", "名称", "匹配", "动作", "来源"])
+        self.table.setHorizontalHeaderLabels(["", self.tr("名称"), self.tr("匹配"), self.tr("动作"), self.tr("来源")])
         header = self.table.horizontalHeader()
         # 第 0 列（复选框）固定宽度：绝不被长 URL 经 ResizeToContents 挤没。
         # 匹配/动作列改 Interactive（可拖动查看、超出省略），不用 ResizeToContents
@@ -124,7 +133,9 @@ class ImportPreviewDialog(QDialog):
             self.table.setItem(i, 2, QTableWidgetItem(_match_summary(rule)))
             self.table.setItem(i, 3, QTableWidgetItem(_action_summary(rule)))
             self.table.setItem(
-                i, 4, QTableWidgetItem(SOURCE_LABELS.get(rule.source, rule.source))
+                i, 4, QTableWidgetItem(QCoreApplication.translate(
+                    "import_dialog", SOURCE_LABELS.get(rule.source, rule.source)
+                ))
             )
         # 表格占主要垂直空间（stretch=1）：否则下方长长的跳过清单会把它压成一条，
         # 「勾选规则」的选择区域高度被吃没（导入多规则时的压缩 bug）。
@@ -135,7 +146,7 @@ class ImportPreviewDialog(QDialog):
                 f"• <b>{name}</b>：{reason}" for name, reason in skipped[:20]
             )
             if len(skipped) > 20:
-                skip_lines += f"<br>• ……等共 {len(skipped)} 条"
+                skip_lines += self.tr('<br>• ……等共 {0} 条').format(len(skipped))
             skip_label = QLabel(skip_lines)
             skip_label.setWordWrap(True)
             skip_label.setContentsMargins(14, 0, 0, 0)
@@ -150,10 +161,10 @@ class ImportPreviewDialog(QDialog):
             self.skip_scroll.setMaximumHeight(140)
 
             self.skip_toggle = QToolButton()
-            self.skip_toggle.setText(f"跳过的规则及原因（{len(skipped)} 条）")
+            self.skip_toggle.setText(self.tr('跳过的规则及原因（{0} 条）').format(len(skipped)))
             self.skip_toggle.setCheckable(True)
             self.skip_toggle.setChecked(True)      # 默认展开：内容要默认可见
-            self.skip_toggle.setToolTip("点击收起 / 展开跳过的规则及原因")
+            self.skip_toggle.setToolTip(self.tr("点击收起 / 展开跳过的规则及原因"))
             self.skip_toggle.setArrowType(Qt.ArrowType.DownArrow)
             self.skip_toggle.setStyleSheet(
                 f"color: {theme.css('hint')}; border: none; text-align: left;"
@@ -165,7 +176,7 @@ class ImportPreviewDialog(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("导入所选")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(self.tr("导入所选"))
         dialogs.cn_button_box(buttons)     # Cancel → 取消（Ok 已自定义"导入所选"，保留）
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)

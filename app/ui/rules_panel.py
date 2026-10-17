@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QPoint, QEvent, QTimer, Signal
+from PySide6.QtCore import Qt, QPoint, QEvent, QTimer, Signal, QCoreApplication
 from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -126,18 +126,18 @@ class RulesPanel(QWidget):
             btn.hide()
         self.only_enabled_cb = QCheckBox(self.tr("只显示启用"))
         self.only_enabled_cb.setToolTip(
-            "勾选后列表只显示启用中的规则；停用规则仍在存储中，取消勾选即可看到。"
+            self.tr("勾选后列表只显示启用中的规则；停用规则仍在存储中，取消勾选即可看到。")
         )
         self.export_btn.setToolTip(
-            "勾选规则时只导出勾选的；未勾选时导出全部。"
-            "MiteProxy 原生 .json 格式，启停状态与顺序一并保存。"
+            self.tr("勾选规则时只导出勾选的；未勾选时导出全部。"
+            "MiteProxy 原生 .json 格式，启停状态与顺序一并保存。")
         )
         self.import_native_btn.setToolTip(
-            "导入 MiteProxy 导出的 .json 规则文件（追加到现有规则之后，"
-            "不覆盖已有规则）。要导 Fiddler 的 .farx 请用「导入 Fiddler 规则」按钮。"
+            self.tr("导入 MiteProxy 导出的 .json 规则文件（追加到现有规则之后，"
+            "不覆盖已有规则）。要导 Fiddler 的 .farx 请用「导入 Fiddler 规则」按钮。")
         )
         self.delete_btn.setToolTip(
-            "删除当前选中的规则；首列勾选了多条时删除勾选的。"
+            self.tr("删除当前选中的规则；首列勾选了多条时删除勾选的。")
         )
         for b in (
             self.add_btn,
@@ -213,12 +213,12 @@ class RulesPanel(QWidget):
         host_layout = QHBoxLayout(self._select_all_host)
         host_layout.setContentsMargins(6, 0, 0, 0)
         host_layout.setSpacing(2)
-        title = QLabel("选择")
+        title = QLabel(self.tr("选择"))
         title.setObjectName("selectAllTitle")
         self.select_all_cb = QCheckBox()
         self.select_all_cb.setObjectName("selectAllCb")
         self.select_all_cb.setToolTip(
-            "全选 / 取消全选当前列表（含「只显示启用」过滤后的可见行）"
+            self.tr("全选 / 取消全选当前列表（含「只显示启用」过滤后的可见行）")
         )
         # 不开 setTristate：三态只用于展示部分选中（setCheckState 程序内
         # 设置仍会画出来），开着会让用户点击陷入「勾→半→不勾」两击才取消
@@ -291,7 +291,7 @@ class RulesPanel(QWidget):
                 if rule.id in self._checked_ids
                 else Qt.CheckState.Unchecked
             )
-            check.setToolTip("勾选后可对该规则批量启用/停用/删除/导出")
+            check.setToolTip(self.tr("勾选后可对该规则批量启用/停用/删除/导出"))
             self.table.setItem(i, 8, check)
             # 序号列（首列）：规则在完整列表中的位置（1 起），与流量列表的
             # MOCK#N 徽标一致，方便定位「命中的是第几条」
@@ -312,12 +312,14 @@ class RulesPanel(QWidget):
                 Qt.CheckState.Checked if rule.enabled else Qt.CheckState.Unchecked
             )
             enabled_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            enabled_item.setToolTip("勾选 = 启用；点击可切换启用 / 停用")
+            enabled_item.setToolTip(self.tr("勾选 = 启用；点击可切换启用 / 停用"))
             self.table.setItem(i, 2, enabled_item)
             self.table.setItem(i, 3, QTableWidgetItem(_match_summary(rule)))
             self.table.setItem(i, 4, QTableWidgetItem(_action_summary(rule)))
             self.table.setItem(
-                i, 5, QTableWidgetItem(SOURCE_LABELS.get(rule.source, rule.source))
+                i, 5, QTableWidgetItem(QCoreApplication.translate(
+                    "import_dialog", SOURCE_LABELS.get(rule.source, rule.source)
+                ))
             )
             self._fill_hits(i, rule)
             self._fill_created_at(i, rule)
@@ -334,7 +336,7 @@ class RulesPanel(QWidget):
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         if rule.hits:
             when = datetime.fromtimestamp(rule.last_hit).strftime("%H:%M:%S")
-            item.setToolTip(f"最近命中 {when}")
+            item.setToolTip(self.tr('最近命中 {0}').format(when))
         self.table.setItem(row, 6, item)
 
     def _fill_created_at(self, row: int, rule) -> None:
@@ -568,7 +570,11 @@ class RulesPanel(QWidget):
             self.table.selectRow(row)
             self.table.scrollTo(self.table.model().index(row, 8))
         # 单条启用/停用也给出轻提示（批量那条已有），否则右键点一下毫无反馈
-        self._toast(f"已{'启用' if now_enabled else '停用'}「{rule.name}」")
+        self._toast(
+            self.tr("已{0}「{1}」").format(
+                self.tr("启用") if now_enabled else self.tr("停用"), rule.name
+            )
+        )
 
     def _on_filter_toggled(self) -> None:
         """切换「只显示启用」：重建视图，尽量保住当前选中的规则。"""
@@ -723,10 +729,13 @@ class RulesPanel(QWidget):
                 names.append(rule.name)
         if not names:
             return
-        target = (
-            f"「{names[0]}」" if len(names) == 1
-            else f"{len(names)} 条规则（{('、'.join(names[:3]))}{'…' if len(names) > 3 else ''}）"
-        )
+        if len(names) == 1:
+            target = self.tr("「{0}」").format(names[0])
+        else:
+            more = "…" if len(names) > 3 else ""
+            target = self.tr("{0} 条规则（{1}{2}）").format(
+                len(names), "、".join(names[:3]), more
+            )
         reply = dialogs.question(
             self, self.tr("确认删除"), self.tr("确定删除{0}？").format(target)
         )
@@ -736,7 +745,7 @@ class RulesPanel(QWidget):
             # 清掉已删规则的勾选，避免批量按钮计数失准
             self._checked_ids.difference_update(ids)
             self.refresh()
-            self._toast(f"已删除 {len(ids)} 条规则")
+            self._toast(self.tr('已删除 {0} 条规则').format(len(ids)))
 
     # ------------------------------------------------------------ Fiddler 导入
 
@@ -799,10 +808,10 @@ class RulesPanel(QWidget):
         ids = self._selected_rule_ids()
         if ids:
             rules = [r for r in (self.store.get(i) for i in ids) if r is not None]
-            scope = f"勾选的 {len(rules)} 条"
+            scope = self.tr('勾选的 {0} 条').format(len(rules))
         else:
             rules = self.store.all()
-            scope = f"全部 {len(rules)} 条"
+            scope = self.tr('全部 {0} 条').format(len(rules))
         path, _ = QFileDialog.getSaveFileName(
             self,
             self.tr("导出规则"),

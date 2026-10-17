@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QCoreApplication
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QDialog,
@@ -113,7 +113,7 @@ class CompareDialog(QDialog):
 
     def __init__(self, original_flow, new_flow, parent=None, wrap_default: bool = True):
         super().__init__(parent)
-        self.setWindowTitle("重放对比")
+        self.setWindowTitle(self.tr("重放对比"))
         self.resize(1120, 760)
         self._original_flow = original_flow
         self._new_flow = new_flow
@@ -139,7 +139,7 @@ class CompareDialog(QDialog):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.old_pane = MessagePane(wrap_default=wrap_default)
         self.new_pane = MessagePane(wrap_default=wrap_default)
-        for pane, title in ((self.old_pane, "原响应"), (self.new_pane, "新响应")):
+        for pane, title in ((self.old_pane, self.tr("原响应")), (self.new_pane, self.tr("新响应"))):
             box = QWidget()
             box_layout = QVBoxLayout(box)
             box_layout.setContentsMargins(0, 0, 0, 0)
@@ -150,7 +150,7 @@ class CompareDialog(QDialog):
         splitter.setSizes([520, 520])
         layout.addWidget(splitter, stretch=3)
 
-        report_label = QLabel("<b>差异报告</b>")
+        report_label = QLabel(self.tr("<b>差异报告</b>"))
         layout.addWidget(report_label)
         self.report_edit = QPlainTextEdit()
         self.report_edit.setReadOnly(True)
@@ -162,9 +162,9 @@ class CompareDialog(QDialog):
 
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
-        copy_btn = QPushButton("复制差异")
+        copy_btn = QPushButton(self.tr("复制差异"))
         copy_btn.clicked.connect(self._copy_report)
-        close_btn = QPushButton("关闭")
+        close_btn = QPushButton(self.tr("关闭"))
         close_btn.clicked.connect(self.close)
         btn_row.addWidget(copy_btn)
         btn_row.addWidget(close_btn)
@@ -188,19 +188,21 @@ class CompareDialog(QDialog):
 
         verdict, report = self._build_report(old_res, new_res)
         self._report_text = report
-        self.report_edit.setPlainText(report or "（无差异）")
+        self.report_edit.setPlainText(report or self.tr("（无差异）"))
 
         def _desc(res, message) -> str:
             if res is not None:
                 return f"{res.status_code} · {_safe_raw_len(res)} B"
             if message is not None:
-                return f"无响应（{getattr(message, 'error', '') or '未知原因'}）"
-            return "无响应"
+                return self.tr("无响应（{0}）").format(
+                    getattr(message, "error", "") or self.tr("未知原因")
+                )
+            return QCoreApplication.translate("CompareDialog", "无响应")
 
         old_desc = _desc(old_res, self._original_flow)
         new_desc = _desc(new_res, self._new_flow)
         self.summary_label.setText(
-            f"{url}\n原响应：{old_desc}　→　新响应：{new_desc}　·　{verdict}"
+            self.tr('{0}\n原响应：{1}\u3000→\u3000新响应：{2}\u3000·\u3000{3}').format(url, old_desc, new_desc, verdict)
         )
 
     def _fill_pane(self, pane: MessagePane, res, req) -> None:
@@ -215,7 +217,9 @@ class CompareDialog(QDialog):
         # 没有响应：退而展示请求，至少能看到重放发出去的内容
         if req is not None:
             pane.show_message(
-                f"{getattr(req, 'method', '')} {getattr(req, 'pretty_url', '')}（无响应）",
+                self.tr("{0} {1}（无响应）").format(
+                    getattr(req, "method", ""), getattr(req, "pretty_url", "")
+                ),
                 req.headers,
                 _safe_content(req),
                 _safe_raw_len(req),
@@ -236,10 +240,10 @@ class CompareDialog(QDialog):
             )
             if header_lines:
                 return (
-                    "body 一致，headers 有差异",
-                    "Headers 差异：\n" + "\n".join(header_lines),
+                    self.tr("body 一致，headers 有差异"),
+                    self.tr("Headers 差异：\n") + "\n".join(header_lines),
                 )
-            return ("完全一致", "两个响应完全一致（body 与 headers 均相同）")
+            return (self.tr("完全一致"), self.tr("两个响应完全一致（body 与 headers 均相同）"))
 
         # body 不同：先试 JSON 结构化 diff
         old_ct = _content_type(old_res)
@@ -257,11 +261,11 @@ class CompareDialog(QDialog):
                 _headers_items(old_res), _headers_items(new_res)
             )
             if header_lines:
-                report += "\n\nHeaders 差异：\n" + "\n".join(header_lines)
+                report += self.tr("\n\nHeaders 差异：\n") + "\n".join(header_lines)
             verdict = (
-                f"{result.count} 处差异（JSON 键级）"
+                self.tr('{0} 处差异（JSON 键级）').format(result.count)
                 if not result.truncated
-                else "差异过多（JSON 键级，已截断）"
+                else self.tr("差异过多（JSON 键级，已截断）")
             )
             return (verdict, report)
 
@@ -269,10 +273,10 @@ class CompareDialog(QDialog):
         old_text = decode_body(old_bytes, old_ct)
         new_text = decode_body(new_bytes, new_ct)
         if old_text is None or new_text is None:
-            return ("二进制内容不同", "响应为二进制内容且无法按文本解码，仅确认两者不同。")
+            return (self.tr("二进制内容不同"), self.tr("响应为二进制内容且无法按文本解码，仅确认两者不同。"))
         diff = unified_diff(old_text, new_text)
-        verdict = "文本有差异" if diff else "解码后一致（原始字节不同，可能是换行/编码差异）"
-        return (verdict, diff or "（无行级差异）")
+        verdict = self.tr("文本有差异") if diff else self.tr("解码后一致（原始字节不同，可能是换行/编码差异）")
+        return (verdict, diff or self.tr("（无行级差异）"))
 
     # ------------------------------------------------------------ 复制
 

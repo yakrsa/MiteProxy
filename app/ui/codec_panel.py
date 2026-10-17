@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QCoreApplication
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication,
@@ -75,33 +75,38 @@ class CodecPanel(QWidget):
         row = QHBoxLayout()
         row.setSpacing(6)
 
-        row.addWidget(QLabel("常用:"))
+        row.addWidget(QLabel(self.tr("常用:")))
         self.quick_buttons: dict[str, QPushButton] = {}
         for key in QUICK_KEYS:
-            btn = QPushButton(BY_KEY[key].label)
+            btn = QPushButton(QCoreApplication.translate("Codec", BY_KEY[key].label))
             btn.setCheckable(True)
-            btn.setToolTip(BY_KEY[key].hint)
+            btn.setToolTip(QCoreApplication.translate("Codec", BY_KEY[key].hint))
             btn.clicked.connect(lambda _=False, k=key: self.set_key(k))
             self.quick_buttons[key] = btn
             row.addWidget(btn)
 
         row.addSpacing(10)
-        row.addWidget(QLabel("转换:"))
+        row.addWidget(QLabel(self.tr("转换:")))
         self.combo = QComboBox()
         self.combo.setMinimumWidth(220)
         for name, items in groups():
-            self.combo.addItem(f"— {name} —", None)
+            self.combo.addItem(
+                f"— {QCoreApplication.translate("Codec", name)} —", None
+            )
             index = self.combo.count() - 1
             item = self.combo.model().item(index)
             if item is not None:
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
             for transform in items:
-                self.combo.addItem(transform.label, transform.key)
+                self.combo.addItem(
+                    QCoreApplication.translate("Codec", transform.label),
+                    transform.key,
+                )
         self.combo.currentIndexChanged.connect(self._on_combo_changed)
         row.addWidget(self.combo)
 
-        self.reverse_btn = QPushButton("反向 ⇄")
-        self.reverse_btn.setToolTip("切到反向转换，并把结果填回输入（如 编码 → 解码）")
+        self.reverse_btn = QPushButton(self.tr("反向 ⇄"))
+        self.reverse_btn.setToolTip(self.tr("切到反向转换，并把结果填回输入（如 编码 → 解码）"))
         self.reverse_btn.clicked.connect(self._on_reverse)
         row.addWidget(self.reverse_btn)
 
@@ -111,11 +116,11 @@ class CodecPanel(QWidget):
     def _build_editors(self) -> QWidget:
         splitter = QSplitter(Qt.Orientation.Vertical)
 
-        in_box = QGroupBox("输入")
+        in_box = QGroupBox(self.tr("输入"))
         in_layout = QVBoxLayout(in_box)
         self.input_edit = QPlainTextEdit()
         self.input_edit.setFont(self._font)
-        self.input_edit.setPlaceholderText("把要转换的内容贴在这里…")
+        self.input_edit.setPlaceholderText(self.tr("把要转换的内容贴在这里…"))
         in_layout.addWidget(self.input_edit)
         in_count = QHBoxLayout()
         in_count.addStretch(1)
@@ -124,7 +129,7 @@ class CodecPanel(QWidget):
         in_count.addWidget(self.input_count)
         in_layout.addLayout(in_count)
 
-        out_box = QGroupBox("结果")
+        out_box = QGroupBox(self.tr("结果"))
         out_layout = QVBoxLayout(out_box)
         self.output_edit = QPlainTextEdit()
         self.output_edit.setFont(self._font)
@@ -147,20 +152,20 @@ class CodecPanel(QWidget):
         row = QHBoxLayout()
         row.setSpacing(6)
 
-        self.run_btn = QPushButton("立即转换")
+        self.run_btn = QPushButton(self.tr("立即转换"))
         self.run_btn.clicked.connect(self.run_now)
         row.addWidget(self.run_btn)
 
-        self.feed_btn = QPushButton("结果填回输入 ↑")
-        self.feed_btn.setToolTip("把结果放回输入框，便于连续做多次转换")
+        self.feed_btn = QPushButton(self.tr("结果填回输入 ↑"))
+        self.feed_btn.setToolTip(self.tr("把结果放回输入框，便于连续做多次转换"))
         self.feed_btn.clicked.connect(self._on_feed_back)
         row.addWidget(self.feed_btn)
 
-        self.copy_btn = QPushButton("复制结果")
+        self.copy_btn = QPushButton(self.tr("复制结果"))
         self.copy_btn.clicked.connect(self.copy_result)
         row.addWidget(self.copy_btn)
 
-        self.clear_btn = QPushButton("清空")
+        self.clear_btn = QPushButton(self.tr("清空"))
         self.clear_btn.clicked.connect(self._on_clear)
         row.addWidget(self.clear_btn)
 
@@ -215,19 +220,19 @@ class CodecPanel(QWidget):
             self._set_status(result.error, is_error=True)
         else:
             self.output_edit.setPlainText(result.text)
-            label = BY_KEY[key].label
-            note = result.note or f"已执行「{label}」"
+            label = QCoreApplication.translate("Codec", BY_KEY[key].label)
+            note = result.note or self.tr('已执行「{0}」').format(label)
             self._set_status(note, is_error=False)
         self._update_counts()
 
     def copy_result(self) -> bool:
         text = self.output_edit.toPlainText()
         if not text:
-            self._set_status("结果为空，无可复制内容", is_error=True)
+            self._set_status(self.tr("结果为空，无可复制内容"), is_error=True)
             return False
         QApplication.clipboard().setText(text)
         self._set_status(
-            f"已复制 {len(text)} 字符到剪贴板", is_error=False
+            self.tr('已复制 {0} 字符到剪贴板').format(len(text)), is_error=False
         )
         return True
 
@@ -238,7 +243,7 @@ class CodecPanel(QWidget):
         if len(self.input_edit.toPlainText().encode("utf-8")) > LIVE_LIMIT:
             self._timer.stop()
             self._set_status(
-                f"内容超过 {LIVE_LIMIT // 1024}KB，已暂停自动转换——点「立即转换」执行",
+                self.tr('内容超过 {0}KB，已暂停自动转换——点「立即转换」执行').format(LIVE_LIMIT // 1024),
                 is_error=False,
             )
             return
@@ -253,7 +258,7 @@ class CodecPanel(QWidget):
         target = REVERSE.get(key)
         if not target:
             self._set_status(
-                f"「{BY_KEY[key].label}」没有反向转换（哈希不可逆）", is_error=False
+                self.tr('「{0}」没有反向转换（哈希不可逆）').format(BY_KEY[key].label), is_error=False
             )
             return
         output = self.output_edit.toPlainText()
@@ -267,7 +272,7 @@ class CodecPanel(QWidget):
     def _on_feed_back(self) -> None:
         output = self.output_edit.toPlainText()
         if not output:
-            self._set_status("结果为空", is_error=False)
+            self._set_status(self.tr("结果为空"), is_error=False)
             return
         self.input_edit.setPlainText(output)
         self.run_now()
@@ -304,8 +309,8 @@ class CodecPanel(QWidget):
     def _update_counts(self) -> None:
         def describe(text: str) -> str:
             if not text:
-                return "0 字符"
-            return f"{len(text)} 字符 / {len(text.encode('utf-8'))} 字节"
+                return QCoreApplication.translate("CodecPanel", "0 字符")
+            return QCoreApplication.translate("CodecPanel", "{0} 字符 / {1} 字节").format(len(text), len(text.encode("utf-8")))
 
         self.input_count.setText(describe(self.input_edit.toPlainText()))
         self.output_count.setText(describe(self.output_edit.toPlainText()))

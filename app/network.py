@@ -11,6 +11,8 @@ MapRemote addon（靠 `map_remote` 选项驱动）。
 
 from __future__ import annotations
 
+from PySide6.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+
 import ipaddress
 import re
 from dataclasses import dataclass
@@ -21,13 +23,15 @@ from urllib.parse import urlparse
 MAX_DELAY_MS = 30_000
 
 #: 档位：(key, 显示名, 延迟 ms, 速率 kbps)。0 表示该项不生效
+#: 显示名用 QT_TRANSLATE_NOOP 打标（翻译器在 QApplication 创建后才装载，
+#: import 期求值永远是中文）；NetworkPanel 构建 combo 时再 translate。
 THROTTLE_PRESETS: tuple[tuple[str, str, int, int], ...] = (
-    ("off", "关闭", 0, 0),
-    ("2g", "2G（50 kbps + 400ms）", 400, 50),
-    ("3g", "3G（400 kbps + 200ms）", 200, 400),
-    ("4g", "4G（4 Mbps + 80ms）", 80, 4000),
-    ("weak", "弱网（50 kbps + 2000ms）", 2000, 50),
-    ("custom", "自定义", 0, 0),
+    ("off", QT_TRANSLATE_NOOP("NetworkPanel", "关闭"), 0, 0),
+    ("2g", QT_TRANSLATE_NOOP("NetworkPanel", "2G（50 kbps + 400ms）"), 400, 50),
+    ("3g", QT_TRANSLATE_NOOP("NetworkPanel", "3G（400 kbps + 200ms）"), 200, 400),
+    ("4g", QT_TRANSLATE_NOOP("NetworkPanel", "4G（4 Mbps + 80ms）"), 80, 4000),
+    ("weak", QT_TRANSLATE_NOOP("NetworkPanel", "弱网（50 kbps + 2000ms）"), 2000, 50),
+    ("custom", QT_TRANSLATE_NOOP("NetworkPanel", "自定义"), 0, 0),
 )
 
 PRESET_KEYS = tuple(p[0] for p in THROTTLE_PRESETS)
@@ -133,8 +137,11 @@ def preset_values(key: str) -> tuple[str, str, int, int]:
 
 
 def preset_labels() -> list[tuple[str, str]]:
-    """[(key, 显示名)]，UI 下拉直接用。"""
-    return [(key, label) for key, label, _, _ in THROTTLE_PRESETS]
+    """[(key, 显示名)]，UI 下拉直接用（显示名懒翻译）。"""
+    return [
+        (key, QCoreApplication.translate("NetworkPanel", label))
+        for key, label, _, _ in THROTTLE_PRESETS
+    ]
 
 
 # ====================================================================== 域名映射
@@ -339,13 +346,13 @@ def describe_rule(rule: MapRule) -> str:
     """给 UI 用的一句话说明（列表里显示映射结果）。"""
     kind = rule.kind
     if not rule.source.strip():
-        return "未填写原域名"
+        return QCoreApplication.translate("network", "未填写原域名")
     if kind == "local":
-        return f"https?://{rule.source}/* → 本地目录 {rule.target}"
+        return QCoreApplication.translate("network", 'https?://{0}/* → 本地目录 {1}').format(rule.source, rule.target)
     if kind == "unknown":
-        return "目标无法识别（应形如 127.0.0.1:8080 或 /path/to/dir）"
+        return QCoreApplication.translate("network", "目标无法识别（应形如 127.0.0.1:8080 或 /path/to/dir）")
     parsed = parse_target(rule.target)
     if parsed is None:
-        return "目标无法解析（应形如 127.0.0.1:8080）"
+        return QCoreApplication.translate("network", "目标无法解析（应形如 127.0.0.1:8080）")
     scheme, netloc = parsed
     return f"https?://{rule.source}/* → {scheme}://{netloc}/*"

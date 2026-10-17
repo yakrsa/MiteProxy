@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QT_TRANSLATE_NOOP, QCoreApplication
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -38,12 +38,14 @@ INVALID_ROW_BG = theme.dynamic("invalid_bg")
 INVALID_ROW_FG = theme.dynamic("invalid_fg")
 DISABLED_ROW_FG = theme.dynamic("hint")
 
-THROTTLE_HINT = (
+THROTTLE_HINT = QT_TRANSLATE_NOOP(
+    "NetworkPanel",
     "延迟在响应返回给客户端前施加：档位给的固定延迟 + 按响应体大小折算的传输时间。\n"
     "用来复现 loading 态、超时、骨架屏；不是逐块限速。"
 )
 
-MAP_HINT = (
+MAP_HINT = QT_TRANSLATE_NOOP(
+    "NetworkPanel",
     "两种映射，按「目标」写法自动区分：\n"
     "• Map Remote：目标写 host:port（如 127.0.0.1:8080），把请求转发到该地址——"
     "只替换 scheme + 域名 + 端口，路径与 query 原样保留；\n"
@@ -83,33 +85,33 @@ class NetworkPanel(QWidget):
     # ------------------------------------------------------------ 构建
 
     def _build_throttle_box(self) -> QGroupBox:
-        box = QGroupBox("弱网模拟")
+        box = QGroupBox(self.tr("弱网模拟"))
         layout = QVBoxLayout(box)
         layout.setSpacing(6)
 
         row = QHBoxLayout()
-        row.addWidget(QLabel("档位:"))
+        row.addWidget(QLabel(self.tr("档位:")))
         self.preset_combo = QComboBox()
         for key, label in preset_labels():
             self.preset_combo.addItem(label, key)
-        self.preset_combo.setToolTip("关闭 = 不做任何延迟")
+        self.preset_combo.setToolTip(self.tr("关闭 = 不做任何延迟"))
         row.addWidget(self.preset_combo)
 
         row.addSpacing(12)
-        row.addWidget(QLabel("自定义延迟:"))
+        row.addWidget(QLabel(self.tr("自定义延迟:")))
         self.latency_spin = QSpinBox()
         self.latency_spin.setRange(0, 30_000)
         self.latency_spin.setSingleStep(50)
         self.latency_spin.setSuffix(" ms")
-        self.latency_spin.setToolTip("每个响应固定等待的时间（上限 30 秒）")
+        self.latency_spin.setToolTip(self.tr("每个响应固定等待的时间（上限 30 秒）"))
         row.addWidget(self.latency_spin)
 
-        row.addWidget(QLabel("速率:"))
+        row.addWidget(QLabel(self.tr("速率:")))
         self.rate_spin = QSpinBox()
         self.rate_spin.setRange(0, 10_000_000)
         self.rate_spin.setSingleStep(50)
         self.rate_spin.setSuffix(" kbps")
-        self.rate_spin.setToolTip("按速率把响应体大小折算成传输时间，0 = 不限速")
+        self.rate_spin.setToolTip(self.tr("按速率把响应体大小折算成传输时间，0 = 不限速"))
         row.addWidget(self.rate_spin)
 
         row.addStretch(1)
@@ -117,7 +119,7 @@ class NetworkPanel(QWidget):
         row.addWidget(self.throttle_state)
         layout.addLayout(row)
 
-        hint = QLabel(THROTTLE_HINT)
+        hint = QLabel(QCoreApplication.translate("NetworkPanel", THROTTLE_HINT))
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {theme.css('hint')};")
         layout.addWidget(hint)
@@ -129,13 +131,13 @@ class NetworkPanel(QWidget):
         return box
 
     def _build_map_box(self) -> QGroupBox:
-        box = QGroupBox("域名映射（Map Remote / Map Local）")
+        box = QGroupBox(self.tr("域名映射（Map Remote / Map Local）"))
         layout = QVBoxLayout(box)
         layout.setSpacing(6)
 
         self.map_table = QTableWidget(0, 3)
         self.map_table.setHorizontalHeaderLabels(
-            ["启用", "原域名", "目标 host:port / 本地目录"]
+            [self.tr("启用"), self.tr("原域名"), self.tr("目标 host:port / 本地目录")]
         )
         self.map_table.verticalHeader().setVisible(False)
         self.map_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -148,8 +150,8 @@ class NetworkPanel(QWidget):
         layout.addWidget(self.map_table, stretch=1)
 
         row = QHBoxLayout()
-        self.add_btn = QPushButton("+ 添加一行")
-        self.del_btn = QPushButton("删除选中行")
+        self.add_btn = QPushButton(self.tr("+ 添加一行"))
+        self.del_btn = QPushButton(self.tr("删除选中行"))
         row.addWidget(self.add_btn)
         row.addWidget(self.del_btn)
         row.addStretch(1)
@@ -157,7 +159,7 @@ class NetworkPanel(QWidget):
         row.addWidget(self.map_state)
         layout.addLayout(row)
 
-        hint = QLabel(MAP_HINT)
+        hint = QLabel(QCoreApplication.translate("NetworkPanel", MAP_HINT))
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {theme.css('hint')};")
         layout.addWidget(hint)
@@ -319,14 +321,14 @@ class NetworkPanel(QWidget):
     def _refresh_states(self) -> None:
         cfg = self.to_throttle()
         if not cfg.enabled:
-            self.throttle_state.setText("未启用")
+            self.throttle_state.setText(self.tr("未启用"))
         else:
             parts = []
             if cfg.latency_ms:
-                parts.append(f"延迟 {cfg.latency_ms} ms")
+                parts.append(self.tr('延迟 {0} ms').format(cfg.latency_ms))
             if cfg.rate_kbps:
-                parts.append(f"限速 {cfg.rate_kbps} kbps")
-            self.throttle_state.setText("生效中：" + " + ".join(parts))
+                parts.append(self.tr('限速 {0} kbps').format(cfg.rate_kbps))
+            self.throttle_state.setText(self.tr("生效中：") + " + ".join(parts))
 
         for r in range(self.map_table.rowCount()):
             rule = MapRule(
@@ -361,9 +363,9 @@ class NetworkPanel(QWidget):
         rules = self.to_rules()
         broken = [r for r in rules if _is_broken(r)]
         active = [r for r in rules if r.is_usable() and not _is_broken(r)]
-        text = f"已启用 {len(active)} 条映射"
+        text = self.tr('已启用 {0} 条映射').format(len(active))
         if broken:
-            text += f"，{len(broken)} 条填写不完整（已跳过）"
+            text += self.tr('，{0} 条填写不完整（已跳过）').format(len(broken))
         self.map_state.setText(text)
 
     def _text(self, row: int, col: int) -> str:

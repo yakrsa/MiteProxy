@@ -19,7 +19,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QTimer, Qt
+from PySide6.QtCore import QEvent, QTimer, Qt, QCoreApplication
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
@@ -103,11 +103,14 @@ from app.ui import theme
 
 log = logging.getLogger(__name__)
 
-CA_EXPORT_HINT = (
-    "CA 证书位置：{path}\n\n"
-    "macOS：双击后在「钥匙串访问」中设为始终信任；\n"
-    "手机：点「证书服务」按钮，用手机浏览器打开显示的地址安装。"
-)
+def _ca_export_hint(path) -> str:
+    """CA 证书去向说明（懒翻译：翻译器在 QApplication 创建后才装载）。"""
+    return QCoreApplication.translate(
+        "MainWindow",
+        "CA 证书位置：{path}\n\n"
+        "macOS：双击后在「钥匙串访问」中设为始终信任；\n"
+        "手机：点「证书服务」按钮，用手机浏览器打开显示的地址安装。"
+    ).format(path=path)
 
 #: 重放并对比：等重放响应到达的超时（秒）。超时说明上游没响应，
 #: 清理 pending 并在状态栏告知，避免永远等一个不会来的 flow。
@@ -304,16 +307,16 @@ class MainWindow(QMainWindow):
         # -- 工具栏（排列：列表操作 | 抓包选项 | 代理控制 | 视图 | 低频功能）
         toolbar_row = QHBoxLayout()
 
-        self.clear_btn = QPushButton("清除列表")
+        self.clear_btn = QPushButton(self.tr("清除列表"))
         toolbar_row.addWidget(self.clear_btn)
 
         toolbar_row.addSpacing(12)
-        toolbar_row.addWidget(QLabel("保存数量:"))
+        toolbar_row.addWidget(QLabel(self.tr("保存数量:")))
         self.limit_combo = QComboBox()
         for n in FLOW_LIMIT_CHOICES:
-            self.limit_combo.addItem(f"{n} 条", n)
+            self.limit_combo.addItem(self.tr('{0} 条').format(n), n)
         self.limit_combo.setToolTip(
-            "流量列表最多保留的会话数，超出后从最旧一条开始丢弃（上限 5000）"
+            self.tr("流量列表最多保留的会话数，超出后从最旧一条开始丢弃（上限 5000）")
         )
         idx = self.limit_combo.findData(self.settings.max_flows)
         self.limit_combo.setCurrentIndex(max(idx, 0))
@@ -322,42 +325,42 @@ class MainWindow(QMainWindow):
         # URL 关键字高亮（v1.15）：实时生效，对新到的流量也生效——
         # 与「搜索」（只针对当时的历史请求）互补
         toolbar_row.addSpacing(12)
-        toolbar_row.addWidget(QLabel("高亮:"))
+        toolbar_row.addWidget(QLabel(self.tr("高亮:")))
         self.highlight_edit = QLineEdit()
-        self.highlight_edit.setPlaceholderText("URL 关键字")
+        self.highlight_edit.setPlaceholderText(self.tr("URL 关键字"))
         self.highlight_edit.setClearButtonEnabled(True)
         self.highlight_edit.setFixedWidth(150)
         self.highlight_edit.setToolTip(
-            "URL 包含该关键字的请求整行黄色高亮。\n"
-            "实时生效：正在显示的与之后新到的流量都会高亮；清空即关闭。"
+            self.tr("URL 包含该关键字的请求整行黄色高亮。\n"
+            "实时生效：正在显示的与之后新到的流量都会高亮；清空即关闭。")
         )
         toolbar_row.addWidget(self.highlight_edit)
 
         toolbar_row.addSpacing(12)
-        self.auto_scroll_cb = QCheckBox("自动滚动")
+        self.auto_scroll_cb = QCheckBox(self.tr("自动滚动"))
         self.auto_scroll_cb.setChecked(self.settings.auto_scroll)
         self.auto_scroll_cb.setToolTip(
-            "新会话到达时自动滚到最新一条。\n"
-            "你手动翻到别处时不会来抢滚动条——只有停在最新端才跟着走。"
+            self.tr("新会话到达时自动滚到最新一条。\n"
+            "你手动翻到别处时不会来抢滚动条——只有停在最新端才跟着走。")
         )
         toolbar_row.addWidget(self.auto_scroll_cb)
 
-        self.sysproxy_cb = QCheckBox("设为系统代理")
+        self.sysproxy_cb = QCheckBox(self.tr("设为系统代理"))
         self.sysproxy_cb.setChecked(self.settings.auto_system_proxy)
         self.sysproxy_cb.setToolTip(
-            "启动代理时自动把系统 HTTP/HTTPS 代理指向本应用，停止或退出时自动还原\n"
+            self.tr("启动代理时自动把系统 HTTP/HTTPS 代理指向本应用，停止或退出时自动还原\n"
             "（对齐 Fiddler「Act as System Proxy」）。\n"
-            "macOS 首次接管会请求一次管理员授权；不想自动改系统设置就取消勾选。"
+            "macOS 首次接管会请求一次管理员授权；不想自动改系统设置就取消勾选。")
         )
         self.sysproxy_cb.toggled.connect(self._on_sysproxy_toggled)
         toolbar_row.addWidget(self.sysproxy_cb)
 
         toolbar_row.addSpacing(12)
-        self.proxy_btn = QPushButton("启动代理")
+        self.proxy_btn = QPushButton(self.tr("启动代理"))
         self.proxy_btn.setCheckable(True)
         toolbar_row.addWidget(self.proxy_btn)
 
-        toolbar_row.addWidget(QLabel("端口:"))
+        toolbar_row.addWidget(QLabel(self.tr("端口:")))
         self.port_spin = _PortSpinBox()
         self.port_spin.setRange(1024, 65535)
         self.port_spin.setValue(self.settings.proxy_port)
@@ -371,21 +374,21 @@ class MainWindow(QMainWindow):
         toolbar_row.addWidget(self.port_spin)
 
         toolbar_row.addSpacing(12)
-        toolbar_row.addWidget(QLabel("顺序:"))
+        toolbar_row.addWidget(QLabel(self.tr("顺序:")))
         self.order_combo = QComboBox()
-        self.order_combo.addItem("到达顺序（新在底部）", False)
-        self.order_combo.addItem("新的在顶部", True)
-        self.order_combo.setToolTip("倒序 = 按到达序号降序，最新的会话排在最上面")
+        self.order_combo.addItem(self.tr("到达顺序（新在底部）"), False)
+        self.order_combo.addItem(self.tr("新的在顶部"), True)
+        self.order_combo.setToolTip(self.tr("倒序 = 按到达序号降序，最新的会话排在最上面"))
         self.order_combo.setCurrentIndex(1 if self.settings.newest_first else 0)
         toolbar_row.addWidget(self.order_combo)
 
-        toolbar_row.addWidget(QLabel("布局:"))
+        toolbar_row.addWidget(QLabel(self.tr("布局:")))
         self.layout_combo = QComboBox()
-        self.layout_combo.addItem("左右布局", "h")
-        self.layout_combo.addItem("上下布局", "v")
+        self.layout_combo.addItem(self.tr("左右布局"), "h")
+        self.layout_combo.addItem(self.tr("上下布局"), "v")
         self.layout_combo.setToolTip(
-            "流量列表与详情区的排布方向。左右 = Fiddler 风格（列表在左、body 在右），\n"
-            "上下 = 列表在上、body 在下。选择会记住，下次启动保持。"
+            self.tr("流量列表与详情区的排布方向。左右 = Fiddler 风格（列表在左、body 在右），\n"
+            "上下 = 列表在上、body 在下。选择会记住，下次启动保持。")
         )
         self.layout_combo.setCurrentIndex(
             0 if getattr(self.settings, "traffic_side_by_side", True) else 1
@@ -395,7 +398,7 @@ class MainWindow(QMainWindow):
 
         # 证书功能不常用，放到工具栏最后面（DESIGN：低频操作靠右）
         toolbar_row.addSpacing(12)
-        toolbar_row.addWidget(QLabel("证书端口:"))
+        toolbar_row.addWidget(QLabel(self.tr("证书端口:")))
         self.cert_port_spin = _PortSpinBox()
         self.cert_port_spin.setRange(1024, 65535)
         self.cert_port_spin.setValue(self.settings.cert_port)
@@ -404,17 +407,17 @@ class MainWindow(QMainWindow):
         self.cert_port_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.cert_port_spin.setAccelerated(False)
         self.cert_port_spin.setToolTip(
-            "证书下载服务的监听端口（默认 8081，被占用时自动顺延）\n"
-            "证书服务运行中修改会立即用新端口重启"
+            self.tr("证书下载服务的监听端口（默认 8081，被占用时自动顺延）\n"
+            "证书服务运行中修改会立即用新端口重启")
         )
         self.cert_port_spin.editingFinished.connect(self._on_cert_port_changed)
         toolbar_row.addWidget(self.cert_port_spin)
 
-        self.cert_btn = QPushButton("证书服务")
-        self.cert_btn.setToolTip("启动局域网证书下载服务（手机装 CA 用）")
+        self.cert_btn = QPushButton(self.tr("证书服务"))
+        self.cert_btn.setToolTip(self.tr("启动局域网证书下载服务（手机装 CA 用）"))
         toolbar_row.addWidget(self.cert_btn)
 
-        self.export_ca_btn = QPushButton("导出 CA 证书")
+        self.export_ca_btn = QPushButton(self.tr("导出 CA 证书"))
         toolbar_row.addWidget(self.export_ca_btn)
 
         toolbar_row.addStretch(1)
@@ -462,29 +465,29 @@ class MainWindow(QMainWindow):
         self.traffic_splitter.setSizes([420, 300])
         self.traffic_splitter.setChildrenCollapsible(False)
         traffic_layout.addWidget(self.traffic_splitter)
-        self.tabs.addTab(traffic_page, "流量")
+        self.tabs.addTab(traffic_page, self.tr("流量"))
 
         # Mock 规则页
         self.rules_panel = RulesPanel(self.rule_store)
-        self.tabs.addTab(self.rules_panel, "Mock 规则")
+        self.tabs.addTab(self.rules_panel, self.tr("Mock 规则"))
 
         # 网络模拟页（弱网限速 + 域名映射）
         self.network_panel = NetworkPanel()
         self.network_panel.load_config(self.settings.throttle, self.settings.map_rules)
-        self.tabs.addTab(self.network_panel, "网络模拟")
+        self.tabs.addTab(self.network_panel, self.tr("网络模拟"))
 
         # 工具页（编码转换 + JSON 格式化/JSONPath，对齐 Fiddler TextWizard + json.cn）
         self.tool_panel = ToolPanel()
-        self.tabs.addTab(self.tool_panel, "工具")
+        self.tabs.addTab(self.tool_panel, self.tr("工具"))
 
         # 日志页：实时显示运行日志（级别筛选 / 清空 / 打开磁盘日志文件）
         self.log_panel = LogPanel()
-        self.tabs.addTab(self.log_panel, "日志")
+        self.tabs.addTab(self.log_panel, self.tr("日志"))
 
         # -- 状态栏
         self.status_bar = self.statusBar()
         self.count_label = QLabel("")
-        self.proxy_state_label = QLabel("代理未启动")
+        self.proxy_state_label = QLabel(self.tr("代理未启动"))
         self.cert_state_label = QLabel("")
         for w in (self.count_label, self.proxy_state_label, self.cert_state_label):
             self.status_bar.addPermanentWidget(w)
@@ -492,7 +495,7 @@ class MainWindow(QMainWindow):
         self.capture_label = QLabel("")
         self.capture_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.capture_label.setToolTip(
-            "点击开始/停止抓包（接管或还原系统代理，与工具栏「设为系统代理」联动）"
+            self.tr("点击开始/停止抓包（接管或还原系统代理，与工具栏「设为系统代理」联动）")
         )
         self.capture_label.mousePressEvent = lambda _ev: self._on_capture_clicked()
         self.status_bar.insertWidget(0, self.capture_label)
@@ -757,9 +760,9 @@ class MainWindow(QMainWindow):
             # MockAddon 的重定向死循环校验按真实端口判断
             self.mock.proxy_addr = ("127.0.0.1", actual)
             self.status_bar.showMessage(
-                f"端口 {requested} 被占用，代理已自动改用 {actual}", 6000
+                self.tr('端口 {0} 被占用，代理已自动改用 {1}').format(requested, actual), 6000
             )
-        self.proxy_btn.setText("停止代理")
+        self.proxy_btn.setText(self.tr("停止代理"))
         self.proxy_btn.setChecked(True)
         self._update_status()
         self._takeover_sysproxy_async()
@@ -772,7 +775,7 @@ class MainWindow(QMainWindow):
         if self.proxy.running:
             self.proxy.stop()
         self._stop_cert_server()
-        self.proxy_btn.setText("启动代理")
+        self.proxy_btn.setText(self.tr("启动代理"))
         self.proxy_btn.setChecked(False)
         self._update_status()
         if not self._restarting:        # 整应用重启时快照留给新实例处理
@@ -801,7 +804,7 @@ class MainWindow(QMainWindow):
         def work():
             with self._sysproxy_lock:
                 ok, msg = sysproxy.restore(port=port)
-            if msg != "无接管记录":
+            if msg != QCoreApplication.translate("MainWindow", "无接管记录"):
                 self.bridge.sysproxy_done.emit(ok, msg)
 
         threading.Thread(target=work, daemon=True, name="sysproxy-restore").start()
@@ -810,15 +813,15 @@ class MainWindow(QMainWindow):
         """退出路径用同步还原：必须还原完再关窗口。"""
         with self._sysproxy_lock:
             ok, msg = sysproxy.restore(port=self.proxy.port)
-        if ok and msg != "无接管记录":
+        if ok and msg != self.tr("无接管记录"):
             log.info("系统代理已还原: %s", msg)
 
     def _on_sysproxy_done(self, ok: bool, msg: str) -> None:
         if ok:
-            self.status_bar.showMessage(f"{msg}（停止代理或退出时自动还原）", 6000)
+            self.status_bar.showMessage(self.tr('{0}（停止代理或退出时自动还原）').format(msg), 6000)
             return
         self.status_bar.showMessage(
-            f"系统代理接管失败：{msg}（可手动设置代理 127.0.0.1:{self.proxy.port}）",
+            self.tr('系统代理接管失败：{0}（可手动设置代理 127.0.0.1:{1}）').format(msg, self.proxy.port),
             8000,
         )
         # macOS 最常见失败原因是缺管理员权限 → 给一次提权重试（弹密码框）
@@ -827,8 +830,8 @@ class MainWindow(QMainWindow):
             self._sysproxy_elevate_asked = True  # 每次会话只问一次，别烦人
             answer = dialogs.question(
                 self,
-                "系统代理接管失败",
-                f"{msg}\n\n用管理员权限重试？（会弹出密码确认框，与 Charles 行为一致）",
+                self.tr("系统代理接管失败"),
+                self.tr('{0}\n\n用管理员权限重试？（会弹出密码确认框，与 Charles 行为一致）').format(msg),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if answer == QMessageBox.StandardButton.Yes and self.proxy.running:
@@ -863,7 +866,7 @@ class MainWindow(QMainWindow):
 
     def _proxy_start_failed(self) -> None:
         """代理起不来的统一收尾：复位按钮态 + 还原系统代理 + 弹窗提示。"""
-        self.proxy_btn.setText("启动代理")
+        self.proxy_btn.setText(self.tr("启动代理"))
         self.proxy_btn.setChecked(False)
         self._update_status()
         self._restore_sysproxy_async()   # 可能刚接管完代理就挂了，补还原
@@ -906,21 +909,20 @@ class MainWindow(QMainWindow):
         save_settings(self.settings)
         if not self.proxy.running:
             self.status_bar.showMessage(
-                f"代理端口已保存为 {port}（重启后生效）", 5000
+                self.tr('代理端口已保存为 {0}（重启后生效）').format(port), 5000
             )
             return
         answer = dialogs.question(
             self,
-            "端口已修改",
-            f"代理端口已修改为 {port}，需要重启才能生效。\n\n"
-            "是否立即重启应用？重启后系统代理会自动切换到新端口。",
+            self.tr("端口已修改"),
+            self.tr('代理端口已修改为 {0}，需要重启才能生效。\n\n是否立即重启应用？重启后系统代理会自动切换到新端口。').format(port),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if answer == QMessageBox.StandardButton.Yes:
             self._restart_app_for_port(port)
         else:
             self.status_bar.showMessage(
-                f"新端口 {port} 将在下次启动时生效", 6000
+                self.tr('新端口 {0} 将在下次启动时生效').format(port), 6000
             )
 
     def _app_restart_command(self) -> list[str] | None:
@@ -953,7 +955,7 @@ class MainWindow(QMainWindow):
             self._restart_proxy_on_port(port)
             return
         self._restarting = True
-        self.status_bar.showMessage(f"正在重启应用，切换到端口 {port} …", 5000)
+        self.status_bar.showMessage(self.tr('正在重启应用，切换到端口 {0} …').format(port), 5000)
         # 先让出单实例锁：新实例起来时会被锁挡回去（发现「已在运行」
         # 就只唤醒旧窗口然后退出），重启就死了
         single_instance.release()
@@ -972,7 +974,7 @@ class MainWindow(QMainWindow):
 
     def _restart_proxy_on_port(self, port: int) -> None:
         """运行中按新端口重启代理 + 系统代理重接管 + 证书服务静默重启。"""
-        self.status_bar.showMessage(f"正在重启代理，切换到 127.0.0.1:{port} …", 4000)
+        self.status_bar.showMessage(self.tr('正在重启代理，切换到 127.0.0.1:{0} …').format(port), 4000)
         self.proxy.stop(timeout=2.0)
         self.proxy = self._make_proxy(port)
         try:
@@ -992,12 +994,12 @@ class MainWindow(QMainWindow):
             save_settings(self.settings)
             self.mock.proxy_addr = ("127.0.0.1", actual)
             self.status_bar.showMessage(
-                f"端口 {port} 被占用，代理已自动改用 {actual}", 6000
+                self.tr('端口 {0} 被占用，代理已自动改用 {1}').format(port, actual), 6000
             )
         # 重启成功要有可见反馈：按钮文字不变、流量列表不清空，用户无从
         # 判断是否真的重启了（之前被当成「点了 Yes 没反应」）
         self.status_bar.showMessage(
-            f"代理已重启，监听 127.0.0.1:{actual}；系统代理切换中…", 8000
+            self.tr('代理已重启，监听 127.0.0.1:{0}；系统代理切换中…').format(actual), 8000
         )
         # 系统代理还挂在旧端口上：后台先还原再按新端口重接管。顺序不能反——
         # 直接重接管会把「127.0.0.1:旧端口」当成原始设置存进状态文件，还原就错了
@@ -1044,8 +1046,7 @@ class MainWindow(QMainWindow):
             # 请求端口被占用时 CertServer 自动顺延：明确告知实际端口
             if server.port != self.settings.cert_port:
                 self.status_bar.showMessage(
-                    f"端口 {self.settings.cert_port} 被占用，"
-                    f"证书服务已自动改用 {server.port}",
+                    self.tr('端口 {0} 被占用，证书服务已自动改用 {1}').format(self.settings.cert_port, server.port),
                     6000,
                 )
             self._show_cert_dialog(server)
@@ -1077,7 +1078,7 @@ class MainWindow(QMainWindow):
         save_settings(self.settings)
         if self.cert_server is None or not self.cert_server.running:
             self.status_bar.showMessage(
-                f"证书端口已保存为 {port}，下次启动证书服务时生效", 5000
+                self.tr('证书端口已保存为 {0}，下次启动证书服务时生效').format(port), 5000
             )
             return
         # 运行中改端口：立即重启到新端口（成功后弹二维码窗，和手动开启一致）
@@ -1099,7 +1100,7 @@ class MainWindow(QMainWindow):
         self.cert_server = server
         if server.port != port:
             self.status_bar.showMessage(
-                f"端口 {port} 被占用，证书服务已自动改用 {server.port}", 6000
+                self.tr('端口 {0} 被占用，证书服务已自动改用 {1}').format(port, server.port), 6000
             )
         self._show_cert_dialog(server)
 
@@ -1125,11 +1126,11 @@ class MainWindow(QMainWindow):
         """证书服务弹窗：直接显示各局域网地址的二维码（v1.12 只有网页里有，
         弹窗只给纯链接——手机还得先抄地址，体验对齐「打开就扫」）。"""
         dlg = QDialog(self)
-        dlg.setWindowTitle("证书服务已启动")
+        dlg.setWindowTitle(self.tr("证书服务已启动"))
         lay = QVBoxLayout(dlg)
         hint = QLabel(
-            "手机连上同一 Wi-Fi，用相机扫下方任一二维码（或浏览器打开地址），\n"
-            "在打开的网页里下载并安装证书："
+            self.tr("手机连上同一 Wi-Fi，用相机扫下方任一二维码（或浏览器打开地址），\n"
+            "在打开的网页里下载并安装证书：")
         )
         hint.setWordWrap(True)
         lay.addWidget(hint)
@@ -1156,11 +1157,11 @@ class MainWindow(QMainWindow):
         lay.addLayout(row)
 
         tip = QLabel(
-            f"安装证书后，手机 Wi-Fi 的代理请设为：电脑IP : {self.settings.proxy_port}"
+            self.tr('安装证书后，手机 Wi-Fi 的代理请设为：电脑IP : {0}').format(self.settings.proxy_port)
         )
         tip.setWordWrap(True)
         lay.addWidget(tip)
-        btn = QPushButton("好")
+        btn = QPushButton(self.tr("好"))
         btn.setDefault(True)
         btn.clicked.connect(dlg.accept)
         lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -1175,16 +1176,16 @@ class MainWindow(QMainWindow):
     def _on_export_ca(self) -> None:
         if not CA_PEM_PATH.exists():
             dialogs.critical(
-                self, "未找到 CA 证书", CA_EXPORT_HINT.format(path=CA_PEM_PATH)
+                self, "未找到 CA 证书", _ca_export_hint(CA_PEM_PATH)
             )
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "导出 CA 证书", "mitmproxy-ca-cert.pem", "证书 (*.pem *.cer)"
+            self, self.tr("导出 CA 证书"), "mitmproxy-ca-cert.pem", self.tr("证书 (*.pem *.cer)")
         )
         if path:
             shutil.copy(CA_PEM_PATH, path)
             dialogs.information(
-                self, "已导出", CA_EXPORT_HINT.format(path=Path(path))
+                self, self.tr("已导出"), _ca_export_hint(Path(path))
             )
 
     def _on_clear(self) -> None:
@@ -1345,42 +1346,42 @@ class MainWindow(QMainWindow):
         """构建流量列表右键菜单（抽出便于单元测试，不直接 exec）。"""
         has_selection = bool(flows)
         count = len(flows)
-        batch = f"（{count} 条）" if count > 1 else ""
+        batch = self.tr('（{0} 条）').format(count) if count > 1 else ""
         menu = QMenu(self)
-        detail_action = menu.addAction("查看详情…")
+        detail_action = menu.addAction(self.tr("查看详情…"))
         detail_action.setEnabled(count == 1)
         detail_action.triggered.connect(
             lambda: self._open_flow_detail(flows[0])
         )
         menu.addSeparator()
-        replay_action = menu.addAction("重放请求 (R / Ctrl+R)")
-        edit_replay_action = menu.addAction("编辑并重放… (E)")
-        compare_action = menu.addAction("重放并对比…")
+        replay_action = menu.addAction(self.tr("重放请求 (R / Ctrl+R)"))
+        edit_replay_action = menu.addAction(self.tr("编辑并重放… (E)"))
+        compare_action = menu.addAction(self.tr("重放并对比…"))
         menu.addSeparator()
-        curl_action = menu.addAction(f"复制为 cURL (bash){batch}  Ctrl+Shift+C")
-        curl_cmd_action = menu.addAction(f"复制为 cURL (Windows cmd){batch}")
-        copy_url_action = menu.addAction(f"仅复制 URL{batch}  Ctrl+Shift+U")
+        curl_action = menu.addAction(self.tr('复制为 cURL (bash){0}  Ctrl+Shift+C').format(batch))
+        curl_cmd_action = menu.addAction(self.tr('复制为 cURL (Windows cmd){0}').format(batch))
+        copy_url_action = menu.addAction(self.tr('仅复制 URL{0}  Ctrl+Shift+U').format(batch))
         menu.addSeparator()
-        export_action = menu.addAction(f"导出选中会话{batch}…  Ctrl+E")
-        export_resp_action = menu.addAction("导出完整响应（Headers+Body）…")
+        export_action = menu.addAction(self.tr('导出选中会话{0}…  Ctrl+E').format(batch))
+        export_resp_action = menu.addAction(self.tr("导出完整响应（Headers+Body）…"))
         menu.addSeparator()
-        tool_body_action = menu.addAction("在工具页中打开 body")
+        tool_body_action = menu.addAction(self.tr("在工具页中打开 body"))
         tool_body_action.setEnabled(count == 1)
         tool_body_action.triggered.connect(self._send_body_to_tool)
-        api_action = menu.addAction("发送到 API 调试")
+        api_action = menu.addAction(self.tr("发送到 API 调试"))
         api_action.setEnabled(count == 1)
         api_action.triggered.connect(self._send_request_to_api)
         menu.addSeparator()
-        mark_action = menu.addAction("标记/备注…")
+        mark_action = menu.addAction(self.tr("标记/备注…"))
         mark_action.setEnabled(count == 1)
         mark_action.triggered.connect(self._mark_selected)
-        clear_mark_action = menu.addAction("清除备注")
+        clear_mark_action = menu.addAction(self.tr("清除备注"))
         clear_mark_action.setEnabled(
             count == 1 and bool(getattr(flows[0], "comment", "") if flows else "")
         )
         clear_mark_action.triggered.connect(self._clear_mark_selected)
         menu.addSeparator()
-        mock_action = menu.addAction("加入 Mock（用原响应做 Mock）")
+        mock_action = menu.addAction(self.tr("加入 Mock（用原响应做 Mock）"))
         mock_action.setEnabled(count == 1)
         mock_action.triggered.connect(self._add_selected_to_mock)
 
@@ -1417,7 +1418,7 @@ class MainWindow(QMainWindow):
         flow = flows[0]
         res = getattr(flow, "response", None)
         if res is None:
-            self.status_bar.showMessage("该请求还没有响应，无法生成 Mock", 5000)
+            self.status_bar.showMessage(self.tr("该请求还没有响应，无法生成 Mock"), 5000)
             return
         rule = self._build_mock_rule(flow)
         # 不直接落库：先打开新建窗口，自动带入 URL/请求 body/响应 body/状态码/Headers，
@@ -1427,7 +1428,7 @@ class MainWindow(QMainWindow):
             self.tabs.setCurrentWidget(self.rules_panel)
             self.rules_panel.select_rule(rule.id)
             self.status_bar.showMessage(
-                f"已加入 Mock：{rule.name}（精确匹配 URL，响应=原响应）", 6000
+                self.tr('已加入 Mock：{0}（精确匹配 URL，响应=原响应）').format(rule.name), 6000
             )
         # 取消则什么都不做，规则不会进入列表
 
@@ -1491,7 +1492,7 @@ class MainWindow(QMainWindow):
         getter = getattr(message, "get_content", None)
         data = getter(strict=False) if callable(getter) else None
         if not data:
-            self.status_bar.showMessage("该会话没有 body 可转换", 4000)
+            self.status_bar.showMessage(self.tr("该会话没有 body 可转换"), 4000)
             return
         try:
             content_type = message.headers.get("content-type", "") or ""
@@ -1506,17 +1507,17 @@ class MainWindow(QMainWindow):
         if text is None:
             # 二进制内容没法当文本解——给十六进制，用户还能接着做 Hex 解码
             text = data.hex()
-            note = "（二进制内容已按十六进制导入）"
+            note = self.tr("（二进制内容已按十六进制导入）")
         else:
-            note = "（已截断到前 512KB）" if truncated else ""
+            note = self.tr("（已截断到前 512KB）") if truncated else ""
         page = self.tool_panel.current_key
         self.tabs.setCurrentWidget(self.tool_panel)
         self.tool_panel.set_body_text(text, page)
-        label = {"json": "JSON 工具", "compare": "JSON 比对", "api": "API 调试"}.get(
-            page, "编码转换"
+        label = {"json": self.tr("JSON 工具"), "compare": self.tr("JSON 比对"), "api": self.tr("API 调试")}.get(
+            page, self.tr("编码转换")
         )
         self.status_bar.showMessage(
-            f"已把该会话的 body 送入工具页 · {label}{note}", 5000
+            self.tr('已把该会话的 body 送入工具页 · {0}{1}').format(label, note), 5000
         )
 
     def _send_request_to_api(self) -> None:
@@ -1555,7 +1556,7 @@ class MainWindow(QMainWindow):
         self.tool_panel.api_panel.load_request(
             method=req.method, url=req.pretty_url, headers=headers, body=body_text
         )
-        self.status_bar.showMessage("已把该请求带入 API 调试页（改完点「发送」）", 5000)
+        self.status_bar.showMessage(self.tr("已把该请求带入 API 调试页（改完点「发送」）"), 5000)
 
     # ================================================================ 复制 / 导出
 
@@ -1571,8 +1572,8 @@ class MainWindow(QMainWindow):
         flow = flows[0]
         text, ok = QInputDialog.getText(
             self,
-            "标记/备注",
-            "给这条会话写个备注（列表「标记」列显示）：",
+            self.tr("标记/备注"),
+            self.tr("给这条会话写个备注（列表「标记」列显示）："),
             text=getattr(flow, "comment", "") or "",
         )
         if not ok:
@@ -1595,7 +1596,7 @@ class MainWindow(QMainWindow):
         if getattr(self.detail_panel, "_flow", None) is flow:
             self.detail_panel.refresh_comment()
         self.status_bar.showMessage(
-            "已备注" if comment else "已清除备注", 3000
+            self.tr("已备注") if comment else self.tr("已清除备注"), 3000
         )
 
     def _copy_curl(self, style: str = "posix") -> None:
@@ -1607,9 +1608,9 @@ class MainWindow(QMainWindow):
             return
         QApplication.clipboard().setText(text)
         label = "bash" if style == "posix" else "Windows cmd"
-        extra = f"{len(flows)} 条 · " if len(flows) > 1 else ""
+        extra = self.tr('{0} 条 · ').format(len(flows)) if len(flows) > 1 else ""
         self.status_bar.showMessage(
-            f"已复制 cURL（{label}，{extra}{len(text)} 字符）: {text[:80]}…", 5000
+            self.tr('已复制 cURL（{0}，{1}{2} 字符）: {3}…').format(label, extra, len(text), text[:80]), 5000
         )
 
     def _copy_url(self) -> None:
@@ -1621,35 +1622,35 @@ class MainWindow(QMainWindow):
         if not urls:
             return
         QApplication.clipboard().setText("\n".join(urls))
-        shown = urls[0] if len(urls) == 1 else f"{len(urls)} 条（首条 {urls[0]}）"
-        self.status_bar.showMessage(f"已复制 URL: {shown}", 5000)
+        shown = urls[0] if len(urls) == 1 else self.tr('{0} 条（首条 {1}）').format(len(urls), urls[0])
+        self.status_bar.showMessage(self.tr('已复制 URL: {0}').format(shown), 5000)
 
     def _export_selected(self, preferred: str | None = None) -> None:
         flows = self._selected_flows()
         if not flows:
-            dialogs.information(self, "提示", "请先在流量列表里选中一条会话")
+            dialogs.information(self, self.tr("提示"), self.tr("请先在流量列表里选中一条会话"))
             return
         if len(flows) > 1 and preferred in SINGLE_ONLY_FORMATS:
             dialogs.information(
                 self,
-                "该格式不支持多选",
-                "「仅响应 Body」一个文件只能装一条会话的 body。\n"
-                "请只选一条，或改用 HAR / 原始报文 / 完整响应。",
+                self.tr("该格式不支持多选"),
+                self.tr("「仅响应 Body」一个文件只能装一条会话的 body。\n"
+                "请只选一条，或改用 HAR / 原始报文 / 完整响应。"),
             )
             return
         missing = [f for f in flows if getattr(f, "response", None) is None]
         if missing and (preferred in REQUIRES_RESPONSE):
             dialogs.information(
                 self,
-                "暂无响应",
-                "所选会话里有还没响应的请求（请求进行中或连接已中断），无法导出。",
+                self.tr("暂无响应"),
+                self.tr("所选会话里有还没响应的请求（请求进行中或连接已中断），无法导出。"),
             )
             return
         filters, mapping = name_filters()
         selected = next((label for label, f in mapping.items() if f == preferred), None)
         path, selected = QFileDialog.getSaveFileName(
             self,
-            f"导出选中会话（{len(flows)} 条）" if len(flows) > 1 else "导出选中会话",
+            self.tr('导出选中会话（{0} 条）').format(len(flows)) if len(flows) > 1 else self.tr("导出选中会话"),
             default_filename(flows, preferred or FORMAT_HAR),
             filters,
             selected or "",
@@ -1659,13 +1660,13 @@ class MainWindow(QMainWindow):
         fmt = mapping.get(selected, preferred or FORMAT_HAR)
         if len(flows) > 1 and fmt in SINGLE_ONLY_FORMATS:
             dialogs.information(
-                self, "该格式不支持多选", "「仅响应 Body」请只选一条会话。"
+                self, self.tr("该格式不支持多选"), self.tr("「仅响应 Body」请只选一条会话。")
             )
             return
         if fmt in REQUIRES_RESPONSE and any(
             getattr(f, "response", None) is None for f in flows
         ):
-            dialogs.information(self, "暂无响应", "所选会话里有还没响应的请求，无法导出。")
+            dialogs.information(self, self.tr("暂无响应"), self.tr("所选会话里有还没响应的请求，无法导出。"))
             return
         path = ensure_suffix(path, fmt, flows)
         try:
@@ -1674,7 +1675,7 @@ class MainWindow(QMainWindow):
             dialogs.critical(self, "导出失败", f"写入 {path} 失败:\n{e}")
             return
         self.status_bar.showMessage(
-            f"已导出 {len(flows)} 条 → {path}" if len(flows) > 1 else f"已导出 → {path}",
+            self.tr('已导出 {0} 条 → {1}').format(len(flows), path) if len(flows) > 1 else self.tr('已导出 → {0}').format(path),
             5000,
         )
 
@@ -1729,18 +1730,18 @@ class MainWindow(QMainWindow):
         self.settings.auto_save_session = bool(checked)
         save_settings(self.settings)
         self.status_bar.showMessage(
-            "退出时将自动保存会话快照" if checked else "已关闭退出自动保存", 4000
+            self.tr("退出时将自动保存会话快照") if checked else self.tr("已关闭退出自动保存"), 4000
         )
 
     def _save_session_dialog(self) -> None:
         flows = self._session_flows()
         if not flows:
-            dialogs.information(self, "没有可保存的会话", "当前列表是空的。")
+            dialogs.information(self, self.tr("没有可保存的会话"), self.tr("当前列表是空的。"))
             return
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         default = str(Path(self._session_start_dir()) / f"session-{stamp}{SESSION_EXT}")
         path, _ = QFileDialog.getSaveFileName(
-            self, f"保存会话（{len(flows)} 条）", default, f"会话文件 (*{SESSION_EXT})"
+            self, self.tr('保存会话（{0} 条）').format(len(flows)), default, self.tr('会话文件 (*{0})').format(SESSION_EXT)
         )
         if not path:
             return
@@ -1756,21 +1757,20 @@ class MainWindow(QMainWindow):
         detail = ""
         if result.bodies_dropped:
             detail += (
-                f"\n\n注意：有 {result.bodies_dropped} 条会话的 body 未保存"
-                "（超出单包体积预算）。"
+                self.tr('\n\n注意：有 {0} 条会话的 body 未保存（超出单包体积预算）。').format(result.bodies_dropped)
             )
         elif result.bodies_truncated:
-            detail += f"\n\n注意：有 {result.bodies_truncated} 条会话的 body 被截断。"
+            detail += self.tr('\n\n注意：有 {0} 条会话的 body 被截断。').format(result.bodies_truncated)
         dialogs.information(
             self,
-            "已保存",
-            f"共 {result.count} 条会话 → {path}\n文件大小 {size}{detail}",
+            self.tr("已保存"),
+            self.tr('共 {0} 条会话 → {1}\n文件大小 {2}{3}').format(result.count, path, size, detail),
         )
-        self.status_bar.showMessage(f"已保存 {result.count} 条会话 → {path}", 5000)
+        self.status_bar.showMessage(self.tr('已保存 {0} 条会话 → {1}').format(result.count, path), 5000)
 
     def _open_session_dialog(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "打开会话", self._session_start_dir(), f"会话文件 (*{SESSION_EXT})"
+            self, self.tr("打开会话"), self._session_start_dir(), self.tr('会话文件 (*{0})').format(SESSION_EXT)
         )
         if not path:
             return
@@ -1781,9 +1781,8 @@ class MainWindow(QMainWindow):
         if confirm_clear and self.flow_store.rowCount() > 0:
             answer = dialogs.question(
                 self,
-                "打开会话",
-                f"当前列表有 {self.flow_store.rowCount()} 条会话，"
-                "打开文件会先清空它们。\n是否继续？",
+                self.tr("打开会话"),
+                self.tr('当前列表有 {0} 条会话，打开文件会先清空它们。\n是否继续？').format(self.flow_store.rowCount()),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -1796,7 +1795,7 @@ class MainWindow(QMainWindow):
             return False
         if not result.flows:
             dialogs.information(
-                self, "没有可恢复的会话", f"{path}\n\n文件中没有有效会话。"
+                self, self.tr("没有可恢复的会话"), self.tr('{0}\n\n文件中没有有效会话。').format(path)
             )
             return False
 
@@ -1804,15 +1803,15 @@ class MainWindow(QMainWindow):
         dropped = self._apply_loaded_session(result.flows, result.summaries)
         note = ""
         if result.skipped:
-            note += f"\n跳过无法解析的行：{result.skipped} 条。"
+            note += self.tr('\n跳过无法解析的行：{0} 条。').format(result.skipped)
         if dropped:
-            note += f"\n超出保存条数上限，最早的 {dropped} 条未载入。"
+            note += self.tr('\n超出保存条数上限，最早的 {0} 条未载入。').format(dropped)
         dialogs.information(
             self,
-            "已恢复",
-            f"共恢复 {result.count - dropped} 条会话。{note}",
+            self.tr("已恢复"),
+            self.tr('共恢复 {0} 条会话。{1}').format(result.count - dropped, note),
         )
-        self.status_bar.showMessage(f"已打开会话 {path}", 5000)
+        self.status_bar.showMessage(self.tr('已打开会话 {0}').format(path), 5000)
         return True
 
     def _apply_loaded_session(self, flows: list, summaries: list) -> int:
@@ -1842,10 +1841,10 @@ class MainWindow(QMainWindow):
         saved_at = str(meta.get("saved_at") or "")
         answer = dialogs.question(
             self,
-            "恢复上次会话",
-            f"检测到上次退出时保存的 {count} 条会话"
+            self.tr("恢复上次会话"),
+            self.tr('检测到上次退出时保存的 {0} 条会话').format(count)
             + (f"（{saved_at}）" if saved_at else "")
-            + "。\n是否恢复到列表？",
+            + self.tr("。\n是否恢复到列表？"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
@@ -1902,18 +1901,18 @@ class MainWindow(QMainWindow):
         # 「填写不完整」只数两种形态都认不出的：local 规则不是 remote 的失败
         skipped = [r for r in skipped if r.kind != "local"]
         applied_now = self.proxy.update_options(map_remote=specs)
-        state = "已立即生效" if applied_now else "代理启动后生效"
+        state = self.tr("已立即生效") if applied_now else self.tr("代理启动后生效")
 
         parts = []
         if throttle_cfg.enabled:
-            parts.append(f"弱网 {throttle_cfg.latency_ms}ms / {throttle_cfg.rate_kbps}kbps")
+            parts.append(self.tr('弱网 {0}ms / {1}kbps').format(throttle_cfg.latency_ms, throttle_cfg.rate_kbps))
         if specs:
-            parts.append(f"{len(specs)} 条域名映射")
+            parts.append(self.tr('{0} 条域名映射').format(len(specs)))
         if local_count:
-            parts.append(f"{local_count} 条本地目录映射")
-        message = "、".join(parts) if parts else "网络模拟已关闭"
+            parts.append(self.tr('{0} 条本地目录映射').format(local_count))
+        message = "、".join(parts) if parts else self.tr("网络模拟已关闭")
         if skipped:
-            message += f"（{len(skipped)} 条映射填写不完整，已跳过）"
+            message += self.tr('（{0} 条映射填写不完整，已跳过）').format(len(skipped))
         message = f"{message} · {state}"
         self.status_bar.showMessage(message, 5000)
         self.network_panel.set_status(message)
@@ -1926,7 +1925,7 @@ class MainWindow(QMainWindow):
         if flow is None:
             return
         if not self.proxy.running:
-            dialogs.information(self, "提示", "请先启动代理再重放")
+            dialogs.information(self, self.tr("提示"), self.tr("请先启动代理再重放"))
             return
         # 副本重放：原会话保留（start_replay 会改 is_replay/清 response，见 app/replay.py）
         copy = make_replay_copy(flow)
@@ -1939,9 +1938,9 @@ class MainWindow(QMainWindow):
             # 先记 pending 再入队：副本 id 与新 flow id 一致，到达即关联
             self._register_pending_compare(flow.id, copy)
         if self.proxy.replay_flow(copy):
-            message = f"已加入重放队列: {copy.request.method} {copy.request.pretty_url}"
+            message = self.tr('已加入重放队列: {0} {1}').format(copy.request.method, copy.request.pretty_url)
             if compare:
-                message += "（响应到达后自动打开对比）"
+                message += self.tr("（响应到达后自动打开对比）")
             self.status_bar.showMessage(message, 3000)
 
     # ---------------------------------------------------------- 重放并对比
@@ -1985,7 +1984,7 @@ class MainWindow(QMainWindow):
         self._pending_compare = alive
         if expired:
             self.status_bar.showMessage(
-                f"重放对比等待超时（{expired} 条）：未收到重放响应", 6000
+                self.tr('重放对比等待超时（{0} 条）：未收到重放响应').format(expired), 6000
             )
         if not self._pending_compare:
             self._compare_timer.stop()
@@ -1995,7 +1994,7 @@ class MainWindow(QMainWindow):
         new_flow = self.capture.get_flow(pending["copy_id"])
         if original is None or new_flow is None:
             self.status_bar.showMessage(
-                "对比失败：原会话或重放会话已被淘汰出缓存", 5000
+                self.tr("对比失败：原会话或重放会话已被淘汰出缓存"), 5000
             )
             return
         dialog = CompareDialog(
@@ -2016,16 +2015,16 @@ class MainWindow(QMainWindow):
         total = self.flow_store.rowCount()
         shown = self.proxy_model.rowCount()
         filtering = shown != total
-        text = f"共 {total} 条" + (f" · 显示 {shown} 条" if filtering else "")
+        text = self.tr('共 {0} 条').format(total) + (self.tr(' · 显示 {0} 条').format(shown) if filtering else "")
         selected = len(self.traffic_table.selectionModel().selectedRows())
         if selected > 1:
-            text += f" · 已选 {selected} 条"
+            text += self.tr(' · 已选 {0} 条').format(selected)
         if self.search_bar.input.text():
-            text += f" · 搜索「{self.search_bar.input.text()}」"
+            text += self.tr(' · 搜索「{0}」').format(self.search_bar.input.text())
         if self.traffic_table.is_sorted():
-            text += " · 已排序"
+            text += self.tr(" · 已排序")
         if self.settings.throttle.enabled:
-            text += " · 弱网模拟中"
+            text += self.tr(" · 弱网模拟中")
         self.count_label.setText(text)
         if filtering:
             self.count_label.setStyleSheet(
@@ -2036,15 +2035,15 @@ class MainWindow(QMainWindow):
 
         if self.proxy.running:
             self.proxy_state_label.setText(
-                f"代理运行中 127.0.0.1:{self.settings.proxy_port}"
+                self.tr('代理运行中 127.0.0.1:{0}').format(self.settings.proxy_port)
             )
             self.proxy_state_label.setStyleSheet(f"color: {theme.css('ok')};")
         else:
-            self.proxy_state_label.setText("代理未启动")
+            self.proxy_state_label.setText(self.tr("代理未启动"))
             self.proxy_state_label.setStyleSheet(f"color: {theme.css('error')};")
 
         if self.cert_server is not None and self.cert_server.running:
-            self.cert_state_label.setText(f"证书服务 {self.cert_server.url}")
+            self.cert_state_label.setText(self.tr('证书服务 {0}').format(self.cert_server.url))
         else:
             self.cert_state_label.setText("")
 
@@ -2059,16 +2058,16 @@ class MainWindow(QMainWindow):
         if self.proxy.running:
             if self._sysproxy_enabled():
                 self.capture_label.setText(
-                    f"● 抓包中（系统代理 127.0.0.1:{self.settings.proxy_port}）"
+                    self.tr('● 抓包中（系统代理 127.0.0.1:{0}）').format(self.settings.proxy_port)
                 )
                 self.capture_label.setStyleSheet(
                     f"color: {theme.css('ok')}; font-weight: bold;"
                 )
             else:
-                self.capture_label.setText("○ 抓包暂停（未接管系统代理）")
+                self.capture_label.setText(self.tr("○ 抓包暂停（未接管系统代理）"))
                 self.capture_label.setStyleSheet(f"color: {theme.css('warn')};")
         else:
-            self.capture_label.setText("○ 未抓包（代理未运行）")
+            self.capture_label.setText(self.tr("○ 未抓包（代理未运行）"))
             self.capture_label.setStyleSheet(f"color: {theme.css('hint')};")
 
     def _on_capture_clicked(self) -> None:
@@ -2141,10 +2140,8 @@ class MainWindow(QMainWindow):
 
         QMessageBox.about(
             self,
-            "关于",
-            f"MiteProxy {_fb.APP_VERSION}\n\n"
-            "基于 mitmproxy + PySide6 的抓包 / Mock 工具。\n"
-            "支持 HTTP/HTTPS 抓包、Mock 规则、Fiddler 规则导入。",
+            self.tr("关于"),
+            self.tr('MiteProxy {0}\n\n基于 mitmproxy + PySide6 的抓包 / Mock 工具。\n支持 HTTP/HTTPS 抓包、Mock 规则、Fiddler 规则导入。').format(_fb.APP_VERSION),
         )
 
     # ================================================================ 关闭

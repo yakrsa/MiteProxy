@@ -110,3 +110,116 @@ class TestSettingsLanguagePersistence:
 
         back = Settings.from_dict({"language": "klingon"})
         assert back.language == DEFAULT_LANG
+
+
+class TestTranslationCoverage:
+    """覆盖度守卫：所有用户可见文案都必须包 tr()/translate() 且 .qm 有译文。
+
+    做法：AST 扫 app/ 下全部 .py，找出「含中文且不在 tr/translate/NOOP 调用里、
+    不在 docstring/注释、不在 logging 参数里」的字面量——这些就是漏网的展示文案。
+    已知豁免（合理的不翻译项）放在 _EXEMPT 里，新增漏网会直接让本用例红。
+    """
+
+    #: (文件后缀, 行号) 或文件名的豁免清单——有意不翻译的：
+    #: - dialogs.py 的 _CN 表：仅中文模式使用的按钮文案
+    #: - flow_store COLUMNS / rule_editor MATCH_LABELS、METHOD_LABELS：
+    #:   分别走 column_labels() 懒翻译 / 死代码
+    #: - certserver.py：手机端证书下载网页（HTML，另有一套文案）
+    #: - rules.py 默认规则名：会落盘的数据，不该随语言变
+    #: - feedback.py issue 正文 / theme.py QSS：分别面向开发者、是代码
+    _EXEMPT_FILES = {"app/ui/dialogs.py", "app/certserver.py", "app/ui/rule_editor.py"}
+    _EXEMPT_LINES = {
+        ("app/ui/flow_store.py", n) for n in range(10, 21)
+    } | {
+        ("app/rules.py", n) for n in (209, 219, 448, 463)
+    } | {
+        # feedback.py：GitHub issue 正文/诊断信息（面向开发者的纯文本）
+        ("app/feedback.py", n) for n in (73, 74, 77, 93, 96)
+    } | {
+        # theme.py：QSS 样式表里的注释（代码，不是界面文案）
+        ("app/ui/theme.py", 149)
+    }
+
+    @staticmethod
+    def _scan():
+        import ast
+        import re
+        from pathlib import Path
+
+        cjk = re.compile(r"[\u4e00-\u9fff]")
+        log_calls = ("debug", "info", "warning", "error", "exception", "critical")
+        leftover = []
+        for path in sorted(Path("app").rglob("*.py")):
+            rel = str(path)
+            if "i18n" in rel or rel in TestTranslationCoverage._EXEMPT_FILES:
+                continue
+            src = path.read_text(encoding="utf-8")
+            tree = ast.parse(src)
+            for node in ast.walk(tree):
+                for child in ast.iter_child_nodes(node):
+                    child._parent = node
+            docs = set()
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Module, ast.ClassDef,
+                                     ast.FunctionDef, ast.AsyncFunctionDef)):
+                    d = node.body[0] if node.body else None
+                    if (isinstance(d, ast.Expr) and isinstance(d.value, ast.Constant)
+                            and isinstance(d.value.value, str)):
+                        for ln in range(d.lineno, (d.end_lineno or d.lineno) + 1):
+                            docs.add(ln)
+
+            def ancestors(t):
+                out, cur = [], getattr(t, "_parent", None)
+                while cur is not None:
+                    out.append(cur)
+                    cur = getattr(cur, "_parent", None)
+                return out
+
+            def wrapped(node):
+                for a in ancestors(node):
+                    if (isinstance(a, ast.Call) and isinstance(a.func, ast.Attribute)
+                            and a.func.attr in ("tr", "translate")):
+                        return True
+                    if (isinstance(a, ast.Call) and isinstance(a.func, ast.Attribute)
+                            and a.func.attr in log_calls):
+                        return True
+                    if (isinstance(a, ast.Call) and isinstance(a.func, ast.Name)
+                            and a.func.id == "QT_TRANSLATE_NOOP"):
+                        return True
+                    if isinstance(a, ast.JoinedStr):
+                        return True
+                return False
+
+            for node in ast.walk(tree):
+                targets = []
+                if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                        and cjk.search(node.value)):
+                    targets.append(node)
+                elif isinstance(node, ast.JoinedStr):
+                    if any(isinstance(v, ast.Constant) and isinstance(v.value, str)
+                           and cjk.search(v.value) for v in node.values):
+                        targets.append(node)
+                for t in targets:
+                    if t.lineno in docs:
+                        continue
+                    if (rel, t.lineno) in TestTranslationCoverage._EXEMPT_LINES:
+                        continue
+                    if not wrapped(t):
+                        leftover.append(f"{rel}:{t.lineno}")
+        return leftover
+
+    def test_no_unwrapped_chinese_literals(self):
+        leftover = self._scan()
+        assert not leftover, "未包裹 tr() 的中文文案：\n" + "\n".join(leftover)
+
+    def test_qm_has_no_unfinished(self):
+        """.ts 里不能有未完成条目（lrelease 会静默丢未完成翻译）。"""
+        import re
+        from pathlib import Path
+
+        ts = Path("app/i18n/MiteProxy_en.ts")
+        if not ts.exists():
+            pytest.skip("无 .ts")
+        s = ts.read_text(encoding="utf-8")
+        unfinished = re.findall(r'<translation[^>]*type="unfinished"[^>]*>', s)
+        assert not unfinished, f".ts 有 {len(unfinished)} 条未完成翻译"

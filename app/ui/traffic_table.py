@@ -50,20 +50,20 @@ class FilterBar(QWidget):
         layout.setContentsMargins(4, 2, 4, 2)
         layout.setSpacing(6)
 
-        layout.addWidget(QLabel("域名:"))
+        layout.addWidget(QLabel(self.tr("域名:")))
         self.mode_combo = QComboBox()
-        self.mode_combo.addItem("隐藏(黑名单)", "blacklist")
-        self.mode_combo.addItem("只显示(白名单)", "whitelist")
-        self.mode_combo.setToolTip("黑名单：隐藏含关键词的域名；白名单：只显示含关键词的域名")
+        self.mode_combo.addItem(self.tr("隐藏(黑名单)"), "blacklist")
+        self.mode_combo.addItem(self.tr("只显示(白名单)"), "whitelist")
+        self.mode_combo.setToolTip(self.tr("黑名单：隐藏含关键词的域名；白名单：只显示含关键词的域名"))
         layout.addWidget(self.mode_combo)
 
         self.keywords_edit = QLineEdit()
-        self.keywords_edit.setPlaceholderText("关键词，逗号分隔；留空 = 不过滤")
+        self.keywords_edit.setPlaceholderText(self.tr("关键词，逗号分隔；留空 = 不过滤"))
         self.keywords_edit.setClearButtonEnabled(True)
         layout.addWidget(self.keywords_edit, stretch=1)
 
-        self.hide_connect_cb = QCheckBox("隐藏 CONNECT")
-        self.hide_image_cb = QCheckBox("隐藏 Image")
+        self.hide_connect_cb = QCheckBox(self.tr("隐藏 CONNECT"))
+        self.hide_image_cb = QCheckBox(self.tr("隐藏 Image"))
         layout.addWidget(self.hide_connect_cb)
         layout.addWidget(self.hide_image_cb)
 
@@ -117,7 +117,7 @@ class SearchBar(QWidget):
         layout.setSpacing(6)
 
         self.input = QLineEdit()
-        self.input.setPlaceholderText("搜索 URL / Headers / Body …")
+        self.input.setPlaceholderText(self.tr("搜索 URL / Headers / Body …"))
         self.input.setClearButtonEnabled(True)
         layout.addWidget(self.input, stretch=1)
 
@@ -130,7 +130,7 @@ class SearchBar(QWidget):
 
         self.case_btn = QPushButton("Aa")
         self.case_btn.setCheckable(True)
-        self.case_btn.setToolTip("区分大小写")
+        self.case_btn.setToolTip(self.tr("区分大小写"))
         self.case_btn.setMaximumWidth(32)
         layout.addWidget(self.case_btn)
 
@@ -142,12 +142,12 @@ class SearchBar(QWidget):
         self.next_btn = QPushButton("↓")
         for b in (self.prev_btn, self.next_btn):
             b.setMaximumWidth(30)
-            b.setToolTip("在匹配项间跳转（Enter / Shift+Enter）")
+            b.setToolTip(self.tr("在匹配项间跳转（Enter / Shift+Enter）"))
             layout.addWidget(b)
 
         close_btn = QPushButton("✕")
         close_btn.setMaximumWidth(30)
-        close_btn.setToolTip("关闭搜索（Esc）")
+        close_btn.setToolTip(self.tr("关闭搜索（Esc）"))
         close_btn.clicked.connect(self.closed)
         layout.addWidget(close_btn)
 
@@ -176,7 +176,7 @@ class SearchBar(QWidget):
         if not self.input.text():
             self.count_label.setText("")
         else:
-            self.count_label.setText(f"匹配 {matched} / {total} 条")
+            self.count_label.setText(self.tr('匹配 {0} / {1} 条').format(matched, total))
 
     # ------------------------------------------------------------ 配置
 

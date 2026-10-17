@@ -12,6 +12,7 @@ from __future__ import annotations
 import difflib
 import re
 from typing import Optional
+from PySide6.QtCore import QCoreApplication
 
 DEFAULT_CHARSET = "utf-8"
 
@@ -82,8 +83,8 @@ def unified_diff(
         difflib.unified_diff(
             old_lines,
             new_lines,
-            fromfile="原响应",
-            tofile="新响应",
+            fromfile=QCoreApplication.translate("textutil", "原响应"),
+            tofile=QCoreApplication.translate("textutil", "新响应"),
             lineterm="",
             n=context_lines,
         )
@@ -92,5 +93,5 @@ def unified_diff(
         return ""
     if len(diff) > max_lines:
         diff = diff[:max_lines]
-        diff.append(f"……（diff 超过 {max_lines} 行，已截断）")
+        diff.append(QCoreApplication.translate("textutil", '……（diff 超过 {0} 行，已截断）').format(max_lines))
     return "\n".join(diff)

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from PySide6.QtCore import QCoreApplication
 
 #: 节点数上限（两棵树合计）：超出即停，防超大 JSON 卡死界面
 MAX_DIFF_NODES = 200_000
@@ -92,7 +93,7 @@ def render_value(value: object, limit: int = 120) -> str:
         except (TypeError, ValueError):
             text = repr(value)
     if len(text) > limit:
-        text = text[:limit] + f"…（共 {len(text)} 字符）"
+        text = text[:limit] + QCoreApplication.translate("jsondiff", '…（共 {0} 字符）').format(len(text))
     return text
 
 
@@ -198,14 +199,14 @@ def count_json_nodes(value: object, limit: int = MAX_DIFF_NODES) -> int:
 def format_diff_report(result: DiffResult, max_entries: int = 200) -> str:
     """给人看的差异报告（UI 显示与「复制差异」共用）。"""
     if result.identical:
-        return "两个 JSON 完全一致"
+        return QCoreApplication.translate("jsondiff", "两个 JSON 完全一致")
     lines: list[str] = []
     shown = result.entries[:max_entries]
-    head = f"共 {result.count} 处差异"
+    head = QCoreApplication.translate("jsondiff", '共 {0} 处差异').format(result.count)
     if len(shown) < result.count:
-        head += f"（显示前 {len(shown)} 条）"
+        head += QCoreApplication.translate("jsondiff", '（显示前 {0} 条）').format(len(shown))
     lines.append(head + ":")
     lines.extend(entry.render() for entry in shown)
     if result.truncated:
-        lines.append("……（差异过多或内容过大，已停止；请改用文本 diff 查看）")
+        lines.append(QCoreApplication.translate("jsondiff", "……（差异过多或内容过大，已停止；请改用文本 diff 查看）"))
     return "\n".join(lines)

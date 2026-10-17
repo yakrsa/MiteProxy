@@ -18,6 +18,7 @@ from typing import Optional
 
 from mitmproxy import options
 from mitmproxy.tools.dump import DumpMaster
+from PySide6.QtCore import QCoreApplication
 
 log = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ class ProxyService:
         chosen = self._pick_port()
         if chosen is None:
             raise OSError(
-                f"从端口 {requested} 起连续 {PORT_SCAN_TRIES} 个端口均不可用"
+                QCoreApplication.translate("ProxyService", '从端口 {0} 起连续 {1} 个端口均不可用').format(requested, PORT_SCAN_TRIES)
             )
         self.port = chosen
         if chosen != requested:

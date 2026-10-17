@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QCoreApplication, QT_TRANSLATE_NOOP
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -62,16 +62,17 @@ TREE_NODE_LIMIT = 5000
 TREE_CHILD_LIMIT = 5000
 
 INDENT_ITEMS = (
-    ("2 空格", 2),
-    ("4 空格", 4),
-    ("Tab", "\t"),
+    (QT_TRANSLATE_NOOP("JsonPanel", "2 空格"), 2),
+    (QT_TRANSLATE_NOOP("JsonPanel", "4 空格"), 4),
+    (QT_TRANSLATE_NOOP("JsonPanel", "Tab"), "\t"),
 )
 
 VIEW_TEXT = "text"
 VIEW_TREE = "tree"
 VIEW_PATH = "path"
 
-JSONPATH_TIP = (
+JSONPATH_TIP = QT_TRANSLATE_NOOP(
+    "JsonPanel",
     "常用写法：\n"
     "  $.data.list[0].name        取字段\n"
     "  $.data.list[-1]            最后一个\n"
@@ -124,58 +125,58 @@ class JsonPanel(QWidget):
         row = QHBoxLayout()
         row.setSpacing(6)
 
-        self.format_btn = QPushButton("格式化")
+        self.format_btn = QPushButton(self.tr("格式化"))
         self.format_btn.clicked.connect(lambda: self.run(mode="pretty"))
         row.addWidget(self.format_btn)
 
-        self.minify_btn = QPushButton("压缩")
+        self.minify_btn = QPushButton(self.tr("压缩"))
         self.minify_btn.clicked.connect(lambda: self.run(mode="minify"))
         row.addWidget(self.minify_btn)
 
-        self.check_btn = QPushButton("校验")
-        self.check_btn.setToolTip("只判断合法性与规模，不渲染内容（超大 JSON 用这个）")
+        self.check_btn = QPushButton(self.tr("校验"))
+        self.check_btn.setToolTip(self.tr("只判断合法性与规模，不渲染内容（超大 JSON 用这个）"))
         self.check_btn.clicked.connect(lambda: self.run(mode="check"))
         row.addWidget(self.check_btn)
 
         row.addSpacing(10)
-        row.addWidget(QLabel("缩进:"))
+        row.addWidget(QLabel(self.tr("缩进:")))
         self.indent_combo = QComboBox()
         for label, value in INDENT_ITEMS:
-            self.indent_combo.addItem(label, value)
+            self.indent_combo.addItem(
+                QCoreApplication.translate("JsonPanel", label), value)
         self.indent_combo.setCurrentIndex(0)
         self.indent_combo.currentIndexChanged.connect(lambda *_: self.run())
         row.addWidget(self.indent_combo)
 
-        row.addWidget(QLabel("视图:"))
+        row.addWidget(QLabel(self.tr("视图:")))
         self.view_combo = QComboBox()
-        self.view_combo.addItem("格式化文本", VIEW_TEXT)
-        self.view_combo.addItem("树形", VIEW_TREE)
-        self.view_combo.addItem("JSONPath 结果", VIEW_PATH)
+        self.view_combo.addItem(self.tr("格式化文本"), VIEW_TEXT)
+        self.view_combo.addItem(self.tr("树形"), VIEW_TREE)
+        self.view_combo.addItem(self.tr("JSONPath 结果"), VIEW_PATH)
         self.view_combo.currentIndexChanged.connect(self._on_view_changed)
         row.addWidget(self.view_combo)
 
-        self.expand_btn = QPushButton("展开全部")
+        self.expand_btn = QPushButton(self.tr("展开全部"))
         self.expand_btn.clicked.connect(self._expand_all)
         row.addWidget(self.expand_btn)
-        self.collapse_btn = QPushButton("折叠全部")
+        self.collapse_btn = QPushButton(self.tr("折叠全部"))
         self.collapse_btn.clicked.connect(self._collapse_all)
         row.addWidget(self.collapse_btn)
 
-        self.wrap_cb = QCheckBox("换行")
+        self.wrap_cb = QCheckBox(self.tr("换行"))
         self.wrap_cb.setChecked(True)
         self.wrap_cb.setToolTip(
-            f"单行超过 {WRAP_MAX_LINE_CHARS // 1024}KB 时会自动临时关闭"
-            "（换行对超长单行是超线性开销）"
+            self.tr('单行超过 {0}KB 时会自动临时关闭（换行对超长单行是超线性开销）').format(WRAP_MAX_LINE_CHARS // 1024)
         )
         self.wrap_cb.toggled.connect(self._on_wrap_toggled)
         row.addWidget(self.wrap_cb)
 
         row.addStretch(1)
 
-        self.copy_btn = QPushButton("复制结果")
+        self.copy_btn = QPushButton(self.tr("复制结果"))
         self.copy_btn.clicked.connect(self.copy_result)
         row.addWidget(self.copy_btn)
-        self.clear_btn = QPushButton("清空")
+        self.clear_btn = QPushButton(self.tr("清空"))
         self.clear_btn.clicked.connect(self._on_clear)
         row.addWidget(self.clear_btn)
         return row
@@ -183,11 +184,11 @@ class JsonPanel(QWidget):
     def _build_splitter(self) -> QWidget:
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        in_box = QGroupBox("输入")
+        in_box = QGroupBox(self.tr("输入"))
         in_layout = QVBoxLayout(in_box)
         self.input_edit = QPlainTextEdit()
         self.input_edit.setFont(self._font)
-        self.input_edit.setPlaceholderText("把 JSON 贴进来，或用下面的 JSONPath 提取…")
+        self.input_edit.setPlaceholderText(self.tr("把 JSON 贴进来，或用下面的 JSONPath 提取…"))
         in_layout.addWidget(self.input_edit)
         in_bar = QHBoxLayout()
         in_bar.addStretch(1)
@@ -196,7 +197,7 @@ class JsonPanel(QWidget):
         in_bar.addWidget(self.input_count)
         in_layout.addLayout(in_bar)
 
-        out_box = QGroupBox("结果")
+        out_box = QGroupBox(self.tr("结果"))
         out_layout = QVBoxLayout(out_box)
         self.out_stack = QStackedWidget()
 
@@ -208,7 +209,7 @@ class JsonPanel(QWidget):
 
         self.tree_view = QTreeWidget()
         self.tree_view.setColumnCount(3)
-        self.tree_view.setHeaderLabels(["名称", "值", "类型"])
+        self.tree_view.setHeaderLabels([self.tr("名称"), self.tr("值"), self.tr("类型")])
         self.tree_view.setAlternatingRowColors(True)
         self.tree_view.header().setSectionResizeMode(
             0, QHeaderView.ResizeMode.ResizeToContents
@@ -222,7 +223,7 @@ class JsonPanel(QWidget):
         self.out_stack.addWidget(self.tree_view)
 
         self.path_table = QTableWidget(0, 3)
-        self.path_table.setHorizontalHeaderLabels(["#", "路径", "值"])
+        self.path_table.setHorizontalHeaderLabels(["#", self.tr("路径"), self.tr("值")])
         self.path_table.verticalHeader().setVisible(False)
         self.path_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.path_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -253,16 +254,18 @@ class JsonPanel(QWidget):
         self.path_edit.setPlaceholderText(
             "$.data.list[0].name   $..token   $.l[*].p.max()"
         )
-        self.path_edit.setToolTip(JSONPATH_TIP)
+        self.path_edit.setToolTip(
+            QCoreApplication.translate("JsonPanel", JSONPATH_TIP))
         self.path_edit.returnPressed.connect(self.run_jsonpath)
         row.addWidget(self.path_edit, stretch=1)
 
-        self.path_btn = QPushButton("提取")
-        self.path_btn.setToolTip(JSONPATH_TIP)
+        self.path_btn = QPushButton(self.tr("提取"))
+        self.path_btn.setToolTip(
+            QCoreApplication.translate("JsonPanel", JSONPATH_TIP))
         self.path_btn.clicked.connect(self.run_jsonpath)
         row.addWidget(self.path_btn)
 
-        self.path_copy_btn = QPushButton("复制结果")
+        self.path_copy_btn = QPushButton(self.tr("复制结果"))
         self.path_copy_btn.clicked.connect(self.copy_path_result)
         row.addWidget(self.path_copy_btn)
         return row
@@ -277,9 +280,9 @@ class JsonPanel(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
         layout.addWidget(self.status_label, stretch=1)
-        self.goto_btn = QPushButton("跳到出错位置")
+        self.goto_btn = QPushButton(self.tr("跳到出错位置"))
         self.goto_btn.setVisible(False)
-        self.goto_btn.setToolTip("把光标移到出错的行列")
+        self.goto_btn.setToolTip(self.tr("把光标移到出错的行列"))
         self.goto_btn.clicked.connect(self._goto_error)
         layout.addWidget(self.goto_btn)
         self.status_label.setStyleSheet(f"color: {theme.css('hint')};")
@@ -319,7 +322,7 @@ class JsonPanel(QWidget):
             self._show_text(result.text, colored=False)
             self.tree_view.clear()
             self._set_status(
-                result.error.report() if result.error else "解析失败",
+                result.error.report() if result.error else self.tr("解析失败"),
                 error=True,
                 goto=result.error,
             )
@@ -333,8 +336,7 @@ class JsonPanel(QWidget):
             # 只报合法性，**不动输出**——否则切到树视图前的自动解析会把
             # 已经格式化好的文本清掉，用户切回「格式化文本」就白屏了
             self._set_status(
-                "✓ 合法 JSON · "
-                f"{count_nodes(self._value)} 个节点 · 最大深度 {max_depth(self._value)}",
+                self.tr('✓ 合法 JSON · {0} 个节点 · 最大深度 {1}').format(count_nodes(self._value), max_depth(self._value)),
                 error=False,
                 ok=True,
             )
@@ -352,21 +354,21 @@ class JsonPanel(QWidget):
             return
 
         if mode == "minify":
-            notes.append("已压缩为单行（复制方便，看结构请切「格式化」）")
+            notes.append(self.tr("已压缩为单行（复制方便，看结构请切「格式化」）"))
         # _show_text 会顺带应用换行闸门，并返回「为什么没换行」
         wrap_note = self._show_text(dumped, colored=True)
         tree_note = self._render_tree_if_needed()
 
         extra = []
         if len(dumped) > RENDER_TEXT_LIMIT:
-            extra.append("结果过长已截断")
+            extra.append(self.tr("结果过长已截断"))
         if wrap_note:
             extra.append(wrap_note)
         if tree_note:
             extra.append(tree_note)
         self._set_status(
-            " · ".join([p for p in (f"共 {count_nodes(self._value)} 个节点",
-                                    f"最大深度 {max_depth(self._value)}",
+            " · ".join([p for p in (self.tr('共 {0} 个节点').format(count_nodes(self._value)),
+                                    self.tr('最大深度 {0}').format(max_depth(self._value)),
                                     *notes, *extra) if p]),
             error=False,
         )
@@ -376,14 +378,14 @@ class JsonPanel(QWidget):
         """执行 JSONPath：结果进「JSONPath 结果」视图。"""
         expr = self.path_edit.text().strip()
         if not expr:
-            self._set_status("请输入 JSONPath 表达式（如 $.data.list[0]）", error=False)
+            self._set_status(self.tr("请输入 JSONPath 表达式（如 $.data.list[0]）"), error=False)
             return
         if self._value is None:
             # 输入框内容还没解析过就先解析一次
             self.run(mode="check")
             if self._value is None:
                 self._set_status(
-                    "输入不是合法 JSON，先修好上面的错误再提取", error=True
+                    self.tr("输入不是合法 JSON，先修好上面的错误再提取"), error=True
                 )
                 return
         matches, note = jsonpath_find(expr, self._value)
@@ -394,9 +396,9 @@ class JsonPanel(QWidget):
         self._fill_path_table(matches)
         self.view_combo.setCurrentIndex(self.view_combo.findData(VIEW_PATH))
         if not matches:
-            self._set_status("没有匹配到任何内容", error=False)
+            self._set_status(self.tr("没有匹配到任何内容"), error=False)
             return
-        label = f"共 {len(matches)} 处匹配"
+        label = self.tr('共 {0} 处匹配').format(len(matches))
         if note:
             label += f" {note}"
         self._set_status(label, error=False, ok=True)
@@ -404,15 +406,15 @@ class JsonPanel(QWidget):
     def copy_result(self) -> bool:
         text = self.text_view.toPlainText()
         if not text:
-            self._set_status("结果为空，无可复制内容", error=False)
+            self._set_status(self.tr("结果为空，无可复制内容"), error=False)
             return False
         QApplication.clipboard().setText(text)
-        self._set_status(f"已复制 {len(text)} 字符到剪贴板", error=False)
+        self._set_status(self.tr('已复制 {0} 字符到剪贴板').format(len(text)), error=False)
         return True
 
     def copy_path_result(self) -> bool:
         if not self._matches:
-            self._set_status("没有可复制的提取结果", error=False)
+            self._set_status(self.tr("没有可复制的提取结果"), error=False)
             return False
         ok, text = dumps_json([m.value for m in self._matches], indent=2)
         if not ok:
@@ -420,7 +422,7 @@ class JsonPanel(QWidget):
             return False
         QApplication.clipboard().setText(text)
         self._set_status(
-            f"已复制 {len(self._matches)} 个匹配值（JSON 数组）到剪贴板",
+            self.tr('已复制 {0} 个匹配值（JSON 数组）到剪贴板').format(len(self._matches)),
             error=False,
         )
         return True
@@ -432,7 +434,7 @@ class JsonPanel(QWidget):
         if len(self.input_edit.toPlainText().encode("utf-8")) > LIVE_LIMIT:
             self._timer.stop()
             self._set_status(
-                f"内容超过 {LIVE_LIMIT // 1024}KB，已暂停自动格式化——点「格式化」执行",
+                self.tr('内容超过 {0}KB，已暂停自动格式化——点「格式化」执行').format(LIVE_LIMIT // 1024),
                 error=False,
             )
             return
@@ -468,8 +470,7 @@ class JsonPanel(QWidget):
         )
         if want and not wrap:
             return (
-                f"单行最长 {longest // 1024}KB 超过 "
-                f"{WRAP_MAX_LINE_CHARS // 1024}KB，已临时关闭换行"
+                self.tr('单行最长 {0}KB 超过 {1}KB，已临时关闭换行').format(longest // 1024, WRAP_MAX_LINE_CHARS // 1024)
             )
         return ""
 
@@ -480,7 +481,7 @@ class JsonPanel(QWidget):
         else:
             # 重新换行了就把之前那条「已临时关闭换行」撤掉
             self._set_status(
-                self.status_label.text().split(" · 单行最长")[0], error=False
+                self.status_label.text().split(self.tr(" · 单行最长"))[0], error=False
             )
 
     def _render_tree_if_needed(self) -> str:
@@ -515,7 +516,7 @@ class JsonPanel(QWidget):
         root_item = QTreeWidgetItem(tree, ["$", "", _type_name(value)])
         root_item.setData(0, Qt.ItemDataRole.ToolTipRole, "$")
         if isinstance(value, (dict, list)):
-            root_item.setText(1, f"{len(value)} 项")
+            root_item.setText(1, self.tr('{0} 项').format(len(value)))
             root_item.setData(0, Qt.ItemDataRole.UserRole, (value, path))
             if value:
                 root_item.setChildIndicatorPolicy(
@@ -550,7 +551,7 @@ class JsonPanel(QWidget):
             if self._tree_nodes_built >= TREE_NODE_LIMIT:
                 self._tree_truncated = True
                 self._append_note(
-                    f"树节点超过 {TREE_NODE_LIMIT}，更深处未展开（用 JSONPath 缩小范围）"
+                    self.tr('树节点超过 {0}，更深处未展开（用 JSONPath 缩小范围）').format(TREE_NODE_LIMIT)
                 )
                 return
             self._tree_nodes_built += 1
@@ -560,7 +561,7 @@ class JsonPanel(QWidget):
             child = QTreeWidgetItem(parent, [name, "", _type_name(item)])
             child.setData(0, Qt.ItemDataRole.ToolTipRole, child_path)
             if isinstance(item, (dict, list)):
-                child.setText(1, f"{len(item)} 项")
+                child.setText(1, self.tr('{0} 项').format(len(item)))
                 child.setData(0, Qt.ItemDataRole.UserRole, (item, child_path))
                 if item:
                     child.setChildIndicatorPolicy(
@@ -571,7 +572,7 @@ class JsonPanel(QWidget):
         if total > len(show):
             note = QTreeWidgetItem(
                 parent,
-                [f"…（其余 {total - len(show)} 项未显示）", "", ""],
+                [self.tr('…（其余 {0} 项未显示）').format(total - len(show)), "", ""],
             )
             note.setDisabled(True)
 
@@ -662,8 +663,8 @@ class JsonPanel(QWidget):
     def _update_counts(self) -> None:
         def describe(text: str) -> str:
             if not text:
-                return "0 字符"
-            return f"{len(text)} 字符 / {len(text.encode('utf-8'))} 字节"
+                return QCoreApplication.translate("JsonPanel", "0 字符")
+            return QCoreApplication.translate("JsonPanel", "{0} 字符 / {1} 字节").format(len(text), len(text.encode("utf-8")))
 
         self.input_count.setText(describe(self.input_edit.toPlainText()))
         self.output_count.setText(describe(self.text_view.toPlainText()))

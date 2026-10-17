@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QT_TRANSLATE_NOOP, QCoreApplication
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -35,7 +35,11 @@ from app.ui import theme
 #: 差异表最多显示多少行（diff 本身仍会算完，只是不全部渲染）
 TABLE_ROW_LIMIT = 500
 
-KIND_LABELS = {"added": "新增", "removed": "删除", "changed": "修改"}
+KIND_LABELS = {
+    "added": QT_TRANSLATE_NOOP("JsonComparePanel", "新增"),
+    "removed": QT_TRANSLATE_NOOP("JsonComparePanel", "删除"),
+    "changed": QT_TRANSLATE_NOOP("JsonComparePanel", "修改"),
+}
 #: 类型列文字色走语义 token（新增=ok / 删除=error / 修改=warn），随主题换色
 KIND_KEYS = {"added": "ok", "removed": "error", "changed": "warn"}
 
@@ -77,32 +81,32 @@ class JsonComparePanel(QWidget):
         row = QHBoxLayout()
         row.setSpacing(6)
 
-        swap_btn = QPushButton("交换左右")
-        swap_btn.setToolTip("把两边内容对调（比对结果方向随之反转）")
+        swap_btn = QPushButton(self.tr("交换左右"))
+        swap_btn.setToolTip(self.tr("把两边内容对调（比对结果方向随之反转）"))
         swap_btn.clicked.connect(self._swap)
         row.addWidget(swap_btn)
 
         row.addStretch(1)
 
-        self.copy_btn = QPushButton("复制差异")
+        self.copy_btn = QPushButton(self.tr("复制差异"))
         self.copy_btn.setEnabled(False)
         self.copy_btn.clicked.connect(self._copy_report)
         row.addWidget(self.copy_btn)
 
-        clear_btn = QPushButton("清空")
+        clear_btn = QPushButton(self.tr("清空"))
         clear_btn.clicked.connect(self._on_clear)
         row.addWidget(clear_btn)
         return row
 
     def _build_inputs(self) -> QWidget:
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        for name, attr in (("原 JSON", "left_edit"), ("新 JSON", "right_edit")):
+        for name, attr in ((self.tr("原 JSON"), "left_edit"), (self.tr("新 JSON"), "right_edit")):
             box = QGroupBox(name)
             layout = QVBoxLayout(box)
             layout.setContentsMargins(4, 4, 4, 4)
             edit = QPlainTextEdit()
             edit.setFont(self._font)
-            edit.setPlaceholderText("把 JSON 贴进来…")
+            edit.setPlaceholderText(self.tr("把 JSON 贴进来…"))
             layout.addWidget(edit)
             setattr(self, attr, edit)
             splitter.addWidget(box)
@@ -110,12 +114,12 @@ class JsonComparePanel(QWidget):
         return splitter
 
     def _build_result(self) -> QWidget:
-        box = QGroupBox("差异")
+        box = QGroupBox(self.tr("差异"))
         layout = QVBoxLayout(box)
         layout.setContentsMargins(4, 4, 4, 4)
 
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["路径", "类型", "旧值", "新值"])
+        self.table.setHorizontalHeaderLabels([self.tr("路径"), self.tr("类型"), self.tr("旧值"), self.tr("新值")])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(
@@ -130,7 +134,7 @@ class JsonComparePanel(QWidget):
         layout.addWidget(self.table)
         theme.add_listener(self._retheme)
 
-        self.status_label = QLabel("两边都贴上 JSON 后自动比对")
+        self.status_label = QLabel(self.tr("两边都贴上 JSON 后自动比对"))
         self.status_label.setWordWrap(True)
         self.status_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
@@ -181,7 +185,7 @@ class JsonComparePanel(QWidget):
         self.table.setRowCount(0)
         self._report_text = ""
         self.copy_btn.setEnabled(False)
-        self._set_status("两边都贴上 JSON 后自动比对")
+        self._set_status(self.tr("两边都贴上 JSON 后自动比对"))
 
     def _copy_report(self) -> None:
         from PySide6.QtWidgets import QApplication
@@ -200,19 +204,19 @@ class JsonComparePanel(QWidget):
         self.copy_btn.setEnabled(False)
 
         if not left_text.strip() and not right_text.strip():
-            self._set_status("两边都贴上 JSON 后自动比对")
+            self._set_status(self.tr("两边都贴上 JSON 后自动比对"))
             return
 
         # 逐侧解析：非法的那侧给出定位，内容不动（失败不吞内容）
         results = []
-        for side, text in (("原 JSON", left_text), ("新 JSON", right_text)):
+        for side, text in ((self.tr("原 JSON"), left_text), (self.tr("新 JSON"), right_text)):
             if not text.strip():
-                self._set_status(f"「{side}」还是空的", "error")
+                self._set_status(self.tr('「{0}」还是空的').format(side), "error")
                 return
             result = parse_json(text)
             if not result.ok:
                 self._set_status(
-                    f"「{side}」不合法：{result.error.report()}", "error"
+                    self.tr('「{0}」不合法：{1}').format(side, result.error.report()), "error"
                 )
                 return
             results.append(result)
@@ -220,12 +224,12 @@ class JsonComparePanel(QWidget):
 
         result = diff_json(left.value, right.value)
         nodes_text = (
-            f"左 {count_nodes(left.value)} 节点 · 右 {count_nodes(right.value)} 节点"
+            self.tr('左 {0} 节点 · 右 {1} 节点').format(count_nodes(left.value), count_nodes(right.value))
         )
 
         if result.identical:
-            self._report_text = "两个 JSON 完全一致"
-            self._set_status(f"{nodes_text} · 完全一致", "ok")
+            self._report_text = self.tr("两个 JSON 完全一致")
+            self._set_status(self.tr('{0} · 完全一致').format(nodes_text), "ok")
             return
 
         shown = result.entries[:TABLE_ROW_LIMIT]
@@ -233,7 +237,8 @@ class JsonComparePanel(QWidget):
         self._row_kinds = [entry.kind for entry in shown]
         for row, entry in enumerate(shown):
             self.table.setItem(row, 0, QTableWidgetItem(entry.path))
-            kind_item = QTableWidgetItem(KIND_LABELS.get(entry.kind, entry.kind))
+            kind_item = QTableWidgetItem(QCoreApplication.translate(
+                "JsonComparePanel", KIND_LABELS.get(entry.kind, entry.kind)))
             kind_item.setForeground(theme.color(KIND_KEYS.get(entry.kind, "hint")))
             self.table.setItem(row, 1, kind_item)
             self.table.setItem(row, 2, QTableWidgetItem(render_value(entry.old)))
@@ -241,13 +246,13 @@ class JsonComparePanel(QWidget):
 
         self._report_text = format_diff_report(result)
         more = (
-            f"（差异表仅显示前 {TABLE_ROW_LIMIT} 条）"
+            self.tr('（差异表仅显示前 {0} 条）').format(TABLE_ROW_LIMIT)
             if result.count > TABLE_ROW_LIMIT
             else ""
         )
-        trunc = "（差异过多，结构化对比已提前停止）" if result.truncated else ""
+        trunc = self.tr("（差异过多，结构化对比已提前停止）") if result.truncated else ""
         self._set_status(
-            f"{nodes_text} · 共 {result.count} 处差异{more}{trunc}", "warn"
+            self.tr('{0} · 共 {1} 处差异{2}{3}').format(nodes_text, result.count, more, trunc), "warn"
         )
         self.copy_btn.setEnabled(True)
 

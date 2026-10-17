@@ -236,7 +236,7 @@ class UpdateChecker(QObject):
         reply.deleteLater()
         info = parse_version_info(raw)
         if info is None:
-            self._finish(None, "version.info 格式无法解析")
+            self._finish(None, self.tr("version.info 格式无法解析"))
             return
         self._finish(info, "")
 
@@ -244,7 +244,7 @@ class UpdateChecker(QObject):
         if self._reply is not None:
             self._reply.abort()  # 触发 finished，接着走 _on_finished 的错误分支
             return
-        self._finish(None, "请求超时")
+        self._finish(None, self.tr("请求超时"))
 
     def _finish(self, info: VersionInfo | None, error: str) -> None:
         self._busy = False

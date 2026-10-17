@@ -33,6 +33,7 @@ from mitmproxy.connection import Client, Server
 from mitmproxy.http import HTTPFlow, Request, Response
 
 from app.rules import CONFIG_DIR
+from PySide6.QtCore import QCoreApplication
 # （decode_body 已不用于保存路径：text 分支只认 UTF-8，见 _encode_body 注释）
 
 log = logging.getLogger(__name__)
@@ -274,7 +275,7 @@ def save_session(path, flows, limits: SessionLimits | None = None) -> SaveResult
 
     items = [f for f in (flows or []) if f is not None]
     if not items:
-        result.error = "没有可保存的会话"
+        result.error = QCoreApplication.translate("session", "没有可保存的会话")
         return result
 
     tmp = path.with_name(path.name + ".tmp")
@@ -295,7 +296,7 @@ def save_session(path, flows, limits: SessionLimits | None = None) -> SaveResult
     except (OSError, TypeError, ValueError) as e:
         # TypeError/ValueError：flow 里混进了非 JSON 序列化对象——
         # 不捕的话异常穿透 Qt slot，且 .tmp 文件留在磁盘上
-        result.error = f"写入失败: {e}"
+        result.error = QCoreApplication.translate("session", '写入失败: {0}').format(e)
         _silent_unlink(tmp)
     except BaseException:
         _silent_unlink(tmp)
@@ -485,7 +486,7 @@ def load_session(path) -> LoadResult:
     path = Path(path)
     result = LoadResult(path=path)
     if not path.exists():
-        result.error = "文件不存在"
+        result.error = QCoreApplication.translate("session", "文件不存在")
         return result
 
     # 记录来自上一次保存的 summary：列表显示用（保证服务端 IP 等派生字段一致）
@@ -527,10 +528,10 @@ def load_session(path) -> LoadResult:
                 result.flows.append(flow)
                 result.summaries.append(summary)
     except OSError as e:
-        result.error = f"读取失败: {e}"
+        result.error = QCoreApplication.translate("session", '读取失败: {0}').format(e)
         return result
     except UnicodeDecodeError as e:
-        result.error = f"文件不是 UTF-8 文本会话文件: {e}"
+        result.error = QCoreApplication.translate("session", '文件不是 UTF-8 文本会话文件: {0}').format(e)
         return result
 
     return result

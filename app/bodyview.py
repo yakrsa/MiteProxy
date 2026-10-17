@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from urllib.parse import parse_qsl
 
 from app.textutil import decode_body
+from PySide6.QtCore import QCoreApplication
 
 #: 原文 / 十六进制视图的输入截断（超过就截断显示，与搜索索引策略一致）
 BODY_PREVIEW_LIMIT = 512 * 1024
@@ -74,12 +75,12 @@ VIEW_IMAGE = "image"
 VIEW_HEX = "hex"
 
 VIEW_MODE_ITEMS: tuple[tuple[str, str], ...] = (
-    (VIEW_AUTO, "自动"),
-    (VIEW_RAW, "原文"),
+    (VIEW_AUTO, QCoreApplication.translate("bodyview", "自动")),
+    (VIEW_RAW, QCoreApplication.translate("bodyview", "原文")),
     (VIEW_JSON, "JSON"),
-    (VIEW_FORM, "表单"),
-    (VIEW_IMAGE, "图片"),
-    (VIEW_HEX, "十六进制"),
+    (VIEW_FORM, QCoreApplication.translate("bodyview", "表单")),
+    (VIEW_IMAGE, QCoreApplication.translate("bodyview", "图片")),
+    (VIEW_HEX, QCoreApplication.translate("bodyview", "十六进制")),
 )
 
 #: 认定为表单的 content-type（只认这一个，不猜）
@@ -142,13 +143,13 @@ def format_json_text(text: str) -> tuple[bool, str]:
     try:
         obj = json.loads(text)
     except RecursionError:
-        return False, "嵌套层级过深，超出解析器递归上限"
+        return False, QCoreApplication.translate("bodyview", "嵌套层级过深，超出解析器递归上限")
     except (json.JSONDecodeError, ValueError, MemoryError) as e:
         return False, str(e)
     try:
         return True, json.dumps(obj, ensure_ascii=False, indent=2)
     except (ValueError, TypeError, RecursionError, MemoryError) as e:
-        return False, f"序列化失败：{e}"
+        return False, QCoreApplication.translate("bodyview", '序列化失败：{0}').format(e)
 
 
 def _json_parsable(text: str) -> bool:
@@ -226,16 +227,19 @@ def format_json_body(body: bytes | None, content_type: str) -> JsonFormat:
         mb = total / 1024 / 1024
         return JsonFormat(
             False, raw_preview(),
-            f"内容 {mb:.1f}MB 超出格式化上限 {JSON_PARSE_LIMIT // 1024 // 1024}MB，已显示原文",
+            QCoreApplication.translate(
+                "bodyview",
+                "内容 {0:.1f}MB 超出格式化上限 {1}MB，已显示原文",
+            ).format(mb, JSON_PARSE_LIMIT // 1024 // 1024),
         )
 
     text = decode_body(body, content_type)
     if text is None:
-        return JsonFormat(False, "", "无法按文本解码")
+        return JsonFormat(False, "", QCoreApplication.translate("bodyview", "无法按文本解码"))
 
     ok, pretty = format_json_text(text.strip())
     if not ok:
-        return JsonFormat(False, raw_preview(), f"JSON 解析失败，已显示原文：{pretty}")
+        return JsonFormat(False, raw_preview(), QCoreApplication.translate("bodyview", 'JSON 解析失败，已显示原文：{0}').format(pretty))
 
     if len(pretty) > STREAM_HARD_LIMIT:
         pretty = pretty[:STREAM_HARD_LIMIT] + truncation_note(
@@ -269,8 +273,7 @@ def should_wrap(text: str, enabled: bool) -> tuple[bool, str]:
     n = longest_line(text, WRAP_SCAN_LIMIT)
     if n > WRAP_MAX_LINE_CHARS:
         return False, (
-            f"单行最长 {n // 1024}KB 超过 {WRAP_MAX_LINE_CHARS // 1024}KB，"
-            "已临时关闭换行（换行会让界面卡顿）"
+            QCoreApplication.translate("bodyview", '单行最长 {0}KB 超过 {1}KB，已临时关闭换行（换行会让界面卡顿）').format(n // 1024, WRAP_MAX_LINE_CHARS // 1024)
         )
     return True, ""
 
@@ -339,11 +342,10 @@ def decoded_note(encoding: str, raw_len: int, shown_len: int,
     """
     if not encoding or raw_len <= 0 or shown_len == raw_len:
         return ""
-    kind = "手动解压" if source == "fallback" else "已解压"
-    return (
-        f"{kind} {encoding}：线上 {raw_len / 1024:.1f}KB → "
-        f"{shown_len / 1024:.1f}KB"
-    )
+    kind = QCoreApplication.translate("bodyview", "手动解压") if source == "fallback" else QCoreApplication.translate("bodyview", "已解压")
+    return QCoreApplication.translate(
+        "bodyview", "{0} {1}：线上 {2:.1f}KB → {3:.1f}KB"
+    ).format(kind, encoding, raw_len / 1024, shown_len / 1024)
 
 
 # ====================================================================== 表单
@@ -381,14 +383,13 @@ def hex_dump(data: bytes, total: int | None = None,
         hex_part = " ".join(f"{b:02x}" for b in chunk)
         ascii_part = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
         lines.append(f"{off:08x}  {hex_part:<48}  {ascii_part}")
-    text = "[二进制内容 · 十六进制视图]\n" + "\n".join(lines)
+    text = QCoreApplication.translate("bodyview", "[二进制内容 · 十六进制视图]\n") + "\n".join(lines)
     if len(data) > limit:
         text += (
-            f"\n…… [十六进制视图仅显示前 {limit // 1024}KB，"
-            f"完整大小 {total // 1024}KB]"
+            QCoreApplication.translate("bodyview", '\n…… [十六进制视图仅显示前 {0}KB，完整大小 {1}KB]').format(limit // 1024, total // 1024)
         )
     return text
 
 
 def truncation_note(total: int, limit: int = BODY_PREVIEW_LIMIT) -> str:
-    return f"\n\n…… [已截断：仅显示前 {limit // 1024}KB，完整大小 {total // 1024}KB]"
+    return QCoreApplication.translate("bodyview", '\n\n…… [已截断：仅显示前 {0}KB，完整大小 {1}KB]').format(limit // 1024, total // 1024)

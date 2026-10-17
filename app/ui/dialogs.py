@@ -1,4 +1,4 @@
-"""中文标准按钮的消息/确认框 + QDialogButtonBox 中文化。
+"""中文标准按钮的消息/确认框 + QDialogButtonBox 中文化（仅中文模式）。
 
 Qt 的 QMessageBox / QDialogButtonBox 标准按钮默认英文（OK/Cancel/Yes/No），
 而 PySide6 不带 qt_zh_CN 翻译，界面里就会冒出英文按钮。统一在这里收口：
@@ -53,7 +53,15 @@ _EN = {
 
 
 def _cn_std_buttons(box) -> None:
-    """把消息框/按钮框里还是英文默认文本的标准按钮改成中文。"""
+    """中文模式下把消息框/按钮框里还是英文默认文本的标准按钮改成中文。
+
+    英文模式下不碰：Qt 标准按钮默认就是英文（OK/Cancel…），装了英文翻译器后
+    正好保持英文，无需替换。
+    """
+    from app.i18n import current_language
+
+    if current_language() != "zh_CN":
+        return
     for btn in box.buttons():
         std = box.standardButton(btn)
         if std in _CN and btn.text() == _EN.get(std, ""):

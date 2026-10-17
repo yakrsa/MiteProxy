@@ -33,7 +33,7 @@ class ReplayEditDialog(QDialog):
 
     def __init__(self, request, parent=None, compare: bool = False):
         super().__init__(parent)
-        self.setWindowTitle("重放并对比" if compare else "编辑并重放")
+        self.setWindowTitle(self.tr("重放并对比") if compare else self.tr("编辑并重放"))
         self.setMinimumSize(640, 560)
         self._compare = compare
         self._build_ui()
@@ -46,7 +46,7 @@ class ReplayEditDialog(QDialog):
         self.method_combo = QComboBox()
         self.method_combo.addItems(METHODS)
         self.method_combo.setEditable(True)
-        form.addRow("方法:", self.method_combo)
+        form.addRow(self.tr("方法:"), self.method_combo)
 
         self.url_edit = QPlainTextEdit()
         self.url_edit.setMaximumHeight(60)
@@ -66,11 +66,11 @@ class ReplayEditDialog(QDialog):
         )
         headers_layout.addWidget(self.headers_table)
         hbtn = QHBoxLayout()
-        add_h = QPushButton("添加")
+        add_h = QPushButton(self.tr("添加"))
         add_h.clicked.connect(
             lambda: self.headers_table.insertRow(self.headers_table.rowCount())
         )
-        del_h = QPushButton("删除选中")
+        del_h = QPushButton(self.tr("删除选中"))
         del_h.clicked.connect(self._delete_row)
         hbtn.addWidget(add_h)
         hbtn.addWidget(del_h)
@@ -87,7 +87,7 @@ class ReplayEditDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.button(QDialogButtonBox.StandardButton.Ok).setText(
-            "重放并对比" if self._compare else "重放"
+            self.tr("重放并对比") if self._compare else self.tr("重放")
         )
         dialogs.cn_button_box(buttons)     # Cancel → 取消（Ok 已自定义中文，保留）
         buttons.accepted.connect(self.accept)

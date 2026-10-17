@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from PySide6.QtCore import QCoreApplication
 
 #: 单次提取最多返回多少条（再多只统计不展示）
 MAX_MATCHES = 2000
@@ -46,7 +47,7 @@ class JsonPathError(ValueError):
         """带上出错位置与指针，和 JSON 的错误提示保持一致的手感。"""
         pos = min(max(self.pos, 0), len(expr))
         pointer = " " * pos + "^"
-        return f"JSONPath 语法错误（第 {pos + 1} 个字符）：{self}\n{expr}\n{pointer}"
+        return QCoreApplication.translate("JsonPath", 'JSONPath 语法错误（第 {0} 个字符）：{1}\n{2}\n{3}').format(pos + 1, self, expr, pointer)
 
 
 @dataclass(frozen=True)
@@ -146,9 +147,9 @@ class _Parser:
     def parse(self) -> list:
         self._skip_ws()
         if self._peek() not in ("$", "@"):
-            raise self._fail("必须以 $ 开头（如 $.data.list[0]）")
+            raise self._fail(QCoreApplication.translate("JsonPath", "必须以 $ 开头（如 $.data.list[0]）"))
         if self._peek() == "@":
-            raise self._fail("最外层请用 $ 而不是 @（@ 只在过滤器里表示当前元素）")
+            raise self._fail(QCoreApplication.translate("JsonPath", "最外层请用 $ 而不是 @（@ 只在过滤器里表示当前元素）"))
         self.i += 1
         selectors: list = []
         while not self._eof():
@@ -161,7 +162,8 @@ class _Parser:
             elif ch == "[":
                 selectors.append(self._parse_bracket())
             else:
-                raise self._fail(f"无法识别的 {ch!r}：字段前要有 . 或 [")
+                raise self._fail(QCoreApplication.translate(
+                    "JsonPath", "无法识别的 {0}：字段前要有 . 或 [").format(repr(ch)))
         return selectors
 
     def _parse_dot(self) -> object:
@@ -174,7 +176,7 @@ class _Parser:
                 return Recursive(None)
             m = _IDENT_RE.match(self.s, self.i)
             if not m:
-                raise self._fail(".. 后面要跟字段名或 *（如 $..id）")
+                raise self._fail(QCoreApplication.translate("JsonPath", ".. 后面要跟字段名或 *（如 $..id）"))
             self.i = m.end()
             return Recursive(m.group(0))
         if self._peek() == "*":
@@ -182,10 +184,10 @@ class _Parser:
             return Wildcard()
         m = _IDENT_RE.match(self.s, self.i)
         if not m:
-            raise self._fail(". 后面要跟字段名或 *（如 $.data）")
+            raise self._fail(QCoreApplication.translate("JsonPath", ". 后面要跟字段名或 *（如 $.data）"))
         self.i = m.end()
         if start == self.i:
-            raise self._fail("空的字段访问")
+            raise self._fail(QCoreApplication.translate("JsonPath", "空的字段访问"))
         name = m.group(0)
         # `length()` / `min()` / `max()`：带括号才是函数，
         # 字段恰巧叫 length 的（$.a.length）不受影响
@@ -205,7 +207,7 @@ class _Parser:
         self.i = end + 1                # 吃掉 ]
         body = content.strip()
         if not body:
-            raise self._fail("[] 里是空的")
+            raise self._fail(QCoreApplication.translate("JsonPath", "[] 里是空的"))
 
         parts = self._split_union(body)
         if len(parts) > 1:
@@ -236,7 +238,7 @@ class _Parser:
                     return self.s[self.i : j], j
                 depth -= 1
             j += 1
-        raise self._fail("缺少配对的 ]")
+        raise self._fail(QCoreApplication.translate("JsonPath", "缺少配对的 ]"))
 
     def _split_union(self, body: str) -> list[str]:
         """按顶层逗号切分（引号内的逗号不算）。"""
@@ -271,18 +273,19 @@ class _Parser:
             return Index(int(token))
         if _IDENT_RE.fullmatch(token):
             return Key(token)
-        raise self._fail(f"无法识别的 [{token}]")
+        raise self._fail(QCoreApplication.translate("JsonPath", '无法识别的 [{0}]').format(token))
 
     def _parse_slice(self, token: str) -> Slice:
         parts = token.split(":")
         if len(parts) > 2:
-            raise self._fail("暂不支持带步长的切片（如 [::2]）")
+            raise self._fail(QCoreApplication.translate("JsonPath", "暂不支持带步长的切片（如 [::2]）"))
         def num(text: str) -> int | None:
             text = text.strip()
             if not text:
                 return None
             if not _INT_RE.fullmatch(text):
-                raise self._fail(f"切片的 {text!r} 不是整数")
+                raise self._fail(QCoreApplication.translate(
+                    "JsonPath", "切片的 {0} 不是整数").format(repr(text)))
             return int(text)
         return Slice(num(parts[0]), num(parts[1]))
 
@@ -290,7 +293,7 @@ class _Parser:
         self.i += 1                     # 吃掉 ?
         self._skip_ws()
         if self._peek() != "(":
-            raise self._fail("? 后面要跟 ( 表达式 )，如 $[?(@.price > 10)]")
+            raise self._fail(QCoreApplication.translate("JsonPath", "? 后面要跟 ( 表达式 )，如 $[?(@.price > 10)]"))
         depth = 0
         quote = ""
         j = self.i
@@ -313,15 +316,15 @@ class _Parser:
                     break
             j += 1
         if depth != 0:
-            raise self._fail("过滤器缺少配对的 )")
+            raise self._fail(QCoreApplication.translate("JsonPath", "过滤器缺少配对的 )"))
         expr = self.s[start + 1 : j]
         self.i = j + 1
         self._skip_ws()
         if self._peek() != "]":
-            raise self._fail("过滤器后面要跟 ]")
+            raise self._fail(QCoreApplication.translate("JsonPath", "过滤器后面要跟 ]"))
         self.i += 1
         if not expr.strip():
-            raise self._fail("过滤器是空的，如 $[?(@.price > 10)]")
+            raise self._fail(QCoreApplication.translate("JsonPath", "过滤器是空的，如 $[?(@.price > 10)]"))
         return Filter(expr)
 
 
@@ -411,7 +414,8 @@ def _eval_condition(node, condition: str) -> bool:
 
     parts = _field_parts(left)
     if not parts:
-        raise JsonPathError(f"过滤器左边要以 @ 开头：{condition.strip()!r}")
+        raise JsonPathError(QCoreApplication.translate(
+            "JsonPath", "过滤器左边要以 @ 开头：{0}").format(repr(condition.strip())))
     return _compare(_resolve_field(node, parts), op, _literal(right))
 
 
@@ -427,13 +431,14 @@ def _field_parts(text: str) -> list[str]:
             text = text[1:]
             m = _IDENT_RE.match(text)
             if not m:
-                raise JsonPathError(f"过滤器里的字段名不合法：{text!r}")
+                raise JsonPathError(QCoreApplication.translate(
+                "JsonPath", "过滤器里的字段名不合法：{0}").format(repr(text)))
             parts.append(m.group(0))
             text = text[m.end():]
         elif text.startswith("["):
             end = text.find("]")
             if end < 0:
-                raise JsonPathError("过滤器里的 [ 缺少配对的 ]")
+                raise JsonPathError(QCoreApplication.translate("JsonPath", "过滤器里的 [ 缺少配对的 ]"))
             token = text[1:end].strip()
             if len(token) >= 2 and token[0] == token[-1] and token[0] in "'\"":
                 parts.append(token[1:-1])
@@ -441,9 +446,10 @@ def _field_parts(text: str) -> list[str]:
                 parts.append(token)
             text = text[end + 1:]
         else:
-            raise JsonPathError(f"过滤器里无法解析：{text!r}")
+            raise JsonPathError(QCoreApplication.translate(
+                "JsonPath", "过滤器里无法解析：{0}").format(repr(text)))
     if not parts:
-        raise JsonPathError("过滤器里 @ 后面没有字段，如 @.price")
+        raise JsonPathError(QCoreApplication.translate("JsonPath", "过滤器里 @ 后面没有字段，如 @.price"))
     return parts
 
 
@@ -549,11 +555,13 @@ def _apply_function(func: Function, nodes: list[tuple[str, object]]) -> list[tup
     for v in values:
         if isinstance(v, bool) or not isinstance(v, (int, float)):
             raise JsonPathError(
-                f"{func.name}() 只能比较数字（遇到 {type(v).__name__}：{v!r}）"
+                QCoreApplication.translate(
+                    "JsonPath", "{0}() 只能比较数字（遇到 {1}：{2}）"
+                ).format(func.name, type(v).__name__, repr(v))
             )
         numbers.append(v)
     if not numbers:
-        raise JsonPathError(f"{func.name}() 没有可比较的数字（结果为空）")
+        raise JsonPathError(QCoreApplication.translate("JsonPath", '{0}() 没有可比较的数字（结果为空）').format(func.name))
     result = min(numbers) if func.name == "min" else max(numbers)
     return [(f"{base}.{func.name}()", result)]
 
@@ -614,13 +622,13 @@ def find(expr: str, data: object) -> tuple[list[Match], str | None]:
     """执行 JSONPath。返回 `(匹配列表, 错误信息)`——错误不抛，交给 UI 显示。"""
     text = (expr or "").strip()
     if not text:
-        return [], "请输入 JSONPath 表达式（如 $.data.list[0]）"
+        return [], QCoreApplication.translate("JsonPath", "请输入 JSONPath 表达式（如 $.data.list[0]）")
     try:
         selectors = parse(text)
     except JsonPathError as exc:
         return [], exc.describe(text)
     except RecursionError:
-        return [], "表达式嵌套过深"
+        return [], QCoreApplication.translate("JsonPath", "表达式嵌套过深")
 
     nodes: list[tuple[str, object]] = [("$", data)]
     try:
@@ -629,11 +637,11 @@ def find(expr: str, data: object) -> tuple[list[Match], str | None]:
     except JsonPathError as exc:
         return [], exc.describe(text)
     except RecursionError:
-        return [], "数据嵌套过深，无法继续提取"
+        return [], QCoreApplication.translate("JsonPath", "数据嵌套过深，无法继续提取")
 
     if len(nodes) > MAX_MATCHES:
         nodes = nodes[:MAX_MATCHES]
-        note = f"（命中过多，仅显示前 {MAX_MATCHES} 条）"
+        note = QCoreApplication.translate("JsonPath", '（命中过多，仅显示前 {0} 条）').format(MAX_MATCHES)
     else:
         note = None
     matches = [Match(path, value) for path, value in nodes]

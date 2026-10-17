@@ -52,6 +52,9 @@ DEFAULT_LANG = "zh_CN"
 
 # 当前进程已安装的翻译器（进程内只装一个，切换时先卸再装）。
 _current: QTranslator | None = None
+#: 实际生效的语言码。不能用 ``_current.language()`` 反推——.qm 里写的是
+#: ``en_US`` 而 SUPPORTED 的 key 是 ``en``，normalize 会把 en_US 回落成中文。
+_current_lang: str = DEFAULT_LANG
 
 
 def available_languages() -> dict[str, str]:
@@ -76,7 +79,7 @@ def load_language(app: QCoreApplication, lang: str) -> str:
     zh_CN 是源语言，不装任何翻译器（显示原文即中文）。
     其它语言加载同名 .qm；若 .qm 缺失则回落源语言（中文）。
     """
-    global _current
+    global _current, _current_lang
 
     # 先卸掉上一次装的，避免叠加
     if _current is not None:
@@ -85,6 +88,7 @@ def load_language(app: QCoreApplication, lang: str) -> str:
 
     lang = normalize(lang)
     if lang == DEFAULT_LANG:
+        _current_lang = DEFAULT_LANG
         return lang  # 源语言：无需 .qm
 
     qm = next(
@@ -93,15 +97,18 @@ def load_language(app: QCoreApplication, lang: str) -> str:
         None,
     )
     if qm is None:
+        _current_lang = DEFAULT_LANG
         return DEFAULT_LANG  # 缺翻译文件，回落中文
 
     translator = QTranslator()
     if not translator.load(str(qm)):
+        _current_lang = DEFAULT_LANG
         return DEFAULT_LANG
     app.installTranslator(translator)
     _current = translator
+    _current_lang = lang
     return lang
 
 
 def current_language() -> str:
-    return DEFAULT_LANG if _current is None else normalize(_current.language() or DEFAULT_LANG)
+    return _current_lang

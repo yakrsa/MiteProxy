@@ -17,7 +17,7 @@ import platform
 import subprocess
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Qt, Signal, QT_TRANSLATE_NOOP, QCoreApplication
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
@@ -69,10 +69,10 @@ _LEVEL_COLORS = {
 
 #: 级别筛选下拉：文案 -> 最低级别阈值（记录 levelno >= 阈值才显示）
 _FILTERS = [
-    ("全部", logging.DEBUG),
-    ("INFO 及以上", logging.INFO),
-    ("WARNING 及以上", logging.WARNING),
-    ("ERROR 及以上", logging.ERROR),
+    (QT_TRANSLATE_NOOP("LogPanel", "全部"), logging.DEBUG),
+    (QT_TRANSLATE_NOOP("LogPanel", "INFO 及以上"), logging.INFO),
+    (QT_TRANSLATE_NOOP("LogPanel", "WARNING 及以上"), logging.WARNING),
+    (QT_TRANSLATE_NOOP("LogPanel", "ERROR 及以上"), logging.ERROR),
 ]
 
 #: 内存里最多保留的行数（防止长时间运行把文本区撑爆；磁盘文件另有滚动上限）
@@ -87,22 +87,23 @@ class LogPanel(QWidget):
 
         # ---- 顶部工具栏：级别筛选 / 打开文件 / 清空
         bar = QHBoxLayout()
-        bar.addWidget(QLabel("级别:"))
+        bar.addWidget(QLabel(self.tr("级别:")))
         self.level_combo = QComboBox()
         for label, lvl in _FILTERS:
+            label = QCoreApplication.translate("LogPanel", label)
             self.level_combo.addItem(label, lvl)
         self.level_combo.setCurrentIndex(0)
         self.level_combo.currentIndexChanged.connect(self._on_filter_changed)
         bar.addWidget(self.level_combo)
         bar.addStretch(1)
 
-        self.open_btn = QPushButton("打开日志文件")
-        self.open_btn.setToolTip("在访达中打开滚动日志文件（macOS）")
+        self.open_btn = QPushButton(self.tr("打开日志文件"))
+        self.open_btn.setToolTip(self.tr("在访达中打开滚动日志文件（macOS）"))
         self.open_btn.clicked.connect(self._open_log)
         bar.addWidget(self.open_btn)
 
-        self.clear_btn = QPushButton("清空")
-        self.clear_btn.setToolTip("清空当前显示的日志（不影响磁盘文件）")
+        self.clear_btn = QPushButton(self.tr("清空"))
+        self.clear_btn.setToolTip(self.tr("清空当前显示的日志（不影响磁盘文件）"))
         self.clear_btn.clicked.connect(self._clear)
         bar.addWidget(self.clear_btn)
 

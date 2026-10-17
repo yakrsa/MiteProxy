@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QCoreApplication
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -74,7 +74,7 @@ class RuleEditorDialog(QDialog):
         # 标题按"规则是否已在 store 中"区分新增/编辑，而非仅看是否传了 rule：
         # 从抓包「加入 Mock」预填的也属新增，应显示「新增」而非「编辑」。
         is_edit = any(r.id == self.rule.id for r in store.all())
-        self.setWindowTitle("编辑 Mock 规则" if is_edit else "新增 Mock 规则")
+        self.setWindowTitle(self.tr("编辑 Mock 规则") if is_edit else self.tr("新增 Mock 规则"))
         self.setMinimumWidth(640)
         self._build_ui()
         self._load_rule()
@@ -268,41 +268,41 @@ class RuleEditorDialog(QDialog):
     def _collect(self) -> tuple[bool, str]:
         name = self.name_edit.text().strip()
         if not name:
-            return False, "规则名称不能为空"
+            return False, self.tr("规则名称不能为空")
         match_type = self.match_type_combo.currentData()
         match_value = self.match_value_edit.text().strip()
         if not match_value:
-            return False, "匹配值不能为空"
+            return False, self.tr("匹配值不能为空")
         if match_type == REGEX:
             try:
                 re.compile(match_value)
             except re.error as e:
-                return False, f"正则无效: {e}"
+                return False, self.tr('正则无效: {0}').format(e)
         method = self.method_combo.currentData() or ""
 
         try:
             latency = int(self.latency_edit.text().strip() or "0")
         except ValueError:
-            return False, "延迟必须是整数毫秒"
+            return False, self.tr("延迟必须是整数毫秒")
         if not (0 <= latency <= MAX_LATENCY_MS):
-            return False, f"延迟必须在 0~{MAX_LATENCY_MS} 毫秒之间"
+            return False, self.tr('延迟必须在 0~{0} 毫秒之间').format(MAX_LATENCY_MS)
 
         # ---- 重定向模式：status/headers/body 均不生效
         if self.redirect_radio.isChecked():
             redirect_url = self.redirect_edit.text().strip()
             if not redirect_url:
-                return False, "重定向目标不能为空"
+                return False, self.tr("重定向目标不能为空")
             if not (redirect_url.startswith("http://") or redirect_url.startswith("https://")):
-                return False, "重定向目标必须以 http:// 或 https:// 开头"
+                return False, self.tr("重定向目标必须以 http:// 或 https:// 开头")
             action = Action(redirect_url=redirect_url, latency_ms=latency)
             return True, self._apply(name, match_type, match_value, method, action)
 
         try:
             status = int(self.status_edit.text().strip())
         except ValueError:
-            return False, "状态码必须是整数"
+            return False, self.tr("状态码必须是整数")
         if not (100 <= status <= 599):
-            return False, "状态码必须在 100~599 之间"
+            return False, self.tr("状态码必须在 100~599 之间")
 
         headers = {}
         for row in range(self.headers_table.rowCount()):
@@ -315,11 +315,11 @@ class RuleEditorDialog(QDialog):
         if self.file_radio.isChecked():
             file_path = self.file_path_edit.text().strip()
             if not file_path:
-                return False, "请选择本地文件路径"
+                return False, self.tr("请选择本地文件路径")
             import os
 
             if not os.path.isfile(os.path.expanduser(file_path)):
-                return False, f"文件不存在: {file_path}"
+                return False, self.tr('文件不存在: {0}').format(file_path)
             action = Action(
                 status=status,
                 headers=headers,
@@ -366,7 +366,7 @@ class RuleEditorDialog(QDialog):
     # ------------------------------------------------------------ 事件
 
     def _browse_file(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "选择 mock 响应文件")
+        path, _ = QFileDialog.getOpenFileName(self, self.tr("选择 mock 响应文件"))
         if path:
             self.file_path_edit.setText(path)
 

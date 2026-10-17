@@ -27,7 +27,7 @@ from app import feedback as fb
 class FeedbackDialog(QDialog):
     def __init__(self, parent=None, transport=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("意见反馈")
+        self.setWindowTitle(self.tr("意见反馈"))
         self.setMinimumWidth(520)
         # transport: 可注入的发送函数 (url, data, headers) -> None，
         # 结果仍需经 finish_transport(status, raw, err) 回流；None 用真网络。
@@ -42,26 +42,24 @@ class FeedbackDialog(QDialog):
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel("遇到问题或有功能建议？描述越具体越容易定位："))
+        layout.addWidget(QLabel(self.tr("遇到问题或有功能建议？描述越具体越容易定位：")))
         self.nick_edit = QLineEdit()
-        self.nick_edit.setPlaceholderText("你的昵称（必填，≤64 字符；会显示在 issue 标题上）")
+        self.nick_edit.setPlaceholderText(self.tr("你的昵称（必填，≤64 字符；会显示在 issue 标题上）"))
         self.nick_edit.setMaxLength(fb.NICKNAME_MAX_LEN)
         layout.addWidget(self.nick_edit)
 
         self.title_edit = QLineEdit()
-        self.title_edit.setPlaceholderText("一句话概括（必填），如：导入 Fiddler 规则后中文乱码")
+        self.title_edit.setPlaceholderText(self.tr("一句话概括（必填），如：导入 Fiddler 规则后中文乱码"))
         layout.addWidget(self.title_edit)
 
         self.body_edit = QPlainTextEdit()
         self.body_edit.setPlaceholderText(
-            "详细描述（必填）：做了什么操作、期望的结果、实际的结果…"
+            self.tr("详细描述（必填）：做了什么操作、期望的结果、实际的结果…")
         )
         layout.addWidget(self.body_edit, 1)
 
         hint = QLabel(
-            f"提交后会自动附带 App 版本 / 系统信息，并以公开 issue 形式"
-            f"创建到 GitHub（{fb.GITHUB_REPO}）。昵称会显示在 issue 标题上，"
-            f"便于我们回复与追溯。"
+            self.tr('提交后会自动附带 App 版本 / 系统信息，并以公开 issue 形式创建到 GitHub（{0}）。昵称会显示在 issue 标题上，便于我们回复与追溯。').format(fb.GITHUB_REPO)
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -74,10 +72,10 @@ class FeedbackDialog(QDialog):
 
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
-        self.submit_btn = QPushButton("提交")
+        self.submit_btn = QPushButton(self.tr("提交"))
         self.submit_btn.setDefault(True)
         self.submit_btn.clicked.connect(self._on_submit)
-        cancel_btn = QPushButton("取消")
+        cancel_btn = QPushButton(self.tr("取消"))
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(self.submit_btn)
         btn_row.addWidget(cancel_btn)
@@ -93,8 +91,7 @@ class FeedbackDialog(QDialog):
     def _check_token(self) -> None:
         if not fb.get_token():
             self._show_status(
-                "开发者尚未配置反馈通道，请到 GitHub 手动提 issue："
-                f"{fb.NEW_ISSUE_URL}",
+                self.tr('开发者尚未配置反馈通道，请到 GitHub 手动提 issue：{0}').format(fb.NEW_ISSUE_URL),
                 error=True,
             )
             self.submit_btn.setEnabled(False)
@@ -104,15 +101,15 @@ class FeedbackDialog(QDialog):
         title = self.title_edit.text().strip()
         content = self.body_edit.toPlainText().strip()
         if not nickname:
-            self._show_status("请填写昵称（必填，会显示在 issue 标题上）。", error=True)
+            self._show_status(self.tr("请填写昵称（必填，会显示在 issue 标题上）。"), error=True)
             return
         if not title or not content:
-            self._show_status("标题和内容都需要填写。", error=True)
+            self._show_status(self.tr("标题和内容都需要填写。"), error=True)
             return
         if self._reply is not None:
             return  # 已在提交中
         self.submit_btn.setEnabled(False)
-        self._show_status("正在提交…")
+        self._show_status(self.tr("正在提交…"))
         body = fb.build_issue_body(content, fb.collect_diagnostics(), nickname)
         data = fb.payload(fb.build_issue_title(nickname, title), body)
         headers = fb.headers(fb.get_token())
@@ -155,7 +152,7 @@ class FeedbackDialog(QDialog):
             from PySide6.QtWidgets import QMessageBox
 
             box = QMessageBox(self)
-            box.setWindowTitle("意见反馈")
+            box.setWindowTitle(self.tr("意见反馈"))
             box.setText(message + (f"\n{issue_url}" if issue_url else ""))
             box.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             box.exec()

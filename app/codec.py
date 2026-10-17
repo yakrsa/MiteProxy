@@ -29,6 +29,7 @@ from urllib.parse import (
     quote_plus,
     unquote_to_bytes,
 )
+from PySide6.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 
 
 def _unquote_plus_to_bytes(text: str) -> bytes:
@@ -37,9 +38,9 @@ def _unquote_plus_to_bytes(text: str) -> bytes:
 
 # ---------------------------------------------------------------- 常量
 
-GROUP_CODEC = "编解码"
-GROUP_FORMAT = "格式 · 文本"
-GROUP_HASH = "哈希"
+GROUP_CODEC = QT_TRANSLATE_NOOP("Codec", "编解码")
+GROUP_FORMAT = QT_TRANSLATE_NOOP("Codec", "格式 · 文本")
+GROUP_HASH = QT_TRANSLATE_NOOP("Codec", "哈希")
 
 #: 放到工具栏上的常用四项（对齐 Fiddler 里用得最多的那几个）
 QUICK_KEYS = ("url_encode", "url_decode", "b64_encode", "b64_decode")
@@ -92,7 +93,7 @@ def _decode_bytes(raw: bytes) -> Result:
     except UnicodeDecodeError:
         return _ok(
             raw.decode("latin-1"),
-            "结果不是合法 UTF-8，已按单字节显示；要看原始字节请再做一次「Hex 编码」",
+            QCoreApplication.translate("Codec", "结果不是合法 UTF-8，已按单字节显示；要看原始字节请再做一次「Hex 编码」"),
         )
 
 
@@ -107,7 +108,7 @@ def _binary_candidates(text: str) -> list[tuple[str, bytes]]:
     """
     s = re.sub(r"\s+", "", text)
     if not s:
-        raise TransformError("输入为空")
+        raise TransformError(QCoreApplication.translate("Codec", "输入为空"))
     out: list[tuple[str, bytes]] = []
     if _HEX_RE.match(s) and len(s) % 2 == 0:
         try:
@@ -127,7 +128,7 @@ def _binary_candidates(text: str) -> list[tuple[str, bytes]]:
             pass
     if not out:
         raise TransformError(
-            "输入既不是 Hex 也不是 Base64——二进制数据请先用其中一种形态贴进来"
+            QCoreApplication.translate("Codec", "输入既不是 Hex 也不是 Base64——二进制数据请先用其中一种形态贴进来")
         )
     return out
 
@@ -161,7 +162,7 @@ def _b64_decode(text: str) -> Result:
         return _ok("")
     if not _B64_RE.match(s):
         raise TransformError(
-            "不是合法的 Base64（只认 A-Z a-z 0-9 + / - _，末尾 = 补齐）"
+            QCoreApplication.translate("Codec", "不是合法的 Base64（只认 A-Z a-z 0-9 + / - _，末尾 = 补齐）")
         )
     padded = s + "=" * ((-len(s)) % 4)
     try:
@@ -171,7 +172,7 @@ def _b64_decode(text: str) -> Result:
             else base64.b64decode(padded)
         )
     except (binascii.Error, ValueError) as exc:
-        raise TransformError(f"Base64 解码失败：{exc}")
+        raise TransformError(QCoreApplication.translate("Codec", 'Base64 解码失败：{0}').format(exc))
     return _decode_bytes(raw)
 
 
@@ -185,9 +186,9 @@ def _hex_decode(text: str) -> Result:
     if not s:
         return _ok("")
     if len(s) % 2:
-        raise TransformError(f"十六进制长度应为偶数，当前 {len(s)} 个字符")
+        raise TransformError(QCoreApplication.translate("Codec", '十六进制长度应为偶数，当前 {0} 个字符').format(len(s)))
     if not _HEX_RE.match(s):
-        raise TransformError("含非十六进制字符（只认 0-9 a-f A-F）")
+        raise TransformError(QCoreApplication.translate("Codec", "含非十六进制字符（只认 0-9 a-f A-F）"))
     return _decode_bytes(bytes.fromhex(s))
 
 
@@ -223,7 +224,7 @@ def _json_unescape(text: str) -> Result:
         # 带引号的完整 JSON 字符串 / 不带引号的字符串内容，都认
         return _ok(json.loads(s if s.startswith('"') else f'"{s}"'))
     except json.JSONDecodeError as exc:
-        raise TransformError(f"不是合法的 JSON 字符串：{exc}")
+        raise TransformError(QCoreApplication.translate("Codec", '不是合法的 JSON 字符串：{0}').format(exc))
 
 
 def _json_error_message(error) -> str:
@@ -261,7 +262,7 @@ def _gzip_compress(text: str) -> Result:
     except TypeError:  # pragma: no cover - 老版本 Python 无 mtime 参数
         packed = gzip.compress(raw)
     b64 = base64.b64encode(packed).decode("ascii")
-    return _ok(b64, f"UTF-8 {len(raw)}B → gzip {len(packed)}B → Base64 {len(b64)} 字符")
+    return _ok(b64, QCoreApplication.translate("Codec", 'UTF-8 {0}B → gzip {1}B → Base64 {2} 字符').format(len(raw), len(packed), len(b64)))
 
 
 def _gunzip(text: str) -> Result:
@@ -275,10 +276,10 @@ def _gunzip(text: str) -> Result:
         result = _decode_bytes(out)
         return Result(
             result.text,
-            note=f"（按 {source} 解析，解压后 {len(out)}B）"
+            note=QCoreApplication.translate("Codec", '（按 {0} 解析，解压后 {1}B）').format(source, len(out))
             + (f"；{result.note}" if result.note else ""),
         )
-    raise TransformError("Gzip 解压失败：输入应是 gzip 数据的 Base64 或 Hex")
+    raise TransformError(QCoreApplication.translate("Codec", "Gzip 解压失败：输入应是 gzip 数据的 Base64 或 Hex"))
 
 
 def _deflate_decompress(text: str) -> Result:
@@ -287,8 +288,8 @@ def _deflate_decompress(text: str) -> Result:
         return _ok("")
     for source, raw in _binary_candidates(text):
         for name, call in (
-            ("裸 deflate", lambda b: zlib.decompress(b, -15)),
-            ("zlib 头", lambda b: zlib.decompress(b)),
+            (QCoreApplication.translate("Codec", "裸 deflate"), lambda b: zlib.decompress(b, -15)),
+            (QCoreApplication.translate("Codec", "zlib 头"), lambda b: zlib.decompress(b)),
             ("gzip", lambda b: gzip.decompress(b)),
         ):
             try:
@@ -298,10 +299,10 @@ def _deflate_decompress(text: str) -> Result:
             result = _decode_bytes(out)
             return Result(
                 result.text,
-                note=f"（按 {source} 解析，{name}，解压后 {len(out)}B）"
+                note=QCoreApplication.translate("Codec", '（按 {0} 解析，{1}，解压后 {2}B）').format(source, name, len(out))
                 + (f"；{result.note}" if result.note else ""),
             )
-    raise TransformError("Deflate 解压失败：输入应是 deflate/zlib 数据的 Base64 或 Hex")
+    raise TransformError(QCoreApplication.translate("Codec", "Deflate 解压失败：输入应是 deflate/zlib 数据的 Base64 或 Hex"))
 
 
 def _upper(text: str) -> Result:
@@ -319,20 +320,20 @@ def _jwt_decode(text: str) -> Result:
     match = re.match(r"(?i)^bearer\s+(\S+)$", s)
     if match:
         s = match.group(1)
-        prefix_note = "（已自动去掉 Bearer 前缀）"
+        prefix_note = QCoreApplication.translate("Codec", "（已自动去掉 Bearer 前缀）")
     else:
         prefix_note = ""
     parts = s.split(".")
     if len(parts) != 3:
         raise TransformError(
-            "JWT 应由 header.payload.signature 三段组成（Bearer 前缀会自动去掉）"
+            QCoreApplication.translate("Codec", "JWT 应由 header.payload.signature 三段组成（Bearer 前缀会自动去掉）")
         )
 
     def decode_segment(seg: str, what: str) -> str:
         try:
             raw = base64.urlsafe_b64decode(seg + "=" * ((-len(seg)) % 4))
         except (binascii.Error, ValueError):
-            raise TransformError(f"{what} 不是合法的 Base64URL")
+            raise TransformError(QCoreApplication.translate("Codec", '{0} 不是合法的 Base64URL').format(what))
         return _decode_bytes_str(raw)
 
     def pretty(raw: str) -> str:
@@ -350,7 +351,7 @@ def _jwt_decode(text: str) -> Result:
         pretty(payload_raw),
         "",
         "— Signature —",
-        f"{parts[2]}（未校验签名）",
+        QCoreApplication.translate("Codec", '{0}（未校验签名）').format(parts[2]),
     ]
 
     note = None
@@ -368,11 +369,11 @@ def _jwt_decode(text: str) -> Result:
             if moment is not None:
                 delta = (moment - datetime.now()).total_seconds()
                 if delta < 0:
-                    state = "已过期"
+                    state = QCoreApplication.translate("Codec", "已过期")
                 elif delta > 86400:
-                    state = f"剩余 {int(delta // 86400)} 天"
+                    state = QCoreApplication.translate("Codec", '剩余 {0} 天').format(int(delta // 86400))
                 else:
-                    state = "即将过期（24 小时内）"
+                    state = QCoreApplication.translate("Codec", "即将过期（24 小时内）")
                 note = f"exp → {moment:%Y-%m-%d %H:%M:%S}（{state}）{prefix_note}".strip()
     if note is None and prefix_note:
         note = prefix_note.lstrip("（）")
@@ -386,7 +387,7 @@ def _ts_to_date(text: str) -> Result:
     try:
         value = float(s)
     except ValueError:
-        raise TransformError("请输入数字时间戳（秒或毫秒）")
+        raise TransformError(QCoreApplication.translate("Codec", "请输入数字时间戳（秒或毫秒）"))
     # 1e11 秒 = 公元 5138 年，实际不会遇到；用它区分秒/毫秒足够安全
     is_ms = abs(value) >= 1e11
     seconds = value / 1000.0 if is_ms else value
@@ -394,12 +395,14 @@ def _ts_to_date(text: str) -> Result:
         local = datetime.fromtimestamp(seconds)
         utc = datetime.fromtimestamp(seconds, tz=timezone.utc)
     except (OverflowError, OSError, ValueError) as exc:
-        raise TransformError(f"时间戳超出可表示范围：{exc}")
-    return _ok(
-        f"{local:%Y-%m-%d %H:%M:%S}（本地）\n"
-        f"{utc:%Y-%m-%d %H:%M:%S}（UTC）\n"
-        f"原始数值 {int(value)}，按{'毫秒' if is_ms else '秒'}解释"
-    )
+        raise TransformError(QCoreApplication.translate("Codec", '时间戳超出可表示范围：{0}').format(exc))
+    unit = (QCoreApplication.translate("Codec", "毫秒") if is_ms
+            else QCoreApplication.translate("Codec", "秒"))
+    return _ok(QCoreApplication.translate(
+        "Codec", "{0}（本地）\n{1}（UTC）\n原始数值 {2}，按{3}解释"
+    ).format(
+        f"{local:%Y-%m-%d %H:%M:%S}", f"{utc:%Y-%m-%d %H:%M:%S}", int(value), unit
+    ))
 
 
 def _date_to_ts(text: str) -> Result:
@@ -425,20 +428,18 @@ def _date_to_ts(text: str) -> Result:
                 continue
     if moment is None:
         raise TransformError(
-            "无法解析日期，试试 2026-10-14 00:17:33 或 2026-10-14T00:17:33Z"
+            QCoreApplication.translate("Codec", "无法解析日期，试试 2026-10-14 00:17:33 或 2026-10-14T00:17:33Z")
         )
     if s.isdigit():
         raise TransformError(
-            f"{s} 看起来是时间戳而不是日期，请用「时间戳 → 日期」"
+            QCoreApplication.translate("Codec", '{0} 看起来是时间戳而不是日期，请用「时间戳 → 日期」').format(s)
         )
     stamp = moment.timestamp()
-    zone = "带时区偏移" if moment.tzinfo else "按本地时区解释"
+    zone = QCoreApplication.translate("Codec", "带时区偏移") if moment.tzinfo else QCoreApplication.translate("Codec", "按本地时区解释")
     # 第一行只放纯秒数：方便直接选中复制，附注放后面几行
-    return _ok(
-        f"{int(stamp)}\n"
-        f"{int(stamp * 1000)}（毫秒）\n"
-        f"{moment:%Y-%m-%d %H:%M:%S}，{zone}"
-    )
+    return _ok(QCoreApplication.translate(
+        "Codec", "{0}\n{1}（毫秒）\n{2}，{3}"
+    ).format(int(stamp), int(stamp * 1000), f"{moment:%Y-%m-%d %H:%M:%S}", zone))
 
 
 def _digest(algo: str):
@@ -451,33 +452,33 @@ def _digest(algo: str):
 # ---------------------------------------------------------------- 注册表
 
 _TRANSFORMS: tuple[Transform, ...] = (
-    Transform("url_encode", "URL 编码", GROUP_CODEC, "空格 → %20；除字母数字与 -_.~ 外全部转义（RFC 3986）"),
-    Transform("url_encode_form", "URL 编码（表单）", GROUP_CODEC, "空格 → +，用于 application/x-www-form-urlencoded"),
-    Transform("url_decode", "URL 解码", GROUP_CODEC, "%XX 还原；+ 保持为加号（适用于路径与 query）"),
-    Transform("url_decode_form", "URL 解码（表单）", GROUP_CODEC, "%XX 还原，且 + 视为空格（表单语义）"),
-    Transform("b64_encode", "Base64 编码", GROUP_CODEC, "UTF-8 字节 → Base64（标准字母表，含 + /）"),
-    Transform("b64_decode", "Base64 解码", GROUP_CODEC, "自动忽略换行空格；含 - _ 时按 URL-safe 字母表解"),
-    Transform("hex_encode", "Hex 编码", GROUP_CODEC, "UTF-8 字节 → 小写十六进制串"),
-    Transform("hex_decode", "Hex 解码", GROUP_CODEC, "十六进制串 → 文本；容忍空格、冒号与 0x 前缀"),
-    Transform("html_encode", "HTML 实体编码", GROUP_CODEC, "& < > \" ' → &amp; &lt; … 可直接贴进 HTML 属性"),
-    Transform("html_decode", "HTML 实体解码", GROUP_CODEC, "&amp; &#x27; &nbsp; 等实体还原为字符"),
-    Transform("unicode_escape", "Unicode 转义", GROUP_CODEC, "中文 → \\u4e2d\\u6587，换行 → \\n（字符串字面量形态）"),
-    Transform("unicode_unescape", "Unicode 反转义", GROUP_CODEC, "\\u4e2d\\u6587 → 中文，同时支持 \\x41 \\n \\t"),
-    Transform("json_escape", "JSON 字符串转义", GROUP_CODEC, "加 JSON 所需转义，不加外层引号"),
-    Transform("json_unescape", "JSON 字符串反转义", GROUP_CODEC, "去掉 JSON 转义；带不带外层引号都认"),
-    Transform("gzip_compress", "Gzip 压缩", GROUP_CODEC, "压缩后以 Base64 输出（mtime 固定，同输入同结果）"),
-    Transform("gunzip", "Gzip 解压", GROUP_CODEC, "输入为 gzip 数据的 Base64 或 Hex，两种都试"),
-    Transform("deflate_decompress", "Deflate 解压", GROUP_CODEC, "裸 deflate / zlib 头 / gzip 三种都试"),
-    Transform("jwt_decode", "JWT 解码", GROUP_FORMAT, "拆 header / payload 并美化 JSON，签名不校验；带 exp 时提示是否过期"),
-    Transform("json_pretty", "JSON 美化", GROUP_FORMAT, "缩进 2 空格，中文不转义"),
-    Transform("json_minify", "JSON 压缩", GROUP_FORMAT, "去掉所有多余空白，压成一行"),
-    Transform("ts_to_date", "时间戳 → 日期", GROUP_FORMAT, "自动区分秒 / 毫秒，同时给出本地时间与 UTC"),
-    Transform("date_to_ts", "日期 → 时间戳", GROUP_FORMAT, "秒与毫秒都给；无时区按本地时区解释"),
-    Transform("upper", "转大写", GROUP_FORMAT, "Unicode 大写（中文不受影响）"),
-    Transform("lower", "转小写", GROUP_FORMAT, "Unicode 小写（中文不受影响）"),
-    Transform("md5", "MD5", GROUP_HASH, "32 位十六进制（仅用于校验，勿当密码算法）"),
-    Transform("sha1", "SHA-1", GROUP_HASH, "40 位十六进制（仅用于校验）"),
-    Transform("sha256", "SHA-256", GROUP_HASH, "64 位十六进制（仅用于校验）"),
+    Transform("url_encode", QT_TRANSLATE_NOOP("Codec", "URL 编码"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "空格 → %20；除字母数字与 -_.~ 外全部转义（RFC 3986）")),
+    Transform("url_encode_form", QT_TRANSLATE_NOOP("Codec", "URL 编码（表单）"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "空格 → +，用于 application/x-www-form-urlencoded")),
+    Transform("url_decode", QT_TRANSLATE_NOOP("Codec", "URL 解码"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "%XX 还原；+ 保持为加号（适用于路径与 query）")),
+    Transform("url_decode_form", QT_TRANSLATE_NOOP("Codec", "URL 解码（表单）"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "%XX 还原，且 + 视为空格（表单语义）")),
+    Transform("b64_encode", QT_TRANSLATE_NOOP("Codec", "Base64 编码"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "UTF-8 字节 → Base64（标准字母表，含 + /）")),
+    Transform("b64_decode", QT_TRANSLATE_NOOP("Codec", "Base64 解码"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "自动忽略换行空格；含 - _ 时按 URL-safe 字母表解")),
+    Transform("hex_encode", QT_TRANSLATE_NOOP("Codec", "Hex 编码"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "UTF-8 字节 → 小写十六进制串")),
+    Transform("hex_decode", QT_TRANSLATE_NOOP("Codec", "Hex 解码"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "十六进制串 → 文本；容忍空格、冒号与 0x 前缀")),
+    Transform("html_encode", QT_TRANSLATE_NOOP("Codec", "HTML 实体编码"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "& < > \" ' → &amp; &lt; … 可直接贴进 HTML 属性")),
+    Transform("html_decode", QT_TRANSLATE_NOOP("Codec", "HTML 实体解码"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "&amp; &#x27; &nbsp; 等实体还原为字符")),
+    Transform("unicode_escape", QT_TRANSLATE_NOOP("Codec", "Unicode 转义"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "中文 → \\u4e2d\\u6587，换行 → \\n（字符串字面量形态）")),
+    Transform("unicode_unescape", QT_TRANSLATE_NOOP("Codec", "Unicode 反转义"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "\\u4e2d\\u6587 → 中文，同时支持 \\x41 \\n \\t")),
+    Transform("json_escape", QT_TRANSLATE_NOOP("Codec", "JSON 字符串转义"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "加 JSON 所需转义，不加外层引号")),
+    Transform("json_unescape", QT_TRANSLATE_NOOP("Codec", "JSON 字符串反转义"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "去掉 JSON 转义；带不带外层引号都认")),
+    Transform("gzip_compress", QT_TRANSLATE_NOOP("Codec", "Gzip 压缩"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "压缩后以 Base64 输出（mtime 固定，同输入同结果）")),
+    Transform("gunzip", QT_TRANSLATE_NOOP("Codec", "Gzip 解压"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "输入为 gzip 数据的 Base64 或 Hex，两种都试")),
+    Transform("deflate_decompress", QT_TRANSLATE_NOOP("Codec", "Deflate 解压"), GROUP_CODEC, QT_TRANSLATE_NOOP("Codec", "裸 deflate / zlib 头 / gzip 三种都试")),
+    Transform("jwt_decode", QT_TRANSLATE_NOOP("Codec", "JWT 解码"), GROUP_FORMAT, QT_TRANSLATE_NOOP("Codec", "拆 header / payload 并美化 JSON，签名不校验；带 exp 时提示是否过期")),
+    Transform("json_pretty", QT_TRANSLATE_NOOP("Codec", "JSON 美化"), GROUP_FORMAT, QT_TRANSLATE_NOOP("Codec", "缩进 2 空格，中文不转义")),
+    Transform("json_minify", QT_TRANSLATE_NOOP("Codec", "JSON 压缩"), GROUP_FORMAT, QT_TRANSLATE_NOOP("Codec", "去掉所有多余空白，压成一行")),
+    Transform("ts_to_date", QT_TRANSLATE_NOOP("Codec", "时间戳 → 日期"), GROUP_FORMAT, QT_TRANSLATE_NOOP("Codec", "自动区分秒 / 毫秒，同时给出本地时间与 UTC")),
+    Transform("date_to_ts", QT_TRANSLATE_NOOP("Codec", "日期 → 时间戳"), GROUP_FORMAT, QT_TRANSLATE_NOOP("Codec", "秒与毫秒都给；无时区按本地时区解释")),
+    Transform("upper", QT_TRANSLATE_NOOP("Codec", "转大写"), GROUP_FORMAT, QT_TRANSLATE_NOOP("Codec", "Unicode 大写（中文不受影响）")),
+    Transform("lower", QT_TRANSLATE_NOOP("Codec", "转小写"), GROUP_FORMAT, QT_TRANSLATE_NOOP("Codec", "Unicode 小写（中文不受影响）")),
+    Transform("md5", QT_TRANSLATE_NOOP("Codec", "MD5"), GROUP_HASH, QT_TRANSLATE_NOOP("Codec", "32 位十六进制（仅用于校验，勿当密码算法）")),
+    Transform("sha1", QT_TRANSLATE_NOOP("Codec", "SHA-1"), GROUP_HASH, QT_TRANSLATE_NOOP("Codec", "40 位十六进制（仅用于校验）")),
+    Transform("sha256", QT_TRANSLATE_NOOP("Codec", "SHA-256"), GROUP_HASH, QT_TRANSLATE_NOOP("Codec", "64 位十六进制（仅用于校验）")),
 )
 
 _FUNCS = {
@@ -550,7 +551,7 @@ def run(key: str, text: str) -> Result:
     """执行转换：任何异常都收敛成 Result.error，不往 UI 上抛。"""
     func = _FUNCS.get(key)
     if func is None:
-        return Result(error=f"未知转换：{key}")
+        return Result(error=QCoreApplication.translate("Codec", '未知转换：{0}').format(key))
     try:
         return func(text)
     except TransformError as exc:

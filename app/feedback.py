@@ -22,6 +22,7 @@ import sys
 from pathlib import Path
 
 from app.version import __version__
+from PySide6.QtCore import QCoreApplication
 
 # ---------------------------------------------------------------- 常量
 
@@ -128,20 +129,22 @@ def headers(token: str) -> dict:
 def describe_result(status: int, err: str = "") -> str:
     """把 GitHub API / 网络层的结果转成用户可读的一句话提示。"""
     if status == 0:
-        return f"网络请求失败：{err or '无法连接 GitHub'}。请检查网络后重试。"
+        return QCoreApplication.translate(
+            "feedback", "网络请求失败：{0}。请检查网络后重试。"
+        ).format(err or QCoreApplication.translate("feedback", "无法连接 GitHub"))
     if status == 401:
-        return "提交失败：反馈凭证无效（token 已过期或被撤销）。"
+        return QCoreApplication.translate("feedback", "提交失败：反馈凭证无效（token 已过期或被撤销）。")
     if status == 403:
         if "rate limit" in (err or "").lower():
-            return "提交失败：GitHub 接口限流，请稍后再试。"
-        return "提交失败：没有创建 issue 的权限（token 权限不足）。"
+            return QCoreApplication.translate("feedback", "提交失败：GitHub 接口限流，请稍后再试。")
+        return QCoreApplication.translate("feedback", "提交失败：没有创建 issue 的权限（token 权限不足）。")
     if status == 404:
-        return "提交失败：仓库不存在或 token 未授权该仓库。"
+        return QCoreApplication.translate("feedback", "提交失败：仓库不存在或 token 未授权该仓库。")
     if status == 422:
-        return "提交失败：内容未通过 GitHub 校验（标题或正文可能过长）。"
+        return QCoreApplication.translate("feedback", "提交失败：内容未通过 GitHub 校验（标题或正文可能过长）。")
     if 500 <= status < 600:
-        return f"提交失败：GitHub 服务暂时不可用（HTTP {status}），请稍后再试。"
-    return f"提交失败：HTTP {status} {err}".strip()
+        return QCoreApplication.translate("feedback", '提交失败：GitHub 服务暂时不可用（HTTP {0}），请稍后再试。').format(status)
+    return QCoreApplication.translate("feedback", '提交失败：HTTP {0} {1}').format(status, err).strip()
 
 
 def parse_issue_response(status: int, raw: bytes, err: str = "") -> tuple[bool, str, str]:
@@ -153,5 +156,5 @@ def parse_issue_response(status: int, raw: bytes, err: str = "") -> tuple[bool, 
             url = data.get("html_url", "") or ""
         except Exception:
             pass
-        return True, "反馈已提交，感谢！", url
+        return True, QCoreApplication.translate("feedback", "反馈已提交，感谢！"), url
     return False, describe_result(status, err), ""

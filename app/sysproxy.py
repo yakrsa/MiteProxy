@@ -21,6 +21,7 @@ import platform
 import subprocess
 
 from app.rules import CONFIG_DIR
+from PySide6.QtCore import QCoreApplication
 
 log = logging.getLogger(__name__)
 
@@ -161,7 +162,7 @@ def _macos_takeover(port: int, run, elevate: bool) -> tuple[bool, str]:
         run = _run_elevated
     services = _macos_services(run)
     if not services:
-        return False, "无法枚举网络服务（networksetup 失败）"
+        return False, QCoreApplication.translate("sysproxy", "无法枚举网络服务（networksetup 失败）")
     saved: dict[str, dict] = {}
     changed: list[tuple[str, bool]] = []
     for svc in services:
@@ -180,14 +181,14 @@ def _macos_takeover(port: int, run, elevate: bool) -> tuple[bool, str]:
                         run, done_svc, done_secure,
                         orig["server"], orig["port"], orig["enabled"],
                     )
-                return False, f"设置 {svc} 代理失败: {err.strip() or rc}"
+                return False, QCoreApplication.translate("sysproxy", '设置 {0} 代理失败: {1}').format(svc, err.strip() or rc)
             changed.append((svc, secure))
     STATE_PATH.write_text(
         json.dumps({"platform": "darwin", "port": port, "services": saved},
                    ensure_ascii=False, indent=1),
         encoding="utf-8",
     )
-    return True, f"已接管 {len(services)} 个网络服务的系统代理"
+    return True, QCoreApplication.translate("sysproxy", '已接管 {0} 个网络服务的系统代理').format(len(services))
 
 
 def _win_takeover(port: int, run) -> tuple[bool, str]:
@@ -197,14 +198,14 @@ def _win_takeover(port: int, run) -> tuple[bool, str]:
         "reg", "add", _WIN_KEY, "/v", "ProxyServer", "/t", "REG_SZ", "/d", server, "/f",
     ])
     if rc != 0:
-        return False, f"写注册表失败: {err.strip()}"
+        return False, QCoreApplication.translate("sysproxy", '写注册表失败: {0}').format(err.strip())
     run(["reg", "add", _WIN_KEY, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f"])
     STATE_PATH.write_text(
         json.dumps({"platform": "windows", "port": port, "saved": saved},
                    ensure_ascii=False, indent=1),
         encoding="utf-8",
     )
-    return True, "已接管系统代理"
+    return True, QCoreApplication.translate("sysproxy", "已接管系统代理")
 
 
 def restore(run=_run, port: int | None = None) -> tuple[bool, str]:
@@ -218,14 +219,14 @@ def restore(run=_run, port: int | None = None) -> tuple[bool, str]:
     if not STATE_PATH.exists():
         if port is not None:
             return _clear_local_proxy(run, port)
-        return True, "无接管记录"
+        return True, QCoreApplication.translate("sysproxy", "无接管记录")
     try:
         state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         STATE_PATH.unlink(missing_ok=True)
         if port is not None:
             return _clear_local_proxy(run, port)
-        return False, f"接管记录损坏，跳过还原: {e}"
+        return False, QCoreApplication.translate("sysproxy", '接管记录损坏，跳过还原: {0}').format(e)
 
     if state.get("platform") == "windows":
         saved = state.get("saved", {})
@@ -250,7 +251,7 @@ def restore(run=_run, port: int | None = None) -> tuple[bool, str]:
                     bool(orig.get("enabled")),
                 )
     STATE_PATH.unlink(missing_ok=True)
-    return True, "已还原系统代理"
+    return True, QCoreApplication.translate("sysproxy", "已还原系统代理")
 
 
 def _clear_local_proxy(run, port: int) -> tuple[bool, str]:
@@ -280,8 +281,8 @@ def _clear_local_proxy(run, port: int) -> tuple[bool, str]:
                     _macos_set(run, svc, secure, "", 0, False)
                     changed += 1
     if changed:
-        return True, f"已还原系统代理（无接管记录，按端口 {port} 兜底关闭）"
-    return True, "无接管记录"
+        return True, QCoreApplication.translate("sysproxy", '已还原系统代理（无接管记录，按端口 {0} 兜底关闭）').format(port)
+    return True, QCoreApplication.translate("sysproxy", "无接管记录")
 
 
 def recover_if_needed(run=_run, port: int | None = None) -> bool:
@@ -290,7 +291,7 @@ def recover_if_needed(run=_run, port: int | None = None) -> bool:
         # 快照不存在也可能有残留接管（快照被外部删除等），按端口兜底扫一遍
         if port is not None:
             ok, msg = _clear_local_proxy(run, port)
-            if "兜底" in msg:
+            if QCoreApplication.translate("sysproxy", "兜底") in msg:
                 log.info("崩溃恢复系统代理: %s", msg)
                 return ok
         return False
