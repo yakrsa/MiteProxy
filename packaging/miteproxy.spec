@@ -9,6 +9,11 @@ block_cipher = None
 
 PROJECT = Path(SPECPATH).resolve().parent  # spec 在 packaging/ 下，项目根是其上级
 
+# 版本号唯一事实源是 app/version.py——Finder「显示简介」/关于框/检查更新
+# 都必须是它。以前这里写死过 "2.0.0" 忘改，导致装了新版 Finder 仍显示旧版。
+sys.path.insert(0, str(PROJECT))
+from app.version import __version__ as APP_VERSION  # noqa: E402
+
 a = Analysis(
     [str(PROJECT / "app" / "main.py")],
     pathex=[str(PROJECT)],
@@ -78,7 +83,8 @@ if sys.platform == "darwin":
         icon=str(PROJECT / "packaging" / "icon.icns"),
         bundle_identifier="com.miteproxy.app",
         info_plist={
-            "CFBundleShortVersionString": "2.0.0",
+            "CFBundleShortVersionString": APP_VERSION,
+            "CFBundleVersion": APP_VERSION,
             "CFBundleName": "MiteProxy",
             "NSHighResolutionCapable": True,
         },
