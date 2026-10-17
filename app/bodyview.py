@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from urllib.parse import parse_qsl
 
 from app.textutil import decode_body
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QT_TRANSLATE_NOOP, QCoreApplication
 
 #: 原文 / 十六进制视图的输入截断（超过就截断显示，与搜索索引策略一致）
 BODY_PREVIEW_LIMIT = 512 * 1024
@@ -74,13 +74,18 @@ VIEW_FORM = "form"
 VIEW_IMAGE = "image"
 VIEW_HEX = "hex"
 
+#: 视图模式 → 显示名。**NOOP 打标、禁止在这里 translate**：
+#: 本模块经 detail_panel 被 main_window 在 import 期带入（app/main.py 顶部
+#: `from app.ui.main_window import MainWindow` 早于 main() 里的 load_language），
+#: 模块级 translate 在翻译器装载前求值，英文模式下会永久烤成中文。
+#: 翻译一律推迟到 view_mode_items() / view_mode_label() 运行时做。
 VIEW_MODE_ITEMS: tuple[tuple[str, str], ...] = (
-    (VIEW_AUTO, QCoreApplication.translate("bodyview", "自动")),
-    (VIEW_RAW, QCoreApplication.translate("bodyview", "原文")),
+    (VIEW_AUTO, QT_TRANSLATE_NOOP("bodyview", "自动")),
+    (VIEW_RAW, QT_TRANSLATE_NOOP("bodyview", "原文")),
     (VIEW_JSON, "JSON"),
-    (VIEW_FORM, QCoreApplication.translate("bodyview", "表单")),
-    (VIEW_IMAGE, QCoreApplication.translate("bodyview", "图片")),
-    (VIEW_HEX, QCoreApplication.translate("bodyview", "十六进制")),
+    (VIEW_FORM, QT_TRANSLATE_NOOP("bodyview", "表单")),
+    (VIEW_IMAGE, QT_TRANSLATE_NOOP("bodyview", "图片")),
+    (VIEW_HEX, QT_TRANSLATE_NOOP("bodyview", "十六进制")),
 )
 
 #: 认定为表单的 content-type（只认这一个，不猜）
@@ -97,15 +102,21 @@ _PLUS_JSON_RE = re.compile(r"^(?:application|text)/[\w.\-]+\+json$")
 
 
 def view_mode_items() -> list[tuple[str, str]]:
-    """[(key, 显示名)]，UI 视图按钮栏直接用。"""
-    return list(VIEW_MODE_ITEMS)
+    """[(key, 显示名)]，UI 视图按钮栏直接用。
+
+    必须在这里才 translate——VIEW_MODE_ITEMS 是 import 期常量，详见其上方注释。
+    """
+    return [
+        (key, QCoreApplication.translate("bodyview", label))
+        for key, label in VIEW_MODE_ITEMS
+    ]
 
 
 def view_mode_label(key: str) -> str:
     for k, label in VIEW_MODE_ITEMS:
         if k == key:
-            return label
-    return VIEW_MODE_ITEMS[1][1]     # 未知 → 原文
+            return QCoreApplication.translate("bodyview", label)
+    return QCoreApplication.translate("bodyview", VIEW_MODE_ITEMS[1][1])     # 未知 → 原文
 
 
 # ====================================================================== 判定

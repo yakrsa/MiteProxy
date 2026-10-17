@@ -1,27 +1,19 @@
 {
-  "version": "2.2.0",
+  "version": "2.2.1",
   "published_at": "2026-10-17",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "英文界面翻译全量补齐：工具栏、状态栏、过滤/搜索栏、详情面板、Mock 规则、网络模拟、编码/JSON/比对/API 调试、导入预览、意见反馈、会话保存/恢复、系统代理提示等全部界面文案均有英文译文（共 793 条）",
-      "en": "Completed the English UI translation: toolbar, status bar, filter/search bars, detail panel, mock rules, network simulation, codec/JSON/compare/API debugger, import preview, feedback, session save/restore, system-proxy prompts and more are all translated (793 strings in total)."
+      "zh": "修复英文界面下请求/响应 Body 的视图切换按钮仍显示中文的问题（自动/原文/表单/图片/十六进制在翻译器装载前就被求值，现改为运行时翻译）",
+      "en": "Fixed the request/response body view-switch buttons staying in Chinese in the English UI (Auto/Raw/Form/Image/Hex were evaluated before the translator loaded; they are now translated at runtime)."
     },
     {
-      "zh": "修复切换到英文后大量界面仍显示中文的问题（.qm 翻译文件未随源码更新，现改为 lupdate 全量重抽）",
-      "en": "Fixed large parts of the UI staying in Chinese after switching to English (the .qm translation file was stale; it is now fully regenerated with lupdate)."
+      "zh": "同类问题一并修复：导出对话框的格式名（HAR 归档/原始报文/完整响应/仅 Body）与 JSON 解析错误提示在英文模式下同样未翻译",
+      "en": "Fixed the same class of bug elsewhere: export dialog format names (HAR/Raw/Full response/Body only) and JSON parse-error hints were also untranslated in English mode."
     },
     {
-      "zh": "修复英文模式下消息框按钮被强行改成中文的问题（标准按钮中文化现在仅中文模式生效）",
-      "en": "Fixed message-box buttons being forced into Chinese in English mode (standard-button localization now applies only in Chinese mode)."
-    },
-    {
-      "zh": "新增 JSON 解析错误的详细中文/英文提示（重复 key、尾逗号、单引号、未转义控制字符等常见原因）",
-      "en": "Added detailed JSON parse-error hints in both Chinese and English (duplicate keys, trailing commas, single quotes, unescaped control characters, etc.)."
-    },
-    {
-      "zh": "弱网模拟档位、导出格式、会话与系统代理消息等同样支持英文",
-      "en": "Throttle presets, export formats, and session/system-proxy messages are also available in English."
+      "zh": "新增防回归测试：AST 扫描禁止在模块级调用 translate()，并逐字锁定上述三张常量表的英文输出",
+      "en": "Added regression guards: an AST scan that forbids module-level translate() calls, plus exact assertions locking the English output of the three affected tables."
     }
   ]
 }

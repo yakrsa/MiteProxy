@@ -223,3 +223,105 @@ class TestTranslationCoverage:
         s = ts.read_text(encoding="utf-8")
         unfinished = re.findall(r'<translation[^>]*type="unfinished"[^>]*>', s)
         assert not unfinished, f".ts 有 {len(unfinished)} 条未完成翻译"
+
+
+class TestNoImportTimeTranslation:
+    """求值时机守卫：translate()/tr() 绝不能在模块/类体（import 期）调用。
+
+    背景：app/main.py 顶部 `from app.ui.main_window import MainWindow` 在
+    main() 的 load_language() **之前**执行，整条导入链在翻译器装载前就跑完。
+    模块级 translate() 永远拿到中文原文，.qm 里有译文也没用——v2.2.0 的
+    bodyview 视图按钮（自动/原文/表单/图片/十六进制）、export 格式名、
+    jsonutil 错误提示三处都栽在这。正确做法是 QT_TRANSLATE_NOOP 打标 +
+    运行时（函数里）translate，由本用例强制。
+    """
+
+    @staticmethod
+    def _scan():
+        import ast
+        from pathlib import Path
+
+        bad = []
+        for path in sorted(Path("app").rglob("*.py")):
+            if "i18n" in str(path) or "__pycache__" in str(path):
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            parent = {}
+            for node in ast.walk(tree):
+                for child in ast.iter_child_nodes(node):
+                    parent[child] = node
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                f = node.func
+                name = getattr(f, "attr", None) or getattr(f, "id", None)
+                # QT_TRANSLATE_NOOP 是打标宏（返回原字符串），模块级调用正是正确姿势
+                if name not in ("translate", "tr"):
+                    continue
+                lazy = False
+                cur = node
+                while cur in parent:
+                    cur = parent[cur]
+                    if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                        ast.Lambda)):
+                        lazy = True
+                        break
+                if not lazy:
+                    bad.append(f"{path}:{node.lineno}: {ast.unparse(node)[:80]}")
+        return bad
+
+    def test_no_module_level_translate_calls(self):
+        bad = self._scan()
+        assert not bad, (
+            "import 期求值的 translate()（翻译器还没装，只会拿到中文）：\n"
+            + "\n".join(bad)
+        )
+
+
+class TestLazyTablesTranslateAtRuntime:
+    """三张曾经栽过的常量表：必须在运行时才翻译（TestNoImportTimeTranslation
+    管住全类问题，这里逐字锁定具体行为，双保险）。"""
+
+    @pytest.mark.usefixtures("_restore_language")
+    def test_bodyview_mode_buttons_english(self, qapp):
+        from app import bodyview
+
+        load_language(qapp, "en")
+        labels = dict(bodyview.view_mode_items())
+        assert labels["auto"] == "Auto"
+        assert labels["raw"] == "Raw"
+        assert labels["form"] == "Form"
+        assert labels["image"] == "Image"
+        assert labels["hex"] == "Hex"
+        assert bodyview.view_mode_label("hex") == "Hex"
+        assert bodyview.view_mode_label("nope") == "Raw"   # 未知 → 原文
+
+    @pytest.mark.usefixtures("_restore_language")
+    def test_export_format_labels_english(self, qapp):
+        from app import export
+
+        load_language(qapp, "en")
+        assert export.format_label("har") == "HAR archive (*.har)"
+        filters, mapping = export.name_filters()
+        assert "HAR archive (*.har)" in filters
+        assert mapping["HAR archive (*.har)"] == "har"
+
+    @pytest.mark.usefixtures("_restore_language")
+    def test_jsonutil_hints_english(self, qapp):
+        from app import jsonutil
+
+        load_language(qapp, "en")
+        hint = jsonutil.hint_for("Expecting ',' delimiter: line 1 column 2 (char 1)")
+        assert hint and "comma" in hint.lower()
+
+    @pytest.mark.usefixtures("_restore_language")
+    def test_chinese_source_without_translator(self, qapp):
+        """不装翻译器（中文源语言）→ 常量表展示中文原文。"""
+        from app import bodyview, export, jsonutil
+
+        load_language(qapp, "zh_CN")
+        assert dict(bodyview.view_mode_items())["auto"] == "自动"
+        assert export.format_label("har") == "HAR 归档 (*.har)"
+        assert jsonutil.hint_for("Expecting ',' delimiter") == (
+            "两个值之间少了逗号，或者多了个尾逗号"
+        )

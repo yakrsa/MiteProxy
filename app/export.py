@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from app.textutil import decode_body
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QT_TRANSLATE_NOOP, QCoreApplication
 
 APP_NAME = "MiteProxy"
 APP_VERSION = "0.1"
@@ -30,12 +30,20 @@ EXPORT_FORMATS = (FORMAT_HAR, FORMAT_RAW, FORMAT_RESPONSE, FORMAT_BODY)
 #: 这些格式必须有响应才有内容可导出（UI 层据此给出友好提示）
 REQUIRES_RESPONSE = (FORMAT_RESPONSE, FORMAT_BODY)
 
+#: NOOP 打标：同 bodyview.VIEW_MODE_ITEMS，本模块在翻译器装载前被 import，
+#: 模块级 translate 只会拿到中文。展示走 format_label() 运行时翻译。
 FORMAT_LABELS = {
-    FORMAT_HAR: QCoreApplication.translate("export", "HAR 归档 (*.har)"),
-    FORMAT_RAW: QCoreApplication.translate("export", "原始 HTTP 报文：请求+响应 (*.txt)"),
-    FORMAT_RESPONSE: QCoreApplication.translate("export", "完整响应：Headers+Body (*.txt)"),
-    FORMAT_BODY: QCoreApplication.translate("export", "仅响应 Body (*.*)"),
+    FORMAT_HAR: QT_TRANSLATE_NOOP("export", "HAR 归档 (*.har)"),
+    FORMAT_RAW: QT_TRANSLATE_NOOP("export", "原始 HTTP 报文：请求+响应 (*.txt)"),
+    FORMAT_RESPONSE: QT_TRANSLATE_NOOP("export", "完整响应：Headers+Body (*.txt)"),
+    FORMAT_BODY: QT_TRANSLATE_NOOP("export", "仅响应 Body (*.*)"),
 }
+
+
+def format_label(fmt: str) -> str:
+    """导出格式显示名（运行时翻译；未知 key 原样返回）。"""
+    label = FORMAT_LABELS.get(fmt, "")
+    return QCoreApplication.translate("export", label) if label else fmt
 
 # content-type → 扩展名（响应 Body 导出时推断文件名）
 CONTENT_TYPE_EXT = {
@@ -595,7 +603,7 @@ def ensure_suffix(path: str, fmt: str, flow) -> str:
 
 def name_filters() -> tuple[str, dict[str, str]]:
     """QFileDialog 的过滤器串 + 「过滤器 → 格式」映射（UI 层用）。"""
-    items = [(FORMAT_LABELS[f], f) for f in EXPORT_FORMATS]
+    items = [(format_label(f), f) for f in EXPORT_FORMATS]
     return ";;".join(label for label, _ in items), {label: f for label, f in items}
 
 
