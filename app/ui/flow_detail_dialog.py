@@ -77,4 +77,5 @@ class FlowDetailDialog(QDialog):
                 len(res.raw_content or b""),
             )
         else:
-            self.response_pane.clear()
+            # pending：请求已发出但响应未到，响应半边给明确占位而非「未选择会话」
+            self.response_pane.show_message("尚未收到响应…", {}, None, 0)

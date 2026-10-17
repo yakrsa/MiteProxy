@@ -65,9 +65,27 @@ class CaptureAddon:
 
     # ------------------------------------------------------------ mitmproxy hook
 
+    def request(self, flow) -> None:
+        """请求一发出就进列表（pending 可见）；响应回来再走 update 原地补完。
+
+        配合 flow_store 的 append（请求）→ update（响应）语义：response 必晚于
+        request，列表里已有同 id 的 pending 行，update 按 id 原地替换，不会重复。
+        """
+        self.flows[flow.id] = flow
+        self._emit_flow(flow)
+
     def response(self, flow) -> None:
         self.flows[flow.id] = flow
         self._evict()
+        # response 必晚于 request：列表里已有同 id 的 pending 行，这里走「更新」
+        # 通道（flow_store.update 按 id 原地替换），不会新增重复行。
+        if self._on_update is not None:
+            try:
+                self._on_update(self.summarize(flow))
+            except Exception:
+                log.exception("flow 更新回调异常")
+
+    def _emit_flow(self, flow) -> None:
         if self._on_flow is not None:
             try:
                 self._on_flow(self.summarize(flow))

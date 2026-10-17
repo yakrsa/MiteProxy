@@ -59,8 +59,8 @@ def test_dialog_handles_missing_response(qapp):
     dlg = FlowDetailDialog(_fake_flow(with_response=False))
     assert dlg.windowTitle() == "GET https://example.com/api"
     assert "GET" in dlg.request_pane.summary_label.text()
-    # 无响应时响应 pane 回落到未选择占位，不报错
-    assert "未选择" in dlg.response_pane.summary_label.text()
+    # 无响应（pending）时响应 pane 显示明确占位，不报错、不显示「未选择会话」
+    assert "尚未收到响应" in dlg.response_pane.summary_label.text()
     dlg.deleteLater()
 
 

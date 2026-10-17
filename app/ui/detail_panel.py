@@ -1068,7 +1068,9 @@ class DetailPanel(QWidget):
                 len(res.raw_content or b""),
             )
         else:
-            self.response_pane.clear()
+            # 请求已发出、响应还没回来（pending）：响应半边给一个明确占位，
+            # 而不是 show_message 默认的「未选择会话」（那样像没选中，其实只是没响应）。
+            self.response_pane.show_message("尚未收到响应…", {}, None, 0)
 
         ws = getattr(flow, "websocket", None)
         self.tabs.setTabVisible(self.ws_index, ws is not None)
