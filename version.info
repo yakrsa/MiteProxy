@@ -1,31 +1,27 @@
 {
-  "version": "2.1.0",
+  "version": "2.2.0",
   "published_at": "2026-10-17",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "双击流量列表中的请求，弹出上下结构详情对话框：上半部分显示请求、下半部分显示响应，Fiddler 风格同时可见",
-      "en": "Double-click a request in the traffic list to open a vertical detail dialog: request on top, response on the bottom, shown side by side Fiddler-style."
+      "zh": "英文界面翻译全量补齐：工具栏、状态栏、过滤/搜索栏、详情面板、Mock 规则、网络模拟、编码/JSON/比对/API 调试、导入预览、意见反馈、会话保存/恢复、系统代理提示等全部界面文案均有英文译文（共 793 条）",
+      "en": "Completed the English UI translation: toolbar, status bar, filter/search bars, detail panel, mock rules, network simulation, codec/JSON/compare/API debugger, import preview, feedback, session save/restore, system-proxy prompts and more are all translated (793 strings in total)."
     },
     {
-      "zh": "流量列表右键菜单新增「查看详情…」（仅单条选中可点），与双击打开同一个详情对话框",
-      "en": "The traffic-list context menu now has \"View detail…\" (enabled for a single selection), reusing the same detail dialog as double-click."
+      "zh": "修复切换到英文后大量界面仍显示中文的问题（.qm 翻译文件未随源码更新，现改为 lupdate 全量重抽）",
+      "en": "Fixed large parts of the UI staying in Chinese after switching to English (the .qm translation file was stale; it is now fully regenerated with lupdate)."
     },
     {
-      "zh": "请求一发出即入列（pending 可见）：不再等服务器响应才显示，响应到达后再原地补完该行",
-      "en": "A request now appears in the list the moment it is sent (pending is visible); the row is filled in-place once the response arrives."
+      "zh": "修复英文模式下消息框按钮被强行改成中文的问题（标准按钮中文化现在仅中文模式生效）",
+      "en": "Fixed message-box buttons being forced into Chinese in English mode (standard-button localization now applies only in Chinese mode)."
     },
     {
-      "zh": "详情弹窗在尚未收到响应时显示「尚未收到响应…」占位，替代原来误导性的「未选择会话」",
-      "en": "When a response has not arrived yet, the detail dialog shows a \"Response not received yet…\" placeholder instead of the misleading \"No session selected\"."
+      "zh": "新增 JSON 解析错误的详细中文/英文提示（重复 key、尾逗号、单引号、未转义控制字符等常见原因）",
+      "en": "Added detailed JSON parse-error hints in both Chinese and English (duplicate keys, trailing commas, single quotes, unescaped control characters, etc.)."
     },
     {
-      "zh": "版本号改为单一事实源（app/version.py），发版更可靠，检查更新判定更准确",
-      "en": "The version number is now defined in a single source (app/version.py), making releases more reliable and the update check more accurate."
-    },
-    {
-      "zh": "修复流量列表自动滚动偶发滚不到最底部的问题（改用 scrollToBottom 钉住底部）",
-      "en": "Fixed the traffic list auto-scroll occasionally failing to reach the very bottom (now pins to the bottom with scrollToBottom)."
+      "zh": "弱网模拟档位、导出格式、会话与系统代理消息等同样支持英文",
+      "en": "Throttle presets, export formats, and session/system-proxy messages are also available in English."
     }
   ]
 }
