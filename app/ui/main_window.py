@@ -677,6 +677,8 @@ class MainWindow(QMainWindow):
         self.traffic_table.selectionModel().selectionChanged.connect(
             self._on_selection_changed
         )
+        # 双击流量列表某条请求 → 弹出上下结构的请求/响应详情（Fiddler 风格）
+        self.traffic_table.doubleClicked.connect(self._on_flow_double_clicked)
         # 排序状态变化 → 状态栏显示「已排序」
         self.traffic_table.horizontalHeader().sortIndicatorChanged.connect(
             lambda *_: self._update_status()
@@ -1267,6 +1269,26 @@ class MainWindow(QMainWindow):
             cfg = self.search_bar.to_config()
             self.detail_panel.highlight(cfg.text, cfg.case_sensitive)
         self._update_status()
+
+    def _on_flow_double_clicked(self, index) -> None:
+        """双击流量列表 → 弹出上下结构的请求/响应详情对话框。
+
+        ``doubleClicked`` 给的是代理模型（过滤/搜索）的索引，要先 mapToSource
+        回到源模型，再经 flow_store 取 id、capture 取 flow 实体。
+        """
+        source_index = self.proxy_model.mapToSource(index)
+        row = self.flow_store.row_data(source_index.row())
+        if row is None:
+            return
+        flow = self.capture.get_flow(row["id"])
+        if flow is None:
+            return
+        from app.ui.flow_detail_dialog import FlowDetailDialog
+
+        dlg = FlowDetailDialog(
+            flow, self, wrap_default=self.settings.body_wrap
+        )
+        dlg.exec()
 
     # ================================================================ 过滤 / 搜索
 
