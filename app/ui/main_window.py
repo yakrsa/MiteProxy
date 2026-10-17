@@ -1283,6 +1283,10 @@ class MainWindow(QMainWindow):
         flow = self.capture.get_flow(row["id"])
         if flow is None:
             return
+        self._open_flow_detail(flow)
+
+    def _open_flow_detail(self, flow) -> None:
+        """给定一条 flow，弹出上下结构的请求/响应详情对话框（双击/右键共用）。"""
         from app.ui.flow_detail_dialog import FlowDetailDialog
 
         dlg = FlowDetailDialog(
@@ -1334,10 +1338,21 @@ class MainWindow(QMainWindow):
 
     def _on_table_context_menu(self, pos) -> None:
         flows = self._selected_flows()
+        menu = self._build_table_context_menu(flows)
+        menu.exec(self.traffic_table.viewport().mapToGlobal(pos))
+
+    def _build_table_context_menu(self, flows) -> "QMenu":
+        """构建流量列表右键菜单（抽出便于单元测试，不直接 exec）。"""
         has_selection = bool(flows)
         count = len(flows)
         batch = f"（{count} 条）" if count > 1 else ""
         menu = QMenu(self)
+        detail_action = menu.addAction("查看详情…")
+        detail_action.setEnabled(count == 1)
+        detail_action.triggered.connect(
+            lambda: self._open_flow_detail(flows[0])
+        )
+        menu.addSeparator()
         replay_action = menu.addAction("重放请求 (R / Ctrl+R)")
         edit_replay_action = menu.addAction("编辑并重放… (E)")
         compare_action = menu.addAction("重放并对比…")
@@ -1385,7 +1400,7 @@ class MainWindow(QMainWindow):
         copy_url_action.triggered.connect(self._copy_url)
         export_action.triggered.connect(self._export_selected)
         export_resp_action.triggered.connect(lambda: self._export_selected(FORMAT_RESPONSE))
-        menu.exec(self.traffic_table.viewport().mapToGlobal(pos))
+        return menu
 
     # ================================================================ 加入 Mock
 

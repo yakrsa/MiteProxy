@@ -128,9 +128,11 @@ class LogPanel(QWidget):
             self._handler.new_record.connect(self._append)
             root.addHandler(self._handler)
         else:
+            # 复用进程内已存在的 handler。每个 LogPanel 都是全新对象、只会连接一次，
+            # 旧 panel 销毁时 Qt 会自动断开其槽，故此处直接连接即可，无需 receivers 去重
+            # （PySide6 的 QObject.receivers 只接受 str 签名，传 SignalInstance 会抛 TypeError）。
             self._handler = existing
-            if not self._handler.receivers(self._handler.new_record):
-                self._handler.new_record.connect(self._append)
+            self._handler.new_record.connect(self._append)
 
     # ------------------------------------------------------------------ 数据
     def _append(self, text: str, levelno: int) -> None:
