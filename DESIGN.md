@@ -292,13 +292,14 @@ mitmproxy 的 DumpMaster 跑在自己的 asyncio 事件循环里，**不能**直
 
 #### 3.2.5 body 结构化视图（对齐 Fiddler 的 JSON / WebForm inspector）
 
-body 区顶部是一排互斥按钮（Fiddler inspector 风格，非下拉）：`自动 / 原文 / JSON / 表单 / 图片 / 十六进制`，默认「自动」按 content-type 挑最合适的那个：
+body 区顶部是一排互斥按钮（Fiddler inspector 风格，非下拉）：`自动 / 原文 / JSON / 树 / 表单 / 图片 / 十六进制`，默认「自动」按 content-type 挑最合适的那个：
 
 | 模式 | 触发（自动） | 展示 |
 |---|---|---|
 | 自动 | —— | 按 content-type 判定后落到下面某一项，并在提示里写明「自动 → JSON」 |
 | 原文 | 兜底 | 解码后的原始文本（超 512KB 截断并注明） |
 | JSON | `application/json`、`text/json`、`*+json`（jsonp / hal / vnd.api / problem…） | 缩进 2 空格 + 语法着色 |
+| 树 | 只能手动选（JSON 内容） | key / value 两列可折叠树，见 3.2.5.1 |
 | 表单 | `application/x-www-form-urlencoded` | key / value 两列表格，URL 已解码 |
 | 图片 | `image/*`（含 `svg+xml`） | 预览 + 缩放档位（适应窗口 / 25% / 50% / 100% / 200%） |
 | 十六进制 | 文本解不出来时 | 偏移 / 十六进制 / ASCII 三栏 |
@@ -347,6 +348,27 @@ body 区顶部是一排互斥按钮（Fiddler inspector 风格，非下拉）：
 - 原图存一份，按档位渲染；「适应窗口」只缩不放（小图不被拉糊），窗口 resize 时重算。
 - 图片**加载失败（内容损坏 / 格式不支持）回落十六进制并说明**——同样是"不丢内容"原则。
 - 提示里给出格式、像素尺寸与体积（`PNG · 800×600 · 12.3KB`）。
+
+#### 3.2.5.1 JSON 树视图（折叠 / 展开，`app/jsontree.py` + `app/ui/json_tree.py`）
+
+需求来自实际调试：几十 KB 的响应里找一层嵌套字段，靠滚文本太慢。做法是**新增一个「树」页，现有视图一行不改**——树是「解析后」的视图，文本视图才是「和原文一字不差」的那个，两者互补而不是替代。
+
+| 关注点 | 做法 |
+|---|---|
+| 折叠 | `QTreeView` + 自定义 `QAbstractItemModel`，两列（键 / 值），箭头展开收起；工具条给「展开 / 收起」全部 |
+| 大文档 | **子节点懒加载**：`rowCount(parent)` 只在展开时被调用，`hasChildren` 只数长度不实例化 |
+| 类型 | 着色复用文本视图的亮/暗两套 JSON 配色（key/string/number/keyword），容器与 `null` 用次要色 |
+| 搜索 | `BodyPane.highlight()` 分发到树：遍历命中 → 展开祖先 → 首个命中选中 → 命中行铺 `hit_bg` 底色 |
+| 复制 | 右键「复制值 / 键 / 路径 / 整个节点(JSON)」，`Cmd+C` 复制当前行；路径是 JSONPath 风格（`$.data[0].name`） |
+| 体量闸门 | `TREE_MAX_BYTES = 2MB` 以上不建树（回落 JSON 文本并说明原因）；`256KB` 以上提示「全部展开会慢」 |
+
+实测（M4 / offscreen）：373KB（2.4 万节点）切到树 **0ms**（只实例化根与第一层）；树内搜索（全量展开 + 定位）54ms；`expandAll` 16ms。对照「一次性建全量 `QTreeWidgetItem`」：18 万节点 **208ms + 107MB**，所以没有用 `QTreeWidget`。
+
+三条不能破的约束：
+
+1. **只读，且不能当校对工具**：树基于 `json.loads` 的结果，重复键只保留最后一个、浮点形态可能被改写（`1e400` → `inf`）。tooltip 与 UI 提示都写明「要一字不差请用原文视图」。
+2. **回落不吞内容**：非 JSON 或超限时显示 JSON 文本 + 原因（`无法解析为 JSON：…` / `内容超过 2048KB，树视图不适用`），绝不留白。
+3. **模型里不能用 `self.parent()`**：`QAbstractItemModel.parent(index)` 覆盖了 `QObject.parent()`，`self.parent()` 返回的是 `QModelIndex`，交给需要 `QWidget` 的取色函数会**段错误**（伪装成 GC 崩溃）。深浅判断改成构造时存 `self._widget`。同理 `createIndex` 的 internalPointer 不要塞 Python 对象（裸指针 + 节点循环引用 → GC 后悬空），用 `int` id + 注册表。
 
 #### 3.2.6 列表顺序与自动滚动
 

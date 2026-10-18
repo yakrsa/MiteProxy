@@ -73,6 +73,7 @@ from app.bodyview import (
     VIEW_IMAGE,
     VIEW_JSON,
     VIEW_RAW,
+    VIEW_TREE,
     BODY_PREVIEW_LIMIT,
     HIGHLIGHT_LIMIT,
     RENDER_TEXT_LIMIT,
@@ -91,10 +92,17 @@ from app.bodyview import (
     view_mode_items,
     view_mode_label,
 )
+from app.jsontree import (
+    TREE_MAX_BYTES,
+    TREE_WARN_BYTES,
+    JsonTreeError,
+    parse_tree,
+)
 from app.session import AUTOSAVE_BODY_LIMIT, BODY_TRUNCATED_KEY, BODY_TRUNCATED_SIZE_KEY
 from app.textutil import decode_body
 from app.ui import theme
 from app.ui.highlight import JsonHighlighter, is_dark
+from app.ui.json_tree import JsonTreeView
 
 #: 表单表格里命中的单元格底色（与 body 文本高亮同色系，视觉上是一回事）
 
@@ -124,6 +132,13 @@ BODY_VIEW_TIP = QT_TRANSLATE_NOOP(
     "自动 = 按 content-type 挑最合适的视图（JSON / 表单 / 图片 / 原文 / 十六进制）。\n"
     "手动切换后会保持，换会话也不回弹。\n"
     "解析失败会退回原文并说明原因，不会丢内容。"
+)
+
+BODY_TREE_TIP = QT_TRANSLATE_NOOP(
+    "DetailPanel",
+    "JSON 树视图：点箭头展开/收起，右键可复制值、键、路径或整个节点的 JSON。\n"
+    "树是**解析后**的视图：重复键只保留最后一个，浮点形态可能与原文不同——\n"
+    "要一字不差地校对请用「原文」视图。"
 )
 
 #: 图片缩放档位：适应窗口 + 固定比例
@@ -284,6 +299,11 @@ class BodyPane(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(3)
 
+        # 树视图（JSON 折叠展开）先于工具条建：按钮要连它的 expandAll/collapseAll。
+        # 与其余几页互斥（同一时刻只显示一种渲染），放到 stack 里统一切换。
+        self.tree_view = JsonTreeView()
+        self.tree_view.setToolTip(QCoreApplication.translate("DetailPanel", BODY_TREE_TIP))
+
         row = QHBoxLayout()
         # 视图切换：一排互斥按钮（对齐 Fiddler inspector 的选项卡条），不用下拉。
         # 「自动」保持粘性语义：点了别的按钮之后换会话不回弹。
@@ -320,6 +340,22 @@ class BodyPane(QWidget):
         self.view_note.setStyleSheet(f"color: {theme.css('hint')};")
         self.view_note.setToolTip(QCoreApplication.translate("DetailPanel", BODY_VIEW_TIP))
         row.addWidget(self.view_note, stretch=1)
+
+        # 树视图专用的展开/收起。放在这一行而不是树里另起工具条：
+        # 保持所有视图"上面一行操作、下面一大块内容"的统一结构。
+        self.expand_btn = QToolButton()
+        self.expand_btn.setText(self.tr("展开"))
+        self.expand_btn.setAutoRaise(True)
+        self.expand_btn.setToolTip(self.tr("展开全部节点（内容多时较慢）"))
+        self.expand_btn.clicked.connect(self.tree_view.expandAll)
+        self.collapse_btn = QToolButton()
+        self.collapse_btn.setText(self.tr("收起"))
+        self.collapse_btn.setAutoRaise(True)
+        self.collapse_btn.setToolTip(self.tr("收起到只剩根节点"))
+        self.collapse_btn.clicked.connect(self.tree_view.collapseAll)
+        for btn in (self.expand_btn, self.collapse_btn):
+            btn.setVisible(False)
+            row.addWidget(btn)
         layout.addLayout(row)
 
         self.body_stack = QStackedWidget()
@@ -350,6 +386,9 @@ class BodyPane(QWidget):
 
         self.image_view = ImageView()
         self.body_stack.addWidget(self.image_view)
+
+        # 「不动现有视图」是硬要求：树只是 stack 里新增的一页，其余视图一行没改
+        self.body_stack.addWidget(self.tree_view)
 
         layout.addWidget(self.body_stack, stretch=1)
 
@@ -408,6 +447,7 @@ class BodyPane(QWidget):
     def clear(self) -> None:
         self._stream_stop()
         self._body_bytes = None
+        self.tree_view.clear()      # 释放上一棵树的节点，别跟着会话一起攒着
         self._content_type = ""
         self._encoding_note = ""
         self._truncated = False
@@ -433,6 +473,9 @@ class BodyPane(QWidget):
         current = self.body_stack.currentWidget()
         if current is self.form_table:
             return self._highlight_table(term, case_sensitive)
+        if current is self.tree_view:
+            # 树得自己一套：定位到命中节点并铺底色（漏了它，树视图里就搜不到东西）
+            return self.tree_view.highlight(term, case_sensitive)
         if current is self.image_view:
             return 0                      # 图片没有文本可搜
         self.body_view.setExtraSelections([])
@@ -550,9 +593,22 @@ class BodyPane(QWidget):
             return body, QCoreApplication.translate("BodyPane", '已按 {0} 压缩，但解压失败，显示的是原始压缩字节').format(ce)
         return body, decoded_note(ce, raw_len, len(body), "mitmproxy")
 
+    def _set_tree_tools(self, on: bool) -> None:
+        """树视图专用按钮的显隐（其余视图一律收起）。
+
+        不用 disableHidden 之类花活：树才是例外，默认就该看不见。
+        """
+        self.expand_btn.setVisible(on)
+        self.collapse_btn.setVisible(on)
+        if on:
+            self.wrap_cb.setVisible(False)   # 树里换行没有意义
+
     def _show_text(self, text: str, json_mode: bool = False) -> None:
         self.body_stack.setCurrentWidget(self.body_view)
         self.zoom_combo.setVisible(False)
+        self._set_tree_tools(False)
+        if not self.wrap_cb.isVisible():     # 从树视图切回来要恢复
+            self.wrap_cb.setVisible(True)
         # 先关换行再 setPlainText：上一条会话可能把换行留在开启状态，带着
         # WidgetWidth 塞入超长单行（压缩成一行的 JSON / base64）会触发
         # QPlainTextEdit 的超线性排版（300KB 单行 ≈ 1.2s，几 MB 直接卡死），
@@ -647,9 +703,47 @@ class BodyPane(QWidget):
         # reason 只在用户开着换行却被闸门拦下时出现——说明「不是不换，是换不起」
         self._paint_note(reason if self.wrap_cb.isChecked() else "")
 
+    def _show_tree_or_fallback(self, body: bytes, note) -> None:
+        """切到 JSON 树；失败就回落 JSON 文本视图（树没有「部分成功」）。
+
+        `note` 是调用方闭包——与其他分支共用同一套「自动 → X · 原因 · 已解压 ·
+        已截断」拼装规则，树视图不该自己另写一串。
+        """
+        self._stream_stop()
+        failure = ""
+        if len(body) > TREE_MAX_BYTES:
+            failure = QCoreApplication.translate(
+                "BodyPane",
+                "内容超过 {0}KB，树视图不适用（可用原文 / JSON 视图）",
+            ).format(TREE_MAX_BYTES // 1024)
+        else:
+            try:
+                root = parse_tree(body)
+            except JsonTreeError as exc:
+                failure = QCoreApplication.translate(
+                    "BodyPane", "无法解析为 JSON：{0}"
+                ).format(str(exc))
+            if not failure:
+                self.tree_view.set_root(root)
+                self.body_stack.setCurrentWidget(self.tree_view)
+                self._set_tree_tools(True)
+                note(self.tr("内容较大，全部展开会慢一些")
+                     if len(body) > TREE_WARN_BYTES else "")
+                return
+        note(failure)
+        self._show_text(self._json_or_raw_text(body), json_mode=True)
+
+    def _json_or_raw_text(self, body: bytes) -> str:
+        """树的回落文本：能美化就美化，不能就原文（语义同 JSON 视图的处理）。"""
+        result = format_json_body(body, self._content_type)
+        return result.text if result.ok else decode_body(body, self._content_type) or ""
+
     def _show_form(self, pairs: list[tuple[str, str]]) -> None:
         self.body_stack.setCurrentWidget(self.form_table)
         self.zoom_combo.setVisible(False)
+        self._set_tree_tools(False)
+        if not self.wrap_cb.isVisible():
+            self.wrap_cb.setVisible(True)
         self.form_table.setRowCount(len(pairs))
         for i, (k, v) in enumerate(pairs):
             self.form_table.setItem(i, 0, QTableWidgetItem(str(k)))
@@ -661,6 +755,7 @@ class BodyPane(QWidget):
             return False
         self.body_stack.setCurrentWidget(self.image_view)
         self.zoom_combo.setVisible(True)
+        self._set_tree_tools(False)
         parts = [info]
         if self._encoding_note:
             parts.append(self._encoding_note)
@@ -718,6 +813,10 @@ class BodyPane(QWidget):
                 return
             note(result.note)
             self._show_text(result.text)
+            return
+
+        if mode == VIEW_TREE:
+            self._show_tree_or_fallback(body, note)
             return
 
         text = decode_body(body[:BODY_PREVIEW_LIMIT], self._content_type)

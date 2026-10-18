@@ -292,6 +292,7 @@ class TestLazyTablesTranslateAtRuntime:
         assert labels["form"] == "Form"
         assert labels["image"] == "Image"
         assert labels["hex"] == "Hex"
+        assert labels["tree"] == "Tree"
         assert bodyview.view_mode_label("hex") == "Hex"
         assert bodyview.view_mode_label("nope") == "Raw"   # 未知 → 原文
 

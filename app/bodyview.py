@@ -70,6 +70,7 @@ WRAP_SCAN_LIMIT = 256 * 1024
 VIEW_AUTO = "auto"
 VIEW_RAW = "raw"
 VIEW_JSON = "json"
+VIEW_TREE = "tree"
 VIEW_FORM = "form"
 VIEW_IMAGE = "image"
 VIEW_HEX = "hex"
@@ -83,6 +84,7 @@ VIEW_MODE_ITEMS: tuple[tuple[str, str], ...] = (
     (VIEW_AUTO, QT_TRANSLATE_NOOP("bodyview", "自动")),
     (VIEW_RAW, QT_TRANSLATE_NOOP("bodyview", "原文")),
     (VIEW_JSON, "JSON"),
+    (VIEW_TREE, QT_TRANSLATE_NOOP("bodyview", "树")),
     (VIEW_FORM, QT_TRANSLATE_NOOP("bodyview", "表单")),
     (VIEW_IMAGE, QT_TRANSLATE_NOOP("bodyview", "图片")),
     (VIEW_HEX, QT_TRANSLATE_NOOP("bodyview", "十六进制")),

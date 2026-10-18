@@ -44,6 +44,7 @@ from app.bodyview import (  # noqa: E402
     VIEW_IMAGE,
     VIEW_JSON,
     VIEW_RAW,
+    VIEW_TREE,
     BODY_PREVIEW_LIMIT,
     HIGHLIGHT_LIMIT,
     JSON_PARSE_LIMIT,
@@ -113,10 +114,11 @@ class TestContentTypeDetection:
     def test_mode_items_cover_all(self):
         keys = [k for k, _ in view_mode_items()]
         assert keys == [
-            VIEW_AUTO, VIEW_RAW, VIEW_JSON, VIEW_FORM, VIEW_IMAGE, VIEW_HEX
+            VIEW_AUTO, VIEW_RAW, VIEW_JSON, VIEW_TREE, VIEW_FORM, VIEW_IMAGE, VIEW_HEX
         ]
         assert view_mode_label(VIEW_IMAGE) == "图片"
         assert view_mode_label(VIEW_JSON) == "JSON"
+        assert view_mode_label(VIEW_TREE) == "树"
         assert view_mode_label("nope") == "原文"
 
     @pytest.mark.parametrize("ct", [
@@ -291,7 +293,7 @@ class TestBodyPane:
         """视图切换是 Fiddler 式的一排互斥按钮，不是下拉框。"""
         pane = _pane()
         assert not hasattr(pane, "mode_combo")
-        assert list(pane.mode_buttons) == [VIEW_AUTO, VIEW_RAW, VIEW_JSON,
+        assert list(pane.mode_buttons) == [VIEW_AUTO, VIEW_RAW, VIEW_JSON, VIEW_TREE,
                                            VIEW_FORM, VIEW_IMAGE, VIEW_HEX]
         assert pane.mode_buttons[VIEW_AUTO].isChecked()
         assert pane.mode_group.exclusive()

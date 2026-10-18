@@ -4842,4 +4842,109 @@ No network = no interruption of the capture flow. Manual checks are unaffected.<
         <translation type="obsolete">New response</translation>
     </message>
 </context>
+<context>
+    <name>bodyview</name>
+    <message>
+        <source>树</source>
+        <translation>Tree</translation>
+    </message>
+</context>
+<context>
+    <name>JsonTreeModel</name>
+    <message>
+        <source>键</source>
+        <translation>Key</translation>
+    </message>
+    <message>
+        <source>值</source>
+        <translation>Value</translation>
+    </message>
+    <message>
+        <source>路径：{0}</source>
+        <translation>Path: {0}</translation>
+    </message>
+    <message>
+        <source>对象（{0} 个键）</source>
+        <translation>Object ({0} keys)</translation>
+    </message>
+    <message>
+        <source>数组（{0} 项）</source>
+        <translation>Array ({0} items)</translation>
+    </message>
+    <message>
+        <source>
+（共 {0} 字符，双击或右键复制完整值）</source>
+        <translation>
+({0} chars in total; right-click to copy the full value)</translation>
+    </message>
+</context>
+<context>
+    <name>JsonTreeView</name>
+    <message>
+        <source>复制值</source>
+        <translation>Copy value</translation>
+    </message>
+    <message>
+        <source>复制键</source>
+        <translation>Copy key</translation>
+    </message>
+    <message>
+        <source>复制路径</source>
+        <translation>Copy path</translation>
+    </message>
+    <message>
+        <source>复制整个节点（JSON）</source>
+        <translation>Copy whole node (JSON)</translation>
+    </message>
+    <message>
+        <source>全部展开</source>
+        <translation>Expand all</translation>
+    </message>
+    <message>
+        <source>全部收起</source>
+        <translation>Collapse all</translation>
+    </message>
+</context>
+<context>
+    <name>BodyPane</name>
+    <message>
+        <source>展开</source>
+        <translation>Expand</translation>
+    </message>
+    <message>
+        <source>收起</source>
+        <translation>Collapse</translation>
+    </message>
+    <message>
+        <source>展开全部节点（内容多时较慢）</source>
+        <translation>Expand all nodes (slow for large content)</translation>
+    </message>
+    <message>
+        <source>收起到只剩根节点</source>
+        <translation>Collapse everything except the root</translation>
+    </message>
+    <message>
+        <source>内容超过 {0}KB，树视图不适用（可用原文 / JSON 视图）</source>
+        <translation>Larger than {0}KB: the tree view is unavailable (use Raw / JSON)</translation>
+    </message>
+    <message>
+        <source>无法解析为 JSON：{0}</source>
+        <translation>Not valid JSON: {0}</translation>
+    </message>
+    <message>
+        <source>内容较大，全部展开会慢一些</source>
+        <translation>Large content: expanding all may be slow</translation>
+    </message>
+</context>
+<context>
+    <name>DetailPanel</name>
+    <message>
+        <source>JSON 树视图：点箭头展开/收起，右键可复制值、键、路径或整个节点的 JSON。
+树是**解析后**的视图：重复键只保留最后一个，浮点形态可能与原文不同——
+要一字不差地校对请用「原文」视图。</source>
+        <translation>JSON tree: click the arrow to expand/collapse; right-click to copy the value, key, path or the whole node as JSON.
+The tree is built from the **parsed** JSON: duplicate keys keep only the last one, and float formatting may differ from the raw bytes —
+use the Raw view when you need byte-exact content.</translation>
+    </message>
+</context>
 </TS>
