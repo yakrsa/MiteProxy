@@ -91,6 +91,7 @@ from app.bodyview import (
     view_mode_items,
     view_mode_label,
 )
+from app.session import AUTOSAVE_BODY_LIMIT, BODY_TRUNCATED_KEY, BODY_TRUNCATED_SIZE_KEY
 from app.textutil import decode_body
 from app.ui import theme
 from app.ui.highlight import JsonHighlighter, is_dark
@@ -99,6 +100,24 @@ from app.ui.highlight import JsonHighlighter, is_dark
 
 #: WebSocket 消息表最多渲染的行数（再多的只记在内存里，别把表格撑爆）
 WS_TABLE_LIMIT = 2000
+
+
+def truncation_flags(flow) -> tuple[str, dict]:
+    """从 flow.metadata 取「哪一侧 body 被快照截断」与截断前的原始大小。
+
+    返回 ``(sides, sizes)``：`sides` 是 "request" / "response" / 两者用逗号连；
+    `sizes` 形如 ``{"response": 262144}``。会话恢复与比较对话框共用这一处，
+    避免三处各写一遍 getattr+try。
+    """
+    try:
+        meta = getattr(flow, "metadata", None) or {}
+        sides = str(meta.get(BODY_TRUNCATED_KEY, "") or "")
+        sizes = meta.get(BODY_TRUNCATED_SIZE_KEY) or {}
+    except Exception:
+        return "", {}
+    if not isinstance(sizes, dict):
+        sizes = {}
+    return sides, sizes
 
 BODY_VIEW_TIP = QT_TRANSLATE_NOOP(
     "DetailPanel",
@@ -340,6 +359,8 @@ class BodyPane(QWidget):
         self._body_bytes: bytes | None = None
         self._content_type = ""
         self._encoding_note = ""
+        self._truncated = False         # body 来自被截断的会话快照
+        self._truncated_size: int | None = None   # 截断前的原始字节数
         self._base_note = ""            # 视图自身说明（不含换行提示）
         self._mode = VIEW_AUTO          # 手动切过就保持（粘性）
         self._resolved = VIEW_RAW       # 「自动」实际选中的视图
@@ -367,9 +388,17 @@ class BodyPane(QWidget):
             self._render_body()
 
     def show_body(self, headers, body_bytes: bytes | None,
-                  raw_len: int | None = None) -> None:
-        """`raw_len` = 线上原始（压缩后）长度，用于「已解压」提示。"""
+                  raw_len: int | None = None, truncated: bool = False,
+                  full_size: int | None = None) -> None:
+        """`raw_len` = 线上原始（压缩后）长度，用于「已解压」提示。
+
+        `truncated` = 这份 body 来自被截断的会话快照（自动快照单条只留
+        ``AUTOSAVE_BODY_LIMIT``），必须明说，否则「JSON 解析失败」会被当成
+        格式化能力不行。`full_size` = 截断前的原始字节数（会话里存的 size）。
+        """
         self._content_type = self._content_type_of(headers)
+        self._truncated = bool(truncated)
+        self._truncated_size = full_size if truncated else None
         body, self._encoding_note = self._resolve_encoding(
             headers, body_bytes, raw_len
         )
@@ -381,6 +410,8 @@ class BodyPane(QWidget):
         self._body_bytes = None
         self._content_type = ""
         self._encoding_note = ""
+        self._truncated = False
+        self._truncated_size = None
         self._render_body()
 
     def set_wrap_default(self, on: bool) -> None:
@@ -467,6 +498,17 @@ class BodyPane(QWidget):
     def _on_wrap_toggled(self, on: bool) -> None:
         self._apply_wrap()
         self.wrap_changed.emit(on)
+
+    def _truncated_note(self) -> str:
+        """截断说明。带上原始大小——用户才知道差多少、值不值得重新抓。"""
+        limit_kb = AUTOSAVE_BODY_LIMIT // 1024
+        if self._truncated_size:
+            return QCoreApplication.translate(
+                "BodyPane", "已截断：快照只保留前 {0}KB，原 {1}KB（重新抓包可看全）"
+            ).format(limit_kb, max(1, round(self._truncated_size / 1024)))
+        return QCoreApplication.translate(
+            "BodyPane", "已截断：会话快照单条只保留前 {0}KB，内容不完整（重新抓包可看全）"
+        ).format(limit_kb)
 
     def _set_note(self, text: str) -> None:
         """记下基础说明并渲染（换行提示由 `_apply_wrap` 追加，不重复叠加）。"""
@@ -649,6 +691,8 @@ class BodyPane(QWidget):
             parts = [f"{prefix}：{detail}" if detail else prefix]
             if self._encoding_note:
                 parts.append(self._encoding_note)
+            if self._truncated:
+                parts.append(self._truncated_note())
             self._set_note(" · ".join(parts))
 
         note()
@@ -736,10 +780,11 @@ class MessagePane(QWidget):
     # ------------------------------------------------------------ 展示
 
     def show_message(self, summary_line: str, headers, body_bytes: bytes | None,
-                     raw_len: int | None = None) -> None:
+                     raw_len: int | None = None, truncated: bool = False,
+                     full_size: int | None = None) -> None:
         self.summary_label.setText(summary_line)
         self._fill_headers(headers)
-        self.body_pane.show_body(headers, body_bytes, raw_len)
+        self.body_pane.show_body(headers, body_bytes, raw_len, truncated, full_size)
 
     def clear(self) -> None:
         self.summary_label.setText(self.tr("（未选择会话）"))
@@ -1432,6 +1477,9 @@ class DetailPanel(QWidget):
         self._show_comment(getattr(flow, "comment", "") or "")
         req = getattr(flow, "request", None)
         res = getattr(flow, "response", None)
+        # 会话快照可能截断过 body（自动快照单条 64KB）：截断事实存在 metadata 里，
+        # 这里取出来交给 body 视图标注——不标注的话用户只会看到「JSON 解析失败」。
+        truncated_sides, truncated_sizes = truncation_flags(flow)
 
         if req is not None:
             self.request_pane.show_message(
@@ -1439,6 +1487,8 @@ class DetailPanel(QWidget):
                 req.headers,
                 req.get_content(strict=False),
                 len(req.raw_content or b""),
+                "request" in truncated_sides,
+                truncated_sizes.get("request"),
             )
         else:
             self.request_pane.clear()
@@ -1449,6 +1499,8 @@ class DetailPanel(QWidget):
                 res.headers,
                 res.get_content(strict=False),
                 len(res.raw_content or b""),
+                "response" in truncated_sides,
+                truncated_sizes.get("response"),
             )
         else:
             # 请求已发出、响应还没回来（pending）：响应半边给一个明确占位，

@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 from app.jsondiff import diff_json, format_diff_report
 from app.jsonutil import parse_json
 from app.textutil import decode_body, unified_diff
-from app.ui.detail_panel import MessagePane
+from app.ui.detail_panel import MessagePane, truncation_flags
 
 log = logging.getLogger(__name__)
 
@@ -183,8 +183,8 @@ class CompareDialog(QDialog):
 
         old_res = _response_of(self._original_flow)
         new_res = _response_of(self._new_flow)
-        self._fill_pane(self.old_pane, old_res, req_old)
-        self._fill_pane(self.new_pane, new_res, req_new)
+        self._fill_pane(self.old_pane, old_res, req_old, self._original_flow)
+        self._fill_pane(self.new_pane, new_res, req_new, self._new_flow)
 
         verdict, report = self._build_report(old_res, new_res)
         self._report_text = report
@@ -205,13 +205,17 @@ class CompareDialog(QDialog):
             self.tr('{0}\n原响应：{1}\u3000→\u3000新响应：{2}\u3000·\u3000{3}').format(url, old_desc, new_desc, verdict)
         )
 
-    def _fill_pane(self, pane: MessagePane, res, req) -> None:
+    def _fill_pane(self, pane: MessagePane, res, req, flow=None) -> None:
+        # 原始 flow 可能来自被截断的会话快照：把截断事实一并交给 body 视图
+        truncated_sides, truncated_sizes = truncation_flags(flow)
         if res is not None:
             pane.show_message(
                 f"HTTP {res.status_code} {getattr(res, 'reason', '') or ''}".strip(),
                 res.headers,
                 _safe_content(res),
                 _safe_raw_len(res),
+                "response" in truncated_sides,
+                truncated_sizes.get("response"),
             )
             return
         # 没有响应：退而展示请求，至少能看到重放发出去的内容
@@ -223,6 +227,8 @@ class CompareDialog(QDialog):
                 req.headers,
                 _safe_content(req),
                 _safe_raw_len(req),
+                "request" in truncated_sides,
+                truncated_sizes.get("request"),
             )
             return
         pane.clear()

@@ -284,6 +284,36 @@ class TestLimits:
         assert result.bodies_truncated == 0
         assert load_session(target).flows[0].response.get_content(strict=False) == b"z" * 200_000
 
+    def test_truncated_body_is_flagged_on_restored_flow(self, tmp_path):
+        """截断事实必须跟着 flow 走，否则界面只会显示「JSON 解析失败」。
+
+        自动快照（AUTOSAVE_LIMITS）单条只留 64KB：恢复后若无标记，用户点开
+        一条被切半的大 JSON，会误判成工具的格式化能力上限。
+        """
+        limits = SessionLimits(body_limit=1000, total_limit=10_000)
+        target = tmp_path / "s.jsonl"
+        save_session(target, [_flow(res_body=b"x" * 5000)], limits)
+        flow = load_session(target).flows[0]
+        assert flow.metadata[session_mod.BODY_TRUNCATED_KEY] == "response"
+
+    def test_truncation_flag_survives_resave(self, tmp_path):
+        """截断 → 恢复 → 再快照，标记不能被吃掉。
+
+        恢复出来的 body 长度恰好等于上限，再存时不会被判为「本次截断」；
+        若不沿用 metadata 里的旧标记，提示就永久消失了。
+        """
+        limits = SessionLimits(body_limit=1000, total_limit=10_000)
+        first = tmp_path / "a.jsonl"
+        save_session(first, [_flow(res_body=b"x" * 5000)], limits)
+        flow = load_session(first).flows[0]
+
+        second = tmp_path / "b.jsonl"
+        again = save_session(second, [flow], limits)
+        assert again.bodies_truncated == 1
+        record = json.loads(second.read_text(encoding="utf-8").splitlines()[0])
+        assert record["response"]["body"]["truncated"] is True
+        assert load_session(second).flows[0].metadata[session_mod.BODY_TRUNCATED_KEY] == "response"
+
 
 class TestErrorHandling:
     def test_empty_flow_list_reports_error(self, tmp_path):

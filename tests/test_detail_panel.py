@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from app.session import BODY_TRUNCATED_KEY, BODY_TRUNCATED_SIZE_KEY
 from app.ui.detail_panel import DetailPanel
 
 
@@ -90,3 +91,43 @@ def test_sticky_tab_resets_on_new_instance(qapp):
     assert p2.tabs.currentIndex() == p2.response_index  # 新实例回到默认响应
     p1.deleteLater()
     p2.deleteLater()
+
+
+def test_truncated_snapshot_body_is_labelled(qapp):
+    """恢复自带截断标记的会话时，响应 body 的提示栏必须说明「已截断」。
+
+    否则用户看到大 JSON 解析失败，只会以为是格式化能力不行。
+    """
+    flow = _http_flow(with_response=True)
+    flow.metadata = {
+        BODY_TRUNCATED_KEY: "response",
+        BODY_TRUNCATED_SIZE_KEY: {"response": 262144},
+    }
+    p = DetailPanel()
+    p.show_flow(flow)
+    note = p.response_pane.body_pane.view_note.text()
+    assert "已截断" in note
+    # 带上截断前的原始大小，用户才知道差多少
+    assert "原 256KB" in note
+    # 请求侧没被截断，不该跟着标
+    assert "已截断" not in p.request_pane.body_pane.view_note.text()
+    p.deleteLater()
+
+
+def test_truncation_note_without_size(qapp):
+    """老记录只有 truncated 标记、没有原始大小时，也得说清楚被截了。"""
+    flow = _http_flow(with_response=True)
+    flow.metadata = {BODY_TRUNCATED_KEY: "response"}
+    p = DetailPanel()
+    p.show_flow(flow)
+    assert "已截断" in p.response_pane.body_pane.view_note.text()
+    p.deleteLater()
+
+
+def test_normal_flow_has_no_truncation_note(qapp):
+    flow = _http_flow(with_response=True)
+    flow.metadata = {}
+    p = DetailPanel()
+    p.show_flow(flow)
+    assert "已截断" not in p.response_pane.body_pane.view_note.text()
+    p.deleteLater()

@@ -59,6 +59,14 @@ SESSIONS_DIR = CONFIG_DIR / "sessions"
 #: 单条 WS 会话最多存多少条消息（与详情面板表格上限一致，超出只存前 N 条并标记）
 WS_MESSAGE_LIMIT = 2000
 
+#: flow.metadata 里记录「body 被截断」的键（值为 "request" / "response" / "request,response"）。
+#: metadata 不落盘，只用于把截断事实从会话记录带到界面提示。
+BODY_TRUNCATED_KEY = "mproxy_body_truncated"
+
+#: 被截断 body 的**原始**大小（dict，按 "request"/"response" 分侧），用于
+#: 提示「原 256KB，快照只留前 64KB」。同样只活在 metadata 里。
+BODY_TRUNCATED_SIZE_KEY = "mproxy_body_truncated_size"
+
 
 @dataclass
 class SessionLimits:
@@ -266,6 +274,18 @@ def flow_to_record(
     }
     if ws_dict is not None:
         record["ws_messages"] = ws_dict
+    # 恢复出来、本次又没触发截断的 body：把上一轮的截断标记补回去。
+    # 否则「截断 → 恢复 → 再快照」会把标记吃掉（恢复后的 body 恰好等于上限，
+    # 再存时不会被判为截断），用户永远看不到提示。
+    prev_truncated = ""
+    try:
+        prev_truncated = str((getattr(flow, "metadata", None) or {}).get(BODY_TRUNCATED_KEY, ""))
+    except Exception:
+        prev_truncated = ""
+    for side, data in (("request", req_dict), ("response", res_dict)):
+        body = (data or {}).get("body") or {}
+        if side in prev_truncated and body and not body.get("truncated") and not body.get("dropped"):
+            body["truncated"] = True
     # 服务端连接时间戳：耗时分析页（Fiddler Statistics 口径）的连接/TLS
     # 分段要靠它们算；不存的话恢复的会话只剩发送/等待/接收三段
     conn = getattr(flow, "server_conn", None)
@@ -505,6 +525,25 @@ def _record_to_flow(record: dict):
             flow.websocket = _rebuild_websocket(ws_dict)
         except Exception:
             log.debug("还原 WebSocket 消息失败", exc_info=True)
+    # 「body 被截断」的事实必须跟着 flow 走：自动快照单条只留 64KB，
+    # 恢复后若不说明，用户看到大 JSON 解析失败会误判成工具能力问题
+    # （实测：解压后正好 64.0KB、解析在 char 65150 处断——就是被切了）。
+    truncated_sides = []
+    truncated_sizes: dict[str, int] = {}
+    for side, data in (("request", req_dict), ("response", res_dict)):
+        if not isinstance(data, dict):
+            continue
+        body = data.get("body") or {}
+        if not body.get("truncated"):
+            continue
+        truncated_sides.append(side)
+        # 原始大小留着：提示「原 256KB，只留前 64KB」比只说「已截断」有用
+        if isinstance(body.get("size"), int):
+            truncated_sizes[side] = body["size"]
+    if truncated_sides:
+        flow.metadata[BODY_TRUNCATED_KEY] = ",".join(truncated_sides)
+    if truncated_sizes:
+        flow.metadata[BODY_TRUNCATED_SIZE_KEY] = truncated_sizes
     return flow
 
 

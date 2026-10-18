@@ -121,6 +121,16 @@ check this to verify a formal certificate chain.</translation>
         <translation>Compressed with {0}, but decompression failed; showing the raw compressed bytes</translation>
     </message>
     <message>
+        <location filename="../ui/detail_panel.py" line="660"/>
+        <source>已截断：会话快照单条只保留前 {0}KB，内容不完整（重新抓包可看全）</source>
+        <translation>Truncated: session snapshots keep only the first {0}KB of each body, so the content is incomplete (capture again to see all of it)</translation>
+    </message>
+    <message>
+        <location filename="../ui/detail_panel.py" line="661"/>
+        <source>已截断：快照只保留前 {0}KB，原 {1}KB（重新抓包可看全）</source>
+        <translation>Truncated: the snapshot keeps only the first {0}KB of {1}KB (capture again to see all of it)</translation>
+    </message>
+    <message>
         <location filename="../ui/detail_panel.py" line="575"/>
         <source>加载中 {0:.1f}/{1:.1f}MB</source>
         <translation>Loading {0:.1f}/{1:.1f}MB</translation>
@@ -2592,6 +2602,13 @@ The file contains no valid sessions.</translation>
 跳过无法解析的行：{0} 条。</source>
         <translation>
 Skipped {0} unparsable lines.</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="1827"/>
+        <source>
+有 {0} 条会话的 body 被截断（超出快照单条上限），详情面板会标注。</source>
+        <translation>
+{0} bodies were truncated (over the per-body snapshot limit); the detail panel marks them.</translation>
     </message>
     <message>
         <location filename="../ui/main_window.py" line="1807"/>

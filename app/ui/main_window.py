@@ -1824,6 +1824,12 @@ class MainWindow(QMainWindow):
         note = ""
         if result.skipped:
             note += self.tr('\n跳过无法解析的行：{0} 条。').format(result.skipped)
+        if result.bodies_truncated:
+            # 自动快照单条只留 64KB：不提示的话，用户点开大 JSON 只会看到
+            # 「JSON 解析失败」，误以为是格式化能力问题。
+            note += self.tr(
+                '\n有 {0} 条会话的 body 被截断（超出快照单条上限），详情面板会标注。'
+            ).format(result.bodies_truncated)
         if dropped:
             note += self.tr('\n超出保存条数上限，最早的 {0} 条未载入。').format(dropped)
         dialogs.information(
