@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -157,8 +158,30 @@ class RulesPanel(QWidget):
         toolbar.addWidget(self.import_btn)   # 导入 Fiddler 规则：放到最后面
         toolbar.addSpacing(12)
         toolbar.addWidget(self.only_enabled_cb)
+        # 规则搜索（v2.3.0）：URL / 名称关键字过滤，与「只显示启用」叠加生效。
+        # Fiddler 的 AutoResponder 没有分组也没有搜索框，规则一多就只能靠
+        # 滚动肉眼找——这里补上实时过滤（大小写不敏感子串匹配）。
+        toolbar.addSpacing(12)
+        toolbar.addWidget(QLabel(self.tr("搜索:")))
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText(self.tr("URL / 名称"))
+        self.search_edit.setClearButtonEnabled(True)
+        self.search_edit.setFixedWidth(160)
+        self.search_edit.setToolTip(
+            self.tr("按 URL 匹配值或规则名称实时过滤（大小写不敏感）。\n"
+            "与「只显示启用」同时生效；清空恢复全部。")
+        )
+        toolbar.addWidget(self.search_edit)
         toolbar.addStretch(1)
         layout.addLayout(toolbar)
+
+        # 空态提示：有规则但被过滤光时说明原因（搜索词 or 只显示启用），
+        # 避免用户面对空表以为规则丢了
+        self.empty_label = QLabel()
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_label.setStyleSheet(f"color: {theme.css('hint')};padding:18px;")
+        self.empty_label.hide()
+        layout.addWidget(self.empty_label)
 
         self.table = RuleTable(self)
         # 列布局：序号 + 名称在前，选择（勾选）列移到末尾（v2.0）。
@@ -259,16 +282,38 @@ class RulesPanel(QWidget):
         self.table.row_dropped.connect(self._on_row_dropped)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
         self.only_enabled_cb.toggled.connect(self._on_filter_toggled)
+        self.search_edit.textChanged.connect(self._on_search_changed)
         self.table.cellDoubleClicked.connect(lambda r, c: self._on_edit())
 
     # ------------------------------------------------------------ 刷新
 
     def _visible_rules(self) -> list[Rule]:
-        """当前应显示的规则（「只显示启用」过滤后的视图顺序）。"""
+        """当前应显示的规则（「只显示启用」+ 搜索关键字过滤后的视图顺序）。"""
         rules = self.store.all()
         if self.only_enabled_cb.isChecked():
-            return [r for r in rules if r.enabled]
+            rules = [r for r in rules if r.enabled]
+        keyword = self.search_edit.text().strip().lower()
+        if keyword:
+            rules = [r for r in rules if self._matches_keyword(r, keyword)]
         return rules
+
+    @staticmethod
+    def _matches_keyword(rule: Rule, keyword: str) -> bool:
+        """关键字命中判定：名称 / URL 匹配值 / 请求方法 / 重定向目标 / 本地文件。
+
+        用大小写不敏感的子串匹配（与流量列表搜索一致的心智）；
+        不做正则——搜索框输错字符时静默无结果比抛错好。
+        """
+        haystack = " ".join(
+            part for part in (
+                rule.name,
+                rule.match.value,
+                rule.match.method,
+                rule.action.redirect_url,
+                rule.action.file_path or "",
+            ) if part
+        )
+        return keyword in haystack.lower()
 
     def refresh(self) -> None:
         visible = self._visible_rules()
@@ -329,6 +374,23 @@ class RulesPanel(QWidget):
         self.table.setUpdatesEnabled(True)
         self._update_batch_buttons()
         self._update_select_all_state()
+        self._update_empty_label(visible)
+
+    def _update_empty_label(self, visible: list[Rule]) -> None:
+        """空态提示：一条都不显示时说明是哪个过滤条件起的作用。"""
+        if visible or not self.store.all():
+            self.empty_label.hide()
+            return
+        keyword = self.search_edit.text().strip()
+        if keyword:
+            self.empty_label.setText(
+                self.tr("没有匹配「{0}」的规则").format(keyword)
+            )
+        elif self.only_enabled_cb.isChecked():
+            self.empty_label.setText(self.tr("没有启用中的规则"))
+        else:
+            self.empty_label.setText(self.tr("暂无规则"))
+        self.empty_label.show()
 
     def _fill_hits(self, row: int, rule) -> None:
         """命中列：0 次显示「—」（没干活过），有次数显示数字 + 最近命中时间提示。"""
@@ -578,6 +640,13 @@ class RulesPanel(QWidget):
 
     def _on_filter_toggled(self) -> None:
         """切换「只显示启用」：重建视图，尽量保住当前选中的规则。"""
+        current = self._current_rule()
+        self.refresh()
+        if current is not None and current.id in self._display_ids:
+            self.table.selectRow(self._display_ids.index(current.id))
+
+    def _on_search_changed(self) -> None:
+        """搜索词变化：重建视图，尽量保住当前选中的规则。"""
         current = self._current_rule()
         self.refresh()
         if current is not None and current.id in self._display_ids:

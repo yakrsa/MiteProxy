@@ -342,8 +342,7 @@ class TestPortChange:
         window.start_proxy()
         old_port = window.settings.proxy_port
         new_port = old_port + 73
-        window.port_spin.setValue(new_port)
-        window._on_port_changed()
+        window._apply_proxy_port(new_port)
 
         assert window.settings.proxy_port == new_port
         assert window._restarting is True
@@ -385,8 +384,7 @@ class TestPortChange:
 
         calls.clear()
         new_port = old_port + 73          # 换一个没绑过的端口
-        window.port_spin.setValue(new_port)
-        window._on_port_changed()          # editingFinished 处理器
+        window._apply_proxy_port(new_port)          # editingFinished 处理器
 
         assert window.settings.proxy_port == new_port
         assert window.proxy.port == new_port
@@ -427,8 +425,7 @@ class TestPortChange:
         calls.clear()
 
         new_port = old_port + 91
-        window.port_spin.setValue(new_port)
-        window._on_port_changed()
+        window._apply_proxy_port(new_port)
 
         assert window.settings.proxy_port == new_port   # 设置已保存
         assert window.proxy.port == old_port            # 代理还在旧端口
@@ -447,8 +444,7 @@ class TestPortChange:
             lambda run=None, port=None: calls.append("restore") or (True, "ok"),
         )
         new_port = window.settings.proxy_port + 11
-        window.port_spin.setValue(new_port)
-        window._on_port_changed()
+        window._apply_proxy_port(new_port)
         assert window.settings.proxy_port == new_port
         assert calls == []                 # 没运行就不碰系统代理
         assert not window.proxy.running
@@ -459,8 +455,7 @@ class TestPortChange:
             "app.sysproxy.takeover",
             lambda port, run=None, elevate=False: calls.append("takeover") or (True, "ok"),
         )
-        window.port_spin.setValue(window.settings.proxy_port)  # 同值
-        window._on_port_changed()
+        window._apply_proxy_port(window.settings.proxy_port)  # 同值
         assert calls == []
 
 

@@ -68,6 +68,28 @@ class MiniHTTPServer:
                     b"Set-Cookie: a=1\r\nSet-Cookie: b=2\r\n"
                     b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body
                 )
+            elif path == "/gz":
+                import gzip
+
+                raw = json.dumps({"hello": "world"}).encode()
+                comp = gzip.compress(raw)
+                resp = (
+                    b"HTTP/1.1 200 OK\r\n"
+                    b"Content-Type: application/json\r\n"
+                    b"Content-Encoding: gzip\r\n"
+                    b"Content-Length: " + str(len(comp)).encode() + b"\r\n\r\n" + comp
+                )
+            elif path == "/br":
+                import brotli
+
+                raw = json.dumps({"hello": "world"}).encode()
+                comp = brotli.compress(raw)
+                resp = (
+                    b"HTTP/1.1 200 OK\r\n"
+                    b"Content-Type: application/json\r\n"
+                    b"Content-Encoding: br\r\n"
+                    b"Content-Length: " + str(len(comp)).encode() + b"\r\n\r\n" + comp
+                )
             elif path == "/redirect":
                 resp = (
                     b"HTTP/1.1 302 Found\r\nLocation: /echo\r\nContent-Length: 0\r\n\r\n"
@@ -141,3 +163,18 @@ class TestSendRequest:
         r = send_request(" get ", f"http://127.0.0.1:{server.port}/echo")
         assert r.ok
         assert server.requests[-1][0] == "GET"
+
+    def test_gzip_response_decompressed(self, server):
+        """bug1：gzip 响应必须解压，body 是明文 JSON（不是压缩字节）。"""
+        r = send_request("GET", f"http://127.0.0.1:{server.port}/gz")
+        assert r.ok and r.status == 200
+        assert r.raw_len > 0
+        assert json.loads(r.body)["hello"] == "world"
+
+    def test_brotli_response_decompressed(self, server):
+        """bug1：brotli 响应也必须解压（之前 sniff_decompress 不认 brotli → 落到十六进制）。"""
+        r = send_request("GET", f"http://127.0.0.1:{server.port}/br")
+        assert r.ok and r.status == 200
+        # 线上原始（压缩后）字节数应大于解压后
+        assert r.raw_len > len(r.body)
+        assert json.loads(r.body)["hello"] == "world"

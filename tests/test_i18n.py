@@ -122,12 +122,11 @@ class TestTranslationCoverage:
 
     #: (文件后缀, 行号) 或文件名的豁免清单——有意不翻译的：
     #: - dialogs.py 的 _CN 表：仅中文模式使用的按钮文案
-    #: - flow_store COLUMNS / rule_editor MATCH_LABELS、METHOD_LABELS：
-    #:   分别走 column_labels() 懒翻译 / 死代码
+    #: - flow_store COLUMNS：走 column_labels() 懒翻译（import 期无 translator）
     #: - certserver.py：手机端证书下载网页（HTML，另有一套文案）
     #: - rules.py 默认规则名：会落盘的数据，不该随语言变
     #: - feedback.py issue 正文 / theme.py QSS：分别面向开发者、是代码
-    _EXEMPT_FILES = {"app/ui/dialogs.py", "app/certserver.py", "app/ui/rule_editor.py"}
+    _EXEMPT_FILES = {"app/ui/dialogs.py", "app/certserver.py"}
     _EXEMPT_LINES = {
         ("app/ui/flow_store.py", n) for n in range(10, 21)
     } | {

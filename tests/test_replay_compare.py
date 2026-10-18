@@ -221,7 +221,11 @@ class TestPendingCompare:
         window.capture.flows[new.id] = new
         window._register_pending_compare(original.id, new)
 
-        window._on_flow_arrived(window.capture.summarize(new))
+        summary = window.capture.summarize(new)
+        # 真实时序：请求到达（进列表）→ 响应到达（触发对比）。
+        # 对比关联只在「响应到达」(_on_flow_updated) 时触发，避免拿到还没响应的副本。
+        window._on_flow_arrived(summary)
+        window._on_flow_updated(summary)
 
         assert window._pending_compare == []
         assert len(window._compare_dialogs) == 1

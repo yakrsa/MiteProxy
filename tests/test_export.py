@@ -169,6 +169,24 @@ class TestHar:
         assert req["bodySize"] == 0
         assert "postData" not in req
 
+    def test_http2_missing_host_is_filled(self):
+        """HTTP/2 的 :authority 是伪头、不在 headers 里，HAR 不能因此缺 Host
+        （HAR 1.2 要求 request.headers 含 Host，否则导入别的工具会丢主机）。"""
+        flow = _flow()
+        flow.request.headers.pop("Host", None)
+        flow.request.http_version = "HTTP/2.0"
+        headers = build_har(flow)["log"]["entries"][0]["request"]["headers"]
+        assert {"name": "Host", "value": "api.example.com"} in headers
+        # 已有 Host 的不重复补
+        assert sum(1 for h in headers if h["name"].lower() == "host") == 1
+
+    def test_har_ipv6_host_is_bracketed(self):
+        flow = _flow(url="http://[::1]:8080/x")
+        flow.request.headers.pop("Host", None)
+        flow.request.http_version = "HTTP/2.0"
+        headers = build_har(flow)["log"]["entries"][0]["request"]["headers"]
+        assert {"name": "Host", "value": "[::1]:8080"} in headers
+
     def test_post_data(self):
         entry = build_har(
             _flow(method="POST", req_body=b'{"a":1}', req_headers={"Content-Type": "application/json"})

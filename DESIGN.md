@@ -6,7 +6,7 @@
 | 交付形态 | macOS + Windows 双平台桌面客户端（PySide6 + PyInstaller 本地构建） |
 | 内核 | mitmproxy（`DumpMaster` 内嵌，同进程运行） |
 | 文档版本 | v1.14（2026-10-14） |
-| 修订 | v1.1：交付范围扩展为 macOS + Windows 双平台（方案 A 本地构建）；新增流量过滤设计（域名过滤 / 隐藏 CONNECT / 隐藏 Image）<br>v1.2：域名过滤支持黑名单/白名单双模式（空白名单不过滤、模式切换保留关键词）<br>v1.3：新增流量搜索设计（Ctrl+F、URL/Headers/Body 范围、大小写切换、命中高亮、大 body 索引策略）<br>v1.4：Mock 支持本地文件响应（请求时读取）、模拟延迟、异常状态码预设；FARX 映射补充 x-replywithfile 与 latency<br>v1.5：①body 解码统一默认 UTF-8（弃用 mitmproxy latin-1 默认，`app/textutil.py`，文本类 mock 响应自动补 charset）；②新增请求重放（3.6：副本 + ClientPlayback，Ctrl+R / 右键菜单 / 编辑并重放对话框，REPLAY 徽标），重放从非目标移入范围<br>v1.6：①修正代理归属——仅 MainWindow 持有一个 ProxyService，入口不再自建（此前入口的裸代理会抢占端口，导致打包后 mock/捕获全失效，已加防回归测试）；②启动即自动开代理，端口占用时弹窗并复位按钮；③窗口几何持久化；④图标（icon.icns/icon.ico）与 Info.plist 落地；⑤补 macOS 冻结产物验收记录<br>v1.7：①导出加「完整响应（Headers+Body）」格式（3.2.3）；②列表支持列排序 + 多选批量复制/导出（3.2.4）；③会话保存与恢复（3.7，JSONL + 退出自动快照）；④网络模拟（3.8，弱网限速档位 + 域名映射到本地）<br>v1.8：body 结构化视图（3.2.5）——JSON 缩进 + 语法着色、WebForm 表单表格、自动/原文/JSON/表单/十六进制五模式；顺带修正 3.2 中"body 支持十六进制/文本切换"的表述（此前代码是自动判定、无手动切换控件）<br>v1.9：①列表顺序（到达顺序 / 新的在顶部）+ 自动滚动（3.2.6）；②body 视图加图片预览与换行开关，并补三道大内容闸门（深嵌套崩溃、大 JSON 因截断丢格式化、超长单行换行卡死，3.2.5）；③压缩 body 的"已解压"提示与兜底解压（3.2.7）；④WebSocket 抓包与消息列表（3.9）<br>v1.10：新增**工具页**（3.10）——编码转换（对齐 Fiddler TextWizard，27 种转换）+ JSON 格式化（对齐 json.cn，精确错误定位 + 树形浏览 + JSONPath 提取）；JSON 着色器从 detail_panel 抽出为 `app/ui/highlight.py` 供两处共用<br>v1.11：①Mock 命中计数 + 会话标记/备注（3.3.4）；②Map Local 本地目录映射 + 证书页二维码（3.8.3）；③**重放并对比**（3.6.1——副本 id 精确关联，JSON 键级 diff + 文本行级 diff 双轨，`app/jsondiff.py` 纯函数引擎）；④工具页加**JSON 比对**子页（3.10.3，复用同一 diff 引擎）；⑤JSONPath 补聚合函数 `length()`/`min()`/`max()`（3.10.2，对整个结果集生效）；⑥**WS 消息写入会话文件并可恢复**（3.9——`ws_messages` 随记录落盘，条数 2000 / 预算双闸，旧文件兼容，summary 计数按实际存储数回填）<br>v1.13：**系统代理自动接管**（3.1.1，对齐 Fiddler「Act as System Proxy」——启动代理自动把系统 HTTP/HTTPS 代理指向本应用，停止/退出/崩溃恢复全路径还原，原始配置逐项记录写回；macOS networksetup + 提权重试，Windows 注册表路径未实机回归）<br>v1.12：①Mock 规则支持**按请求方法匹配**（3.3.5，任意/GET/POST/… 下拉，比 Fiddler 免拼正则）；②Mock 支持**重定向到其他 URL**（3.3.6，规则级 Map Remote，支持 $1 替换，防指回代理自身死循环）；③JSON 树视图**懒加载**（3.10.2，展开才构建子节点，单层 5000 / 全局 5000 双上限）；④工具页新增**API 调试**子页（3.10.4，构建请求直发 + 右键从流量带入完整请求，响应复用 BodyPane 六模式渲染）；⑤**bug 排查修复 12 项**（settings 数字崩溃、流式响应丢行、非 UTF-8 会话字节篡改、代理 stop/start 竞态、规则重载行号错位、规则错误不可见、POST 空 body 无 Content-Length、WS 溢出保留最旧、窗口几何死路径、保存 tmp 残留、CA 损坏未捕获、导入信号误发）；⑥新增使用教程 TUTORIAL.md<br>v1.13b：①body 视图改 Fiddler 式**互斥按钮条**（去下拉）；②流量页**左右/上下布局可切换**（默认左右，工具栏「布局」下拉，比例换算 + splitter_state 持久化）；③Windows 打包输出改 **zip**（exe + `_internal\` 依赖目录，解压即用）<br>v1.14：**主题深浅色**（3.11，`app/ui/theme.py`）——默认跟随系统，菜单「外观」可切浅色/深色；语义色 token 收拢 + `theme.dynamic` 就地更新 + `_retheme` 监听广播；JSON 着色双配色已有 |
+| 修订 | v1.1：交付范围扩展为 macOS + Windows 双平台（方案 A 本地构建）；新增流量过滤设计（域名过滤 / 隐藏 CONNECT / 隐藏 Image）<br>v1.2：域名过滤支持黑名单/白名单双模式（空白名单不过滤、模式切换保留关键词）<br>v1.3：新增流量搜索设计（Ctrl+F、URL/Headers/Body 范围、大小写切换、命中高亮、大 body 索引策略）<br>v1.4：Mock 支持本地文件响应（请求时读取）、模拟延迟、异常状态码预设；FARX 映射补充 x-replywithfile 与 latency<br>v1.5：①body 解码统一默认 UTF-8（弃用 mitmproxy latin-1 默认，`app/textutil.py`，文本类 mock 响应自动补 charset）；②新增请求重放（3.6：副本 + ClientPlayback，Ctrl+R / 右键菜单 / 编辑并重放对话框，REPLAY 徽标），重放从非目标移入范围<br>v1.6：①修正代理归属——仅 MainWindow 持有一个 ProxyService，入口不再自建（此前入口的裸代理会抢占端口，导致打包后 mock/捕获全失效，已加防回归测试）；②启动即自动开代理，端口占用时弹窗并复位按钮；③窗口几何持久化；④图标（icon.icns/icon.ico）与 Info.plist 落地；⑤补 macOS 冻结产物验收记录<br>v1.7：①导出加「完整响应（Headers+Body）」格式（3.2.3）；②列表支持列排序 + 多选批量复制/导出（3.2.4）；③会话保存与恢复（3.7，JSONL + 退出自动快照）；④网络模拟（3.8，弱网限速档位 + 域名映射到本地）<br>v1.8：body 结构化视图（3.2.5）——JSON 缩进 + 语法着色、WebForm 表单表格、自动/原文/JSON/表单/十六进制五模式；顺带修正 3.2 中"body 支持十六进制/文本切换"的表述（此前代码是自动判定、无手动切换控件）<br>v1.9：①列表顺序（到达顺序 / 新的在顶部）+ 自动滚动（3.2.6）；②body 视图加图片预览与换行开关，并补三道大内容闸门（深嵌套崩溃、大 JSON 因截断丢格式化、超长单行换行卡死，3.2.5）；③压缩 body 的"已解压"提示与兜底解压（3.2.7）；④WebSocket 抓包与消息列表（3.9）<br>v1.10：新增**工具页**（3.10）——编码转换（对齐 Fiddler TextWizard，27 种转换）+ JSON 格式化（对齐 json.cn，精确错误定位 + 树形浏览 + JSONPath 提取）；JSON 着色器从 detail_panel 抽出为 `app/ui/highlight.py` 供两处共用<br>v1.11：①Mock 命中计数 + 会话标记/备注（3.3.4）；②Map Local 本地目录映射 + 证书页二维码（3.8.3）；③**重放并对比**（3.6.1——副本 id 精确关联，JSON 键级 diff + 文本行级 diff 双轨，`app/jsondiff.py` 纯函数引擎）；④工具页加**JSON 比对**子页（3.10.3，复用同一 diff 引擎）；⑤JSONPath 补聚合函数 `length()`/`min()`/`max()`（3.10.2，对整个结果集生效）；⑥**WS 消息写入会话文件并可恢复**（3.9——`ws_messages` 随记录落盘，条数 2000 / 预算双闸，旧文件兼容，summary 计数按实际存储数回填）<br>v1.13：**系统代理自动接管**（3.1.1，对齐 Fiddler「Act as System Proxy」——启动代理自动把系统 HTTP/HTTPS 代理指向本应用，停止/退出/崩溃恢复全路径还原，原始配置逐项记录写回；macOS networksetup + 提权重试，Windows 注册表路径未实机回归）<br>v1.12：①Mock 规则支持**按请求方法匹配**（3.3.5，任意/GET/POST/… 下拉，比 Fiddler 免拼正则）；②Mock 支持**重定向到其他 URL**（3.3.6，规则级 Map Remote，支持 $1 替换，防指回代理自身死循环）；③JSON 树视图**懒加载**（3.10.2，展开才构建子节点，单层 5000 / 全局 5000 双上限）；④工具页新增**API 调试**子页（3.10.4，构建请求直发 + 右键从流量带入完整请求，响应复用 BodyPane 六模式渲染）；⑤**bug 排查修复 12 项**（settings 数字崩溃、流式响应丢行、非 UTF-8 会话字节篡改、代理 stop/start 竞态、规则重载行号错位、规则错误不可见、POST 空 body 无 Content-Length、WS 溢出保留最旧、窗口几何死路径、保存 tmp 残留、CA 损坏未捕获、导入信号误发）；⑥新增使用教程 TUTORIAL.md<br>v1.13b：①body 视图改 Fiddler 式**互斥按钮条**（去下拉）；②流量页**左右/上下布局可切换**（默认左右，工具栏「布局」下拉，比例换算 + splitter_state 持久化）；③Windows 打包输出改 **zip**（exe + `_internal\` 依赖目录，解压即用）<br>v1.14：**主题深浅色**（3.11，`app/ui/theme.py`）——默认跟随系统，菜单「外观」可切浅色/深色；语义色 token 收拢 + `theme.dynamic` 就地更新 + `_retheme` 监听广播；JSON 着色双配色已有 |<br>v2.3.0：新增**设置对话框**（菜单「设置 → 偏好设置…」，Ctrl+,）——代理/流量列表/外观/会话/更新五页收拢全部散落配置；对话框只编辑不落盘，`values()` 交还主窗口 `_apply_settings` 逐项应用并同步工具栏/菜单（单一写入口，运行中改端口行为与工具栏一致）；端口输入框 `PortSpinBox` 抽出为工具栏与设置页公共组件 |
 
 ---
 
@@ -364,6 +364,32 @@ mitmproxy 的 `Message.content` / `get_content(strict=False)` **已经按 `conte
 - 解压生效时提示 `已解压 gzip：线上 12.3KB → 89.1KB`——导出时到底按哪个算，全靠这句话说清楚。
 - **兜底**：若 mitmproxy 解压失败（返回长度与原始长度相同），按魔数再试一次（`\x1f\x8b` → gzip、`\x28\xb5\x2f\xfd` → zstd、`\x78` → deflate），成功则提示"手动解压"。都不行就明说"已按 X 压缩，但解压失败，显示的是原始压缩字节"，而不是丢一堆乱码让人以为是编码问题。
 
+#### 3.2.8 请求耗时分析（v2.3.0，对齐 Fiddler Statistics）
+
+详情面板新增第四个页签「耗时」（无计时数据时自动隐藏，不挂空页签），把每条请求的分段耗时画成占比条：
+
+| 分段 | 口径（锚点均为 `time.time()` 域时间戳） |
+|---|---|
+| 连接服务器（含 DNS） | `server_conn.timestamp_tcp_setup - server_conn.timestamp_start`（域名时起点 = DNS 解析开始） |
+| TLS 握手 | `server_conn.timestamp_tls_setup - timestamp_tcp_setup`（明文 HTTP 为 0，不显示该行） |
+| 发送请求 | `request.timestamp_end - request.timestamp_start` |
+| 等待响应（TTFB） | `response.timestamp_start - request.timestamp_end` |
+| 接收响应 | `response.timestamp_end - response.timestamp_start` |
+
+- 计算在 `addons/capture.py:extract_timings()`，**随 summary 落盘**（`summary["timings"]`），会话保存/恢复后照样能看——`server_conn` 三个时间戳一并进 `flow_to_record` / 还原（旧会话文件没有该字段时连接/TLS 段记 0，不炸）。
+- **口径差异是故意的**：列表「耗时」列 = 请求开始 → 响应结束（客户端感知，与弱网延迟相加）；耗时页的「总耗时」= 五段之和 + 弱网延迟单列在旁（不并进任何分段——它是施加在响应返回前的睡眠，不是某一网络阶段）。Fiddler 的 Total 同样按请求起点算。
+- **缺锚点的段记 0 且不显示**，备注说明原因：mock / map-local / 恢复的会话没有 `server_conn` 锚点（"该响应未经上游网络…仅统计本机处理耗时"）；响应未返回时说明「等待/接收」暂缺。**绝不拿 0 伪装成"很快"**。
+- 负值（时钟跳变）一律钳到 0。
+
+**具体时刻（v2.3.1）**：光有耗时只能看出"哪段慢"，看不出"什么时候慢的"，也无法与服务端日志按时间对账。因此每行除耗时外还给出该分段的**绝对时钟**（`HH:MM:SS.mmm`，Fiddler 的 Timer 表同样是绝对时间点）：
+
+- `extract_timing_marks(flow)` 返回 `{phase: (开始秒, 结束秒)}`，与 `extract_timings` 共用同一组锚点（`_timing_anchors` / `TIMING_ANCHORS`），所以「结束 − 开始」恒等于耗时，不会出现两处各算一遍漂移。
+- 表头四列：阶段 / 开始时刻 / 耗时 / 占比。行内时刻是**该分段开始**的时刻，完整起止与「相对起点 +X ms」放在 tooltip（不撑宽列表）。
+- 顶部一行给出整条请求的「起点 → 终点（时段跨度）」，起点取时间轴上**最早**锚点（建连早于请求发送）。
+- **时段跨度 ≥ 各段之和**：TLS 完成后到客户端真正发出请求常有几十毫秒间隙（真实抓包实测 74ms），不属于任何网络分段。差额超 1ms 时备注明写「其中 X ms 不属于上述任何分段」，否则"时刻从 .187 走到 .354（167ms）但总耗时 92.9ms"看着像算错。
+- 毫秒格式走 `microsecond // 1000`，不取小数——否则 `.9996` 会进位成不存在的「.1000」。
+- 时刻数据全部来自已落盘的时间戳（request/response/server_conn），**恢复的会话一样有**；跨天时终点带日期，同日只显示时间。
+
 ### 3.3 Mock 规则引擎
 
 **规则模型**（`rules.json`）：
@@ -657,6 +683,15 @@ PATCH / HEAD / OPTIONS，**不用像 Fiddler 那样自己拼正则区分方法**
   ——那会让每一跳生成新 flow，metadata 计数管不到；另有 flow.metadata 计数兜底。
 - 改写失败（目标非法/循环）返回 502 + 规则标错，不用规则配置的 body 兜底（那是误导）。
 
+#### 3.3.7 规则搜索（v2.3.0；Fiddler 分组未做，先补更常用的搜索）
+
+Fiddler 的 AutoResponder **没有分组**（只有排序与启停），MiteProxy 同理未实现分组；规则一多时的痛点是"找不到"，先交付更通用的**搜索过滤**：
+
+- 规则面板工具栏「搜索:」框（`URL / 名称` 占位），实时过滤：**名称 / URL 匹配值 / 请求方法 / 重定向目标 / 本地文件路径**，大小写不敏感子串匹配（与流量列表搜索同一套心智；不做正则——输错字符静默无结果比抛错好）。
+- 与「只显示启用」**叠加生效**（两条件取交集）；清空恢复全部。
+- 过滤到 0 条时表格上方出空态提示并说明原因（"没有匹配「kw」的规则" / "没有启用中的规则"）——**有规则却显示空表而不说明，用户会以为规则丢了**。
+- 搜索中代理线程命中/新增触发 `refresh()` 时过滤条件不丢（条件在控件上，refresh 只重建可见行）；`_display_ids` 始终与表格行一一对应，勾选列不会错位到被过滤掉的规则上。
+
 ### 3.9 WebSocket 抓包（对齐 Fiddler 的 WebSocket 会话）
 
 mitmproxy 12 把 WebSocket 连接表示成**带 `websocket` 属性的 HTTP flow**：握手是 101 响应，消息累积在 `flow.websocket.messages` 里（`from_client` / `type` / `content` / `timestamp`）。
@@ -871,6 +906,13 @@ JSON 工具页共用——两处各写一份迟早不一致（改了深色配色
 - `theme`：主题档位（3.11）——`system` / `light` / `dark`，坏值回落 `system`；菜单「外观」切换即写回。
 - 与 `rules.json` 分离：规则是可迁移资产（可导出分享），设置是本机偏好。
 
+**设置对话框（v2.3.0，`app/ui/settings_dialog.py`）**：菜单「设置 → 偏好设置…」（Ctrl+,）打开，把散落在工具栏/菜单里的可配置项收拢到一处——左侧分类列表 + 右侧堆叠页，共五页：**代理**（代理端口/证书端口/设为系统代理）、**流量列表**（保存条数/自动滚动/新的在顶部/Body 默认换行）、**外观**（主题/语言）、**会话**（退出时自动保存会话 + 配置目录一键打开）、**更新**（启动时检查更新）。设计约束：
+
+- 对话框**只编辑不落盘**（同 NetworkPanel）：`values()` 交出字典，由 `MainWindow._apply_settings()` 逐项应用并统一 `save_settings`——单一写入口，不会出现两套配置各写各的；
+- 同步一律走既有控件与处理器（`setChecked` / `setCurrentIndex` / `_apply_proxy_port` / `_apply_cert_port` / `_on_theme_selected` / `_on_language_selected`…），不绕开界面直接改 settings——设置页与工具栏/菜单永远指向同一份配置；**端口是设置页专属入口**（v2.3.0 起工具栏不再放代理/证书端口框，避免两处都能改），运行中改端口仍走重启询问、改证书端口运行中立即重启、改系统代理立即接管/还原；
+- 端口输入框 `PortSpinBox` 定义在 settings_dialog（无微调按钮、屏蔽滚轮的防误改组件），设置页使用；工具栏「启动代理」按钮悬停提示显示当前监听端口并指路设置页；
+- 弱网档位与域名映射不进来——它们各有「网络模拟」页，重复一份只会打架；同理过滤留在过滤栏（贴近流量列表，改完即见效果）。
+
 ### 4.4 会话文件
 
 路径由用户选择（默认落在 `~/.miteproxy/sessions/`），扩展名 `.jsonl`，格式见 3.7。
@@ -921,6 +963,7 @@ miteproxy/
 │       ├── json_compare_panel.py # JSON 比对页（左右输入 + 键级差异表，复用 jsondiff）
 │       ├── tool_panel.py     # 工具页外壳：编码转换 / JSON / JSON 比对三个子页
 │       ├── rule_editor.py    # 规则编辑对话框
+│       ├── settings_dialog.py # 偏好设置对话框（分类列表 + 堆叠页；端口输入框 PortSpinBox 与工具栏共用）
 │       ├── import_dialog.py  # 导入预览对话框
 │       ├── replay_dialog.py  # 编辑并重放对话框（compare 模式复用为「重放并对比」）
 │       ├── compare_dialog.py # 重放对比对话框（双 MessagePane + JSON 键级/文本行级差异报告）
@@ -948,6 +991,7 @@ miteproxy/
 │   ├── test_session.py       # 会话保存恢复（含活会话重建）
 │   ├── test_network.py       # 弱网折算 + 域名映射 spec 生成 + local 形态识别
 │   ├── test_network_panel.py # 网络面板 + 设置往返 + 主窗口接线
+│   ├── test_settings_dialog.py # 设置对话框回填/交还 + 主窗口逐项应用与界面同步
 │   ├── test_bodyview.py      # body 视图：判定/格式化/图片/换行/压缩/面板接线
 │   ├── test_list_and_ws.py   # 列表顺序与自动滚动 + WebSocket 捕获接线
 │   ├── test_codec.py         # 编码转换 27 种 + 面板接线 + 主窗口送 body
@@ -1198,6 +1242,9 @@ v1.12 增量以单测 + 本地服务集成测试为主（803 例），另跑真�
 | `test_session.py` | JSONL 往返、坏行容忍、body 预算、**活会话重建（`Flow.copy()` 不崩）**、`marked`/`is_replay`/时间戳还原、退出快照与归档、**WS 消息持久化**（逐条编解码/预算与条数双闸/关闭码/旧文件兼容/summary 计数按实际存储数回填/截断标记透出） |
 | `test_network.py` | 弱网档位表、延迟折算边界、映射 spec 生成（`.` 不转义陷阱、端口越界、非法正则、spec 分隔符） |
 | `test_network_panel.py` | 面板 ↔ 配置双向一致、settings.json 往返、主窗口接线（addon 齐 / `map_remote` 选项 / 即时落盘） |
+| `test_settings_dialog.py` | 设置对话框按 settings 回填与 `values()` 交还、端口框防误改（无按钮/滚轮丢弃）、分类切页；主窗口 `_apply_settings` 落盘 + 菜单/详情页同步（端口已无工具栏控件，以 settings 与代理按钮提示为准）、取消不应用、运行中改端口走重启询问、语言切换弹重启提示 |
+| `test_rules_panel_search.py` | 规则搜索：URL/名称/方法/重定向/文件路径过滤、大小写不敏感、与「只显示启用」叠加、空态提示文案、过滤中 refresh 不丢条件、行数与 `_display_ids` 一致 |
+| `test_flow_timings.py` | 分段耗时五段口径、缺锚点记 0、负值钳 0、summary 带 `timings` 与 duration_ms 口径差异、会话保存/恢复后分段不丢（含旧文件无 `server_conn` 字段兼容）；TimingsPane 五行渲染/0 段隐藏/mock 与 pending 备注/清空隐藏页签/en 模式分段名 |
 | `test_bodyview.py` | content-type 判定（`*+json` 变体 / 表单 / 图片 / 嗅探边界）、JSON 格式化与失败原因、表单 URL 解码与空值、十六进制布局、面板六模式渲染与粘性、结构化视图上的搜索高亮、**大内容三道闸门**（深嵌套 / 大 JSON 不丢格式化 / 着色暂停）、换行开关与闸门、压缩提示与兜底解压、图片预览与缩放、WS 消息表与 payload |
 | `test_list_and_ws.py` | 行内更新（`dataChanged`、不新增行）、WS 徽标与悬停提示、WS 摘要体积/耗时口径、钩子接线、信号桥、列表顺序（倒序/正序）与自动滚动的克制条件、新设置字段往返与旧文件兼容 |
 | `test_codec.py` | 27 种转换的正/反用例（URL 两种 `+` 语义、Base64 严格校验、Hex/Base64 双形态识别、Deflate 三种头、JWT 过期提示、时间戳秒/毫秒）、注册表自洽（反向成对、分组头不可选、hint 齐全）、面板接线（防抖/粘性/回填/上限交给按钮）、主窗口「送 body」按子页分流 |

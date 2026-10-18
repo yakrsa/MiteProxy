@@ -74,6 +74,93 @@ class TestReplayCopy:
         assert copy.request.content == "你好".encode("utf-8")
 
 
+class TestEnsureAuthority:
+    """回归：HTTP/2 的 :authority 不在 headers 里、会话也不落盘，构造/恢复出来
+    的请求默认 authority 为空。不补的话重放出去「既无 Host 也无 :authority」，
+    上游网关直接判 400（实测 hq.yxzq.com 返回 alibaba-ga 的 400 Bad Request）。"""
+
+    def test_http2_without_host_gets_authority(self):
+        from mitmproxy.test import tflow
+
+        flow = tflow.tflow(resp=True)
+        flow.request.url = "https://a.com/api/x"
+        flow.request.http_version = "HTTP/2.0"
+        flow.request.headers.pop("host", None)
+        assert flow.request.authority == ""
+
+        copy = make_replay_copy(flow)
+        assert copy.request.authority == "a.com"
+        assert copy.request.first_line_format == "absolute"
+
+    def test_http2_non_default_port_kept(self):
+        from mitmproxy.test import tflow
+
+        flow = tflow.tflow(resp=True)
+        flow.request.url = "https://a.com:8443/api/x"
+        flow.request.http_version = "HTTP/2.0"
+        flow.request.headers.pop("host", None)
+        copy = make_replay_copy(flow)
+        assert copy.request.authority == "a.com:8443"
+
+    def test_http1_with_host_left_untouched(self):
+        """HTTP/1 且带 Host 的请求保持 origin-form，不无谓改成绝对形式。"""
+        from mitmproxy.test import tflow
+
+        flow = tflow.tflow(resp=True)
+        flow.request.url = "https://a.com/api/x"
+        flow.request.http_version = "HTTP/1.1"
+        flow.request.headers["host"] = "a.com"
+        assert flow.request.authority == ""
+
+        copy = make_replay_copy(flow)
+        assert copy.request.authority == ""
+
+    def test_edited_url_syncs_authority(self):
+        from mitmproxy.test import tflow
+
+        flow = tflow.tflow(resp=True)
+        flow.request.url = "https://a.com/api/x"
+        flow.request.http_version = "HTTP/2.0"
+        flow.request.headers.pop("host", None)
+        copy = make_replay_copy(flow)
+
+        apply_request_edits(copy, url="https://b.com:8443/api/y")
+        assert copy.request.authority == "b.com:8443"
+        assert copy.request.pretty_url == "https://b.com:8443/api/y"
+
+    def test_ipv6_authority_bracketed(self):
+        """IPv6 字面量必须带方括号：裸拼会得到 `::1:8080` 这种畸形 authority。"""
+        from mitmproxy.test import tflow
+
+        flow = tflow.tflow(resp=True)
+        flow.request.url = "http://[::1]:8080/api/x"
+        flow.request.http_version = "HTTP/2.0"
+        flow.request.headers.pop("host", None)
+
+        copy = make_replay_copy(flow)
+        assert copy.request.authority == "[::1]:8080"
+        # 默认端口不写出来，IPv6 同样要带括号
+        assert copy.request.host == "::1"
+
+    def test_format_url_ipv6_roundtrips(self):
+        """pretty_url 对 IPv6 不加方括号、无法再解析；format_request_url 必须可往返。
+
+        存档用它，恢复时才不会 `Request.make` 抛 ValueError 把整份会话打不开。
+        """
+        from mitmproxy.http import Request
+
+        from app.replay import format_request_url
+
+        for url in ("http://[::1]:8080/x?a=1", "https://[2001:db8::1]/y", "http://[::1]/x"):
+            req = Request.make("GET", url)
+            got = format_request_url(req)
+            assert got == url
+            # 能再解析回来（不抛 ValueError）= 存盘/导出后不会坏。
+            # 注意不能再断言 again.url：mitmproxy 的 url getter 本身就不加方括号。
+            again = Request.make("GET", got)
+            assert (again.host, again.port, again.path) == (req.host, req.port, req.path)
+
+
 # ---------------------------------------------------------------- 端到端
 
 
@@ -119,6 +206,19 @@ def upstream():
     thread.join(timeout=2)
 
 
+def _start_proxy(proxy) -> None:
+    """启动代理并等它真正就绪再返回。
+
+    ``ProxyService.start()`` 只负责起线程，mitmproxy 是**异步绑定端口**的；
+    紧接着就发请求会偶发 ``ConnectionRefused``（固定端口 + 线程调度，本地连跑
+    几次能挂一次）。等 ``_master`` 建好再继续，测试才稳定。
+    """
+    proxy.start()
+    deadline = time.time() + 10
+    while time.time() < deadline and getattr(proxy, "_master", None) is None:
+        time.sleep(0.02)
+
+
 def _get_via_proxy(port: int, path: str) -> bytes:
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({"http": f"127.0.0.1:{port}"})
@@ -132,7 +232,7 @@ class TestReplayEndToEnd:
         """抓到的请求重放后，上游应收到第二次请求，且新会话带 REPLAY 标记。"""
         capture = CaptureAddon()
         proxy = ProxyService(host="127.0.0.1", port=18081, addons=[capture])
-        proxy.start()
+        _start_proxy(proxy)
         try:
             body = _get_via_proxy(18081, "/hello")
             assert b'"ok"' in body
@@ -172,7 +272,7 @@ class TestReplayEndToEnd:
         """编辑 body 后重放：上游收到的应是修改后的 body。"""
         capture = CaptureAddon()
         proxy = ProxyService(host="127.0.0.1", port=18082, addons=[capture])
-        proxy.start()
+        _start_proxy(proxy)
         try:
             _get_via_proxy(18082, "/seed")
             deadline = time.time() + 5

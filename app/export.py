@@ -15,6 +15,7 @@ import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
+from app.replay import format_request_url
 from app.textutil import decode_body
 from PySide6.QtCore import QT_TRANSLATE_NOOP, QCoreApplication
 
@@ -187,7 +188,7 @@ def build_curl(flow, style: str = "posix") -> str:
     method = getattr(req, "method", "GET") or "GET"
     if method.upper() != "GET":
         parts += ["-X", method]
-    parts.append(_quote(getattr(req, "pretty_url", "") or "", style))
+    parts.append(_quote(format_request_url(req), style))
 
     for k, v in _headers_items(req):
         if k.startswith(":") or k.lower() == "host":
@@ -403,6 +404,24 @@ def _har_headers(msg) -> list[dict]:
     return [{"name": k, "value": v} for k, v in _headers_items(msg)]
 
 
+def _har_request_headers(req) -> list[dict]:
+    """HAR 的 request.headers 补上 Host。
+
+    HTTP/2 的 ``:authority`` 是伪头、不在 ``headers`` 里，直接导出会让 HAR 缺
+    Host（HAR 1.2 要求 request.headers 含 Host）。补的是 authority 而非
+    URL 的 host，这样连 IP、Host 指定域名的场景也不会补错。
+    """
+    headers = _har_headers(req)
+    if any(str(h.get("name", "")).lower() == "host" for h in headers):
+        return headers
+    authority = getattr(req, "authority", "") or ""
+    if not authority:
+        authority = urlparse(format_request_url(req)).netloc
+    if authority:
+        headers.insert(0, {"name": "Host", "value": authority})
+    return headers
+
+
 def _har_query(req) -> list[dict]:
     out = []
     try:
@@ -423,10 +442,10 @@ def build_har_entry(flow) -> dict:
 
     request: dict = {
         "method": req.method,
-        "url": getattr(req, "pretty_url", "") or "",
+        "url": format_request_url(req),
         "httpVersion": getattr(req, "http_version", "") or "HTTP/1.1",
         "cookies": _har_cookies(req),
-        "headers": _har_headers(req),
+        "headers": _har_request_headers(req),
         "queryString": _har_query(req),
         "headersSize": -1,
         "bodySize": len(req_body),

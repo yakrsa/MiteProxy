@@ -10,9 +10,11 @@
 
 from __future__ import annotations
 
+import gzip
 import http.client
 import ssl
 import time
+import zlib
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 from PySide6.QtCore import QCoreApplication
@@ -28,6 +30,8 @@ class ApiResponse:
     reason: str = ""
     headers: list = field(default_factory=list)  # [(name, value)] 保序、保重复
     body: bytes = b""
+    #: 线上原始（压缩后）字节数；body 已解压，用于「已解压」提示
+    raw_len: int = 0
     elapsed_ms: int = 0
     url: str = ""
     error: str = ""
@@ -91,12 +95,20 @@ def send_request(
             data = resp.read(MAX_BODY_BYTES + 1)
             if len(data) > MAX_BODY_BYTES:
                 return fail(QCoreApplication.translate("httpclient", '响应体超过 {0}MB 上限').format(MAX_BODY_BYTES // (1024 * 1024)))
+            # http.client 不会自动按 Content-Encoding 解压（gzip/br/zstd 等），
+            # 不在这里解压的话，下游 BodyPane 拿到的就是压缩字节——所有文本格式
+            # 都解码失败、只能显示十六进制，且切任何格式都救不回来（见 api_panel）。
+            ce = _content_encoding_of(resp)
+            raw_len = len(data)
+            decompressed = _maybe_decompress(data, ce) if ce else None
+            body = decompressed if decompressed is not None else data
             return ApiResponse(
                 ok=True,
                 status=resp.status,
                 reason=resp.reason or "",
                 headers=list(resp.getheaders()),
-                body=data,
+                body=body,
+                raw_len=raw_len,
                 elapsed_ms=int((time.monotonic() - start) * 1000),
                 url=url,
             )
@@ -109,3 +121,35 @@ def send_request(
         return fail(QCoreApplication.translate("httpclient", '连接失败: {0}').format(e))
     except Exception as e:  # ssl.SSLError / http.client 各类异常统一收敛
         return fail(QCoreApplication.translate("httpclient", '请求失败: {0}').format(e))
+
+
+def _content_encoding_of(resp) -> str:
+    """从响应头取 Content-Encoding（小写、去空白）；取不到返回空串。"""
+    try:
+        return (resp.getheader("content-encoding") or "").strip()
+    except Exception:
+        return ""
+
+
+def _maybe_decompress(data: bytes, encoding: str):
+    """按 Content-Encoding 解压；解不出来（库没装 / 服务端谎报）返回 None，调用方回落原始字节。"""
+    enc = (encoding or "").strip().lower()
+    try:
+        if enc in ("gzip", "x-gzip"):
+            return gzip.decompress(data)
+        if enc == "deflate":
+            try:
+                return zlib.decompress(data)
+            except zlib.error:
+                return zlib.decompress(data, -zlib.MAX_WBITS)   # 裸 deflate
+        if enc == "br":
+            import brotli
+
+            return brotli.decompress(data)
+        if enc == "zstd":
+            import zstandard
+
+            return zstandard.ZstdDecompressor().decompress(data)
+    except Exception:
+        return None
+    return None

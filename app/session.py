@@ -14,7 +14,11 @@
 文件结构（每行一个 JSON 对象）::
 
     {"v": 1, "summary": {...}, "request": {...}, "response": {...} | null,
-     "ws_messages": {...} | null}
+     "ws_messages": {...} | null, "server_conn": {...} | null}
+
+``summary`` 含 `timings``（分段耗时，耗时分析页用）；``server_conn`` 存三个
+连接时间戳（恢复后详情页「耗时」签的连接/TLS 分段靠它们算）。两者缺省时
+按 0 处理，旧文件不兼容也不炸。
 """
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ from urllib.parse import urlparse
 from mitmproxy.connection import Client, Server
 from mitmproxy.http import HTTPFlow, Request, Response
 
+from app.replay import ensure_request_authority, format_request_url
 from app.rules import CONFIG_DIR
 from PySide6.QtCore import QCoreApplication
 # （decode_body 已不用于保存路径：text 分支只认 UTF-8，见 _encode_body 注释）
@@ -241,7 +246,7 @@ def flow_to_record(
     req_dict, _ = _encode_message(req, limits, limits.body_limit)
     if req is not None:
         req_dict["method"] = req.method
-        req_dict["url"] = getattr(req, "pretty_url", "") or ""
+        req_dict["url"] = format_request_url(req)
 
     res_dict, remaining = _encode_message(res, limits, remaining)
     if res is not None:
@@ -261,6 +266,15 @@ def flow_to_record(
     }
     if ws_dict is not None:
         record["ws_messages"] = ws_dict
+    # 服务端连接时间戳：耗时分析页（Fiddler Statistics 口径）的连接/TLS
+    # 分段要靠它们算；不存的话恢复的会话只剩发送/等待/接收三段
+    conn = getattr(flow, "server_conn", None)
+    if conn is not None:
+        record["server_conn"] = {
+            "timestamp_start": getattr(conn, "timestamp_start", None),
+            "timestamp_tcp_setup": getattr(conn, "timestamp_tcp_setup", None),
+            "timestamp_tls_setup": getattr(conn, "timestamp_tls_setup", None),
+        }
     return record, remaining, dropped
 
 
@@ -443,6 +457,12 @@ def _record_to_flow(record: dict):
         headers=_header_fields(req_dict.get("headers")),
     )
     req.http_version = str(req_dict.get("http_version") or "HTTP/1.1")
+    # 还原 authority（HTTP/2 的 :authority / HTTP/1 绝对形式目标）。
+    # 会话只存了 headers，而 HTTP/2 的 :authority 既不在 headers 里、也没单独存；
+    # Request.make 又不会从 URL 填 authority。结果恢复出来的请求成了「无 Host、
+    # 无 :authority」的裸请求，重放时被上游网关直接判 400（实测 hq.yxzq.com
+    # 返回 alibaba-ga 的 400 Bad Request）。补上后重放才与抓包时一致。
+    ensure_request_authority(req)
     req.timestamp_start = req_dict.get("timestamp_start")
     req.timestamp_end = req_dict.get("timestamp_end")
 
@@ -460,6 +480,13 @@ def _record_to_flow(record: dict):
         res.timestamp_end = res_dict.get("timestamp_end")
 
     client, server = _build_connections(url, summary)
+    # 服务端连接时间戳还原：耗时分析页的连接/TLS 分段需要（见 flow_to_record）
+    conn_dict = record.get("server_conn")
+    if isinstance(conn_dict, dict):
+        for attr in ("timestamp_start", "timestamp_tcp_setup", "timestamp_tls_setup"):
+            value = conn_dict.get(attr)
+            if isinstance(value, (int, float)):
+                setattr(server, attr, value)
     flow = HTTPFlow(client_conn=client, server_conn=server)
     flow.request = req
     flow.response = res
@@ -507,7 +534,14 @@ def load_session(path) -> LoadResult:
                 if record.get("v") != SESSION_VERSION:
                     result.skipped += 1
                     continue
-                flow = _record_to_flow(record)
+                # 单条记录重建失败（历史遗留的畸形 URL 等）只跳过这条：
+                # 让它冒出去会把整份会话都打不开，用户看到的是「恢复失败」。
+                try:
+                    flow = _record_to_flow(record)
+                except Exception:
+                    log.debug("重建会话记录失败，跳过该条", exc_info=True)
+                    result.skipped += 1
+                    continue
                 if flow is None:
                     result.skipped += 1
                     continue

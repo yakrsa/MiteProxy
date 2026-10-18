@@ -51,6 +51,173 @@ def extract_server_ip(flow) -> str:
     return ""
 
 
+#: 计时分段 key → 展示名（详情页「耗时」签；i18n 在 UI 侧做）
+TIMING_PHASES = ("connect", "tls", "send", "wait", "receive")
+
+#: 分段 → (起点锚点, 终点锚点)。锚点都是 time.time() 域的绝对时间戳（秒）；
+#: 耗时 = 终点 - 起点，「具体时刻」= 这两个值本身（Fiddler Statistics 的
+#: Timer 表同样给绝对时钟）。extract_timings / extract_timing_marks 共用，
+#: 保证「耗时」与「时刻」永远出自同一根轴。
+TIMING_ANCHORS = {
+    "connect": ("server_start", "tcp_setup"),
+    "tls": ("tcp_setup", "tls_setup"),
+    "send": ("req_start", "req_end"),
+    "wait": ("req_end", "res_start"),
+    "receive": ("res_start", "res_end"),
+}
+
+
+def _ts(obj, attr: str):
+    """安全取时间戳（毫秒换算前的秒值）；取不到返回 None。"""
+    try:
+        value = getattr(obj, attr, None)
+    except Exception:
+        return None
+    return value if isinstance(value, (int, float)) else None
+
+
+def _timing_anchors(flow) -> dict:
+    """时间轴上的所有锚点（绝对时间戳秒；缺失为 None）。
+
+    同名锚点被相邻两段共用（如 tcp_setup 既是 connect 的终点、也是 tls 的
+    起点），所以先一次性取出、再由各段按 TIMING_ANCHORS 组合——避免两处
+    各自取时间戳、口径漂移。
+    """
+    req = getattr(flow, "request", None)
+    res = getattr(flow, "response", None)
+    server_conn = getattr(flow, "server_conn", None)
+    return {
+        "server_start": _ts(server_conn, "timestamp_start")
+        if server_conn is not None
+        else None,
+        "tcp_setup": _ts(server_conn, "timestamp_tcp_setup")
+        if server_conn is not None
+        else None,
+        "tls_setup": _ts(server_conn, "timestamp_tls_setup")
+        if server_conn is not None
+        else None,
+        "req_start": _ts(req, "timestamp_start"),
+        "req_end": _ts(req, "timestamp_end"),
+        "res_start": _ts(res, "timestamp_start") if res is not None else None,
+        "res_end": _ts(res, "timestamp_end") if res is not None else None,
+    }
+
+
+def extract_timings(flow) -> dict:
+    """请求的分段耗时（毫秒），对齐 Fiddler Statistics 的计时口径。
+
+    时间轴锚点（都是 time.time() 域的绝对时间戳）：
+      server_conn.timestamp_start       连接建立开始（域名 = DNS 解析起点）
+      server_conn.timestamp_tcp_setup  TCP 握手完成
+      server_conn.timestamp_tls_setup  TLS 握手完成（HTTPS 才有）
+      request.timestamp_start           开始接收客户端请求
+      request.timestamp_end             请求发送完成
+      response.timestamp_start          收到响应首字节（TTFB）
+      response.timestamp_end            响应接收完成
+
+    分段（缺锚点的段记 0.0——mock / map-local 注入的响应没有 server_conn，
+    本就没走过网络；负值钳到 0，防时钟跳变把某一阶段算成负数）：
+      connect  建连（含 DNS）   tcp_setup  - server_conn.timestamp_start
+      tls      TLS 握手          tls_setup  - tcp_setup
+      send     发送请求          request.timestamp_end - request.timestamp_start
+      wait     等待响应（TTFB）  response.timestamp_start - request.timestamp_end
+      receive  接收响应          response.timestamp_end - response.timestamp_start
+
+    只要「具体时刻」不要耗时的场景（详情页每行的时间列），用
+    :func:`extract_timing_marks`——同一根轴，不重复取时间戳。
+    """
+    def ms(later, earlier) -> float:
+        if later is None or earlier is None:
+            return 0.0
+        return max(0.0, round((float(later) - float(earlier)) * 1000, 1))
+
+    anchors = _timing_anchors(flow)
+    conn_start = anchors["server_start"]
+    tcp_setup = anchors["tcp_setup"]
+    tls_setup = anchors["tls_setup"]
+    req_start = anchors["req_start"]
+    req_end = anchors["req_end"]
+    res_start = anchors["res_start"]
+    res_end = anchors["res_end"]
+
+    return {
+        "connect": ms(tcp_setup, conn_start),
+        "tls": ms(tls_setup, tcp_setup) if tls_setup is not None else 0.0,
+        "send": ms(req_end, req_start),
+        "wait": ms(res_start, req_end),
+        "receive": ms(res_end, res_start),
+    }
+
+
+def extract_timing_marks(flow) -> dict:
+    """每个分段的「具体时刻」：``{phase: (开始秒, 结束秒)}``，缺失为 None。
+
+    与 extract_timings 同一根时间轴（共用 _timing_anchors），所以
+    「结束 - 开始」恒等于 extract_timings 里的毫秒值。详情页「耗时」签
+    用它把绝对时间显示在每一行（对齐 Fiddler Statistics 的 Timer 表：
+    光有耗时看不出「什么时候慢的」，有绝对时刻才能和日志/服务端对账）。
+    """
+    anchors = _timing_anchors(flow)
+    return {
+        phase: (anchors.get(start), anchors.get(end))
+        for phase, (start, end) in TIMING_ANCHORS.items()
+    }
+
+
+def timing_span(flow) -> tuple[float | None, float | None]:
+    """整条请求的时间窗口 ``(开始, 结束)``，用于耗时页顶部的「具体时间」行。
+
+    起点取时间轴上**最早**的锚点（建连早于请求发送，取建连才能真正覆盖
+    「这条请求什么时候开始」），终点取响应结束；响应未返回时退化为最后
+    一个已知锚点。全无时间戳时返回 (None, None)。
+    """
+    anchors = _timing_anchors(flow)
+    starts = [
+        v
+        for v in (
+            anchors["server_start"],
+            anchors["req_start"],
+            anchors["tcp_setup"],
+            anchors["tls_setup"],
+        )
+        if v
+    ]
+    end = anchors["res_end"] or anchors["res_start"] or anchors["req_end"]
+    return (min(starts) if starts else None, end)
+
+
+def request_span_ms(flow) -> float:
+    """列表「耗时」列口径：请求开始 → 响应结束（毫秒），含弱网延迟。
+
+    上游真实响应时等于 extract_timings 的 send+wait+receive 之和；mock /
+    map-local 注入的响应没有 timestamp_end，退化为当前时间（mock 延迟与
+    弱网延迟都已睡完，不能再叠加 throttle_ms，否则重复计一次）。
+
+    summarize 的 duration_ms 与详情页耗时分析的对账行都用它——两处数字
+    必须同源，否则用户对不上（见 DESIGN.md 3.2.8）。
+    """
+    req = getattr(flow, "request", None)
+    res = getattr(flow, "response", None)
+    if req is None or not getattr(req, "timestamp_start", None):
+        return 0.0
+    try:
+        throttle_ms = float(
+            (getattr(flow, "metadata", None) or {}).get("mproxy_throttle_ms") or 0
+        )
+    except (TypeError, ValueError):
+        throttle_ms = 0.0
+    try:
+        if res is not None:
+            if res.timestamp_end:
+                return round(
+                    (res.timestamp_end - req.timestamp_start) * 1000 + throttle_ms, 1
+                )
+            return round((time.time() - req.timestamp_start) * 1000, 1)
+    except Exception:
+        pass
+    return 0.0
+
+
 class CaptureAddon:
     def __init__(
         self,
@@ -144,23 +311,8 @@ class CaptureAddon:
             if req.timestamp_start:
                 duration_ms = (end - req.timestamp_start) * 1000
         else:
-            try:
-                if res is not None and req.timestamp_start:
-                    if res.timestamp_end:
-                        # 上游真实响应：timestamp_end 在钩子执行前就定死了，
-                        # 弱网延迟不在其中，单独加上
-                        duration_ms = (
-                            (res.timestamp_end - req.timestamp_start) * 1000
-                            + throttle_ms
-                        )
-                    else:
-                        # mock / map-local 在 request 阶段注入的响应没有
-                        # timestamp_end；走到这里时 mock 延迟与弱网延迟都
-                        # 已睡完，当前时间就是真实的结束时刻（自然含延迟，
-                        # 不能再叠加 throttle_ms，否则重复计一次）
-                        duration_ms = (time.time() - req.timestamp_start) * 1000
-            except Exception:
-                pass
+            # HTTP：耗时口径抽成 request_span_ms（与耗时分析对账行同源）
+            duration_ms = request_span_ms(flow)
             # raw_content 在流式响应期间为 None（mitmproxy 文档明确说明），
             # len(None) 抛 TypeError 会让整个 summarize 失败、该行永远进不了列表
             size = len(res.raw_content or b"") if res is not None else 0
@@ -198,6 +350,9 @@ class CaptureAddon:
             "is_websocket": ws is not None,
             "ws_messages": ws_messages,
             "ws_closed": ws_closed,
+            #: 分段耗时（毫秒，Fiddler Statistics 口径，见 extract_timings）；
+            #: 随 summary 落盘，恢复的会话也能看耗时分析
+            "timings": extract_timings(flow),
         }
 
     # ------------------------------------------------------------ 查询

@@ -1,6 +1,9 @@
 # 构建产物
 build/
 dist/
+# PyInstaller 在仓库根目录生成的 .app 副产物（打包时向后兼容旧习惯生成的，
+# 实际交付物是根目录的 *.zip；绝不进 git）
+MiteProxy.app/
 
 # Python
 __pycache__/

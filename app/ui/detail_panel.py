@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPlainTextEdit,
+    QProgressBar,
     QScrollArea,
     QSplitter,
     QStackedWidget,
@@ -992,11 +993,382 @@ def _preview_text(content: bytes, is_text: bool, limit: int = 200) -> str:
     return text
 
 
+#: 分段耗时 key → 展示名。模块级中文一律打 QT_TRANSLATE_NOOP 标（AST 守卫 +
+#: lupdate 抽取，运行时走 translate，见 rule_editor 同款教训）
+PHASE_LABELS = {
+    "connect": QT_TRANSLATE_NOOP("TimingsPane", "连接服务器（含 DNS）"),
+    "tls": QT_TRANSLATE_NOOP("TimingsPane", "TLS 握手"),
+    "send": QT_TRANSLATE_NOOP("TimingsPane", "发送请求"),
+    "wait": QT_TRANSLATE_NOOP("TimingsPane", "等待响应（TTFB）"),
+    "receive": QT_TRANSLATE_NOOP("TimingsPane", "接收响应"),
+}
+
+#: 行内列宽（表头与数据行必须同值，否则列会错位）。
+#: 名称列保持 180：英文分段名（Waiting for response (TTFB)）比中文长，
+#: 压窄会在英文界面被截断——宁可让占比条窄一点。
+TIMING_COL_NAME = 180
+TIMING_COL_CLOCK = 96
+TIMING_COL_VALUE = 80
+TIMING_COL_PCT = 42
+
+
+def _fmt_clock(ts, with_date: bool = False) -> str:
+    """绝对时间戳（time.time() 域）→ 本地时钟串，毫秒精度。
+
+    时间戳缺失/非法返回空串（调用方负责显示占位符）。毫秒用
+    ``microsecond // 1000`` 而不是取小数部分——取小数会在 .9996 时进位成
+    「.1000」这种不存在的时刻。
+    """
+    if not ts:
+        return ""
+    try:
+        dt = datetime.fromtimestamp(float(ts))
+    except (TypeError, ValueError, OSError, OverflowError):
+        return ""
+    clock = f"{dt:%H:%M:%S}.{dt.microsecond // 1000:03d}"
+    return f"{dt:%Y-%m-%d} {clock}" if with_date else clock
+
+
+class TimingsPane(QWidget):
+    """耗时分析页（对齐 Fiddler Statistics）：分段耗时 + 占比条 + 具体时刻。
+
+    数据在 flow 实体上现算（`addons.capture.extract_timings` /
+    `extract_timing_marks` / `timing_span`）——恢复的会话也能用，session
+    保存/还原时保留了 request/response/server_conn 的时间戳。
+    mock / map-local 注入的响应没走过网络（无 server_conn 锚点），对应
+    分段不显示，备注里说明，绝不拿 0 伪装成「很快」。
+
+    每行除耗时外还给出该段的**具体时刻**（绝对时钟，Fiddler 的 Timer 表
+    同样如此）：只列耗时只能看出「哪段慢」，加上时刻才能和上游日志、
+    服务端访问记录按时间对上。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(6)
+
+        self.total_label = QLabel()
+        self.total_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        layout.addWidget(self.total_label)
+
+        # 对账行：总耗时含建连/TLS，列表「耗时」列只算请求发送→响应结束。
+        # 不显示这行，两个数字看着就像 bug（用户实测困惑，见 DESIGN 3.2.8）
+        self.list_equiv_label = QLabel()
+        self.list_equiv_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        layout.addWidget(self.list_equiv_label)
+
+        # 具体时间：整条请求的起止绝对时刻（跨天时两端都带日期）
+        self.axis_label = QLabel()
+        self.axis_label.setWordWrap(True)
+        self.axis_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        layout.addWidget(self.axis_label)
+
+        self.rows_layout = QVBoxLayout()
+        self.rows_layout.setSpacing(4)
+        layout.addLayout(self.rows_layout)
+
+        self.header = self._build_header()
+        self.rows_layout.addWidget(self.header)
+
+        self.note_label = QLabel()
+        self.note_label.setWordWrap(True)
+        layout.addWidget(self.note_label)
+        layout.addStretch(1)
+
+        self._rows: list[dict] = []   # 每行控件引用（retheme 重染用）
+        self.clear()
+        theme.add_listener(self._retheme)
+
+    # ------------------------------------------------------------ 表头
+
+    def _build_header(self) -> QWidget:
+        """列头：新加了「时刻」列，不标出来用户不知道那串时间是什么。"""
+        header = QWidget()
+        h = QHBoxLayout(header)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+        columns = (
+            (self.tr("阶段"), TIMING_COL_NAME, Qt.AlignmentFlag.AlignLeft),
+            (self.tr("开始时刻"), TIMING_COL_CLOCK, Qt.AlignmentFlag.AlignRight),
+            (self.tr("耗时"), TIMING_COL_VALUE, Qt.AlignmentFlag.AlignRight),
+        )
+        for text, width, align in columns:
+            label = QLabel(text)
+            label.setFixedWidth(width)
+            label.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
+            h.addWidget(label)
+        h.addStretch(1)
+        pct = QLabel(self.tr("占比"))
+        pct.setFixedWidth(TIMING_COL_PCT)
+        pct.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        h.addWidget(pct)
+        return header
+
+    # ------------------------------------------------------------ 数据
+
+    def show_flow(self, flow) -> None:
+        from addons.capture import (
+            TIMING_PHASES,
+            extract_timing_marks,
+            extract_timings,
+            request_span_ms,
+            timing_span,
+        )
+
+        timings = extract_timings(flow)
+        marks = extract_timing_marks(flow)
+        total = sum(timings.values())
+        # 弱网延迟（若有）单列在总耗时旁，不并进任何分段——
+        # 它是施加在响应返回客户端前的睡眠，不是某一网络阶段
+        try:
+            throttle_ms = float(
+                (getattr(flow, "metadata", None) or {}).get("mproxy_throttle_ms") or 0
+            )
+        except (TypeError, ValueError):
+            throttle_ms = 0.0
+        shown = round(total + throttle_ms, 1)
+
+        parts = [self.tr("总耗时 {0} ms").format(f"{shown:.1f}")]
+        if throttle_ms > 0:
+            parts.append(
+                self.tr("（含弱网延迟 {0} ms）").format(f"{throttle_ms:.1f}")
+            )
+        self.total_label.setText("  ".join(parts))
+
+        # 对账行：请求耗时与列表「耗时」列同口径（request_span_ms 同源）。
+        # 建连/TLS 发生在请求发出之前，总耗时含它们、列表列不含——
+        # 把差额明写出来，用户一眼能对上（0.6+22.1+0.2=22.9 vs 4845.3）
+        setup_ms = round(
+            timings.get("connect", 0.0) + timings.get("tls", 0.0), 1
+        )
+        span_ms = request_span_ms(flow)
+        equiv = self.tr("请求耗时（列表「耗时」列）: {0} ms").format(f"{span_ms:.1f}")
+        if setup_ms > 0:
+            equiv += self.tr("，另含建连与 TLS {0} ms").format(f"{setup_ms:.1f}")
+        self.list_equiv_label.setText(equiv)
+        self.list_equiv_label.setVisible(True)
+
+        # 具体时间（Fiddler Statistics 的 Timer 表口径）：整条请求的起点/终点
+        span_start, span_end = timing_span(flow)
+        same_day = bool(
+            span_start and span_end
+            and datetime.fromtimestamp(span_start).date()
+            == datetime.fromtimestamp(span_end).date()
+        )
+        started = _fmt_clock(span_start, with_date=True)
+        ended = _fmt_clock(span_end, with_date=not same_day)
+        # 墙钟窗口：起点到终点的真实跨度。它通常**大于**总耗时——TLS 完成后
+        # 等客户端真正发请求、本机处理等间隙不属于任何网络分段。不写出来，
+        # 用户会把「时刻跨度 167ms」和「总耗时 92.9ms」当成算错。
+        wall_ms = (
+            round((float(span_end) - float(span_start)) * 1000, 1)
+            if span_start and span_end
+            else 0.0
+        )
+        gap_ms = round(wall_ms - total, 1) if wall_ms > 0 else 0.0
+        if started and ended:
+            self.axis_label.setText(
+                self.tr("起点 {0}  →  终点 {1}（时段跨度 {2} ms）").format(
+                    started, ended, f"{wall_ms:.1f}"
+                )
+            )
+        elif started:
+            self.axis_label.setText(self.tr("起点 {0}").format(started))
+        else:
+            self.axis_label.setText("")
+        self.axis_label.setVisible(bool(started))
+
+        # 行的 tooltip 用「相对起点」标偏移：绝对时刻 + 偏移，
+        # 既能和日志对时间，也能一眼看出这段在整个请求里的位置
+        base_ts = span_start
+
+        # 重建行（分段只有 5 行，全量重建比增量同步简单且不会错）
+        for row in self._rows:
+            row["widget"].deleteLater()
+        self._rows = []
+        for phase in TIMING_PHASES:
+            value = timings.get(phase, 0.0)
+            if value <= 0:
+                continue        # 没走过的阶段（mock/本地响应/HTTP 明文）不显示
+            label = QCoreApplication.translate("TimingsPane", PHASE_LABELS[phase])
+            pct = (value / total * 100) if total > 0 else 0.0
+            start_ts, end_ts = marks.get(phase, (None, None))
+            self._rows.append(
+                self._add_row(label, value, pct, start_ts, end_ts, base_ts)
+            )
+        self.header.setVisible(bool(self._rows))
+
+        notes = []
+        if total <= 0:
+            notes.append(self.tr("暂无计时数据"))
+        elif timings.get("connect", 0) <= 0 and timings.get("wait", 0) <= 0:
+            # 没有连接也没有等待：响应是本地产物（mock / map-local / 会话恢复）
+            notes.append(
+                self.tr("该响应未经上游网络（mock / 本地映射 / 恢复的会话），"
+                        "仅统计本机处理耗时。")
+            )
+        if setup_ms > 0:
+            # 两个数字对不上是高发困惑：总耗时含建连/TLS（一次连接只付一次），
+            # 列表「耗时」列只算「发送请求 → 响应结束」，与 Fiddler 口径一致
+            notes.append(
+                self.tr("总耗时含建连与 TLS 握手（一次连接只付一次的沉没成本）；"
+                        "列表「耗时」列只统计「发送请求 → 响应结束」，"
+                        "与 Fiddler 的会话计时口径一致。")
+            )
+        if getattr(flow, "response", None) is None:
+            notes.append(self.tr("响应尚未返回，「等待响应 / 接收响应」暂缺。"))
+        if gap_ms > 1.0:
+            # 时刻跨度 - 各段之和 = 未归类的间隙。不解释的话，用户会以为
+            # 「各段加起来 92.9ms，可时刻从 .187 走到 .354 明明 167ms」是 bug
+            notes.append(
+                self.tr("起点到终点共 {0} ms，其中 {1} ms 不属于上述任何分段"
+                        "（如 TLS 完成后等待客户端真正发送请求、本机处理等间隙）。").format(
+                    f"{wall_ms:.1f}", f"{gap_ms:.1f}"
+                )
+            )
+        self.note_label.setText("\n".join(notes))
+        self.note_label.setVisible(bool(notes))
+        self._retheme()
+
+    def clear(self) -> None:
+        self.total_label.setText(self.tr("未选择会话"))
+        self.list_equiv_label.setText("")
+        self.list_equiv_label.hide()
+        self.axis_label.setText("")
+        self.axis_label.hide()
+        for row in self._rows:
+            row["widget"].deleteLater()
+        self._rows = []
+        self.header.hide()
+        self.note_label.setText("")
+        self.note_label.hide()
+
+    # ------------------------------------------------------------ 行
+
+    def _add_row(
+        self,
+        label: str,
+        value_ms: float,
+        pct: float,
+        start_ts: float | None = None,
+        end_ts: float | None = None,
+        base_ts: float | None = None,
+    ) -> dict:
+        """一行 = 阶段名 / 具体时刻 / 耗时 / 占比条 / 占比。
+
+        「时刻」列是该阶段的**开始**时刻（绝对时钟）——Fiddler 的 Timer 表
+        同样是绝对时间点。完整起止与相对偏移放在 tooltip 里，既不撑宽列表
+        也不丢信息。
+        """
+        row = QWidget()
+        h = QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+
+        name = QLabel(label)
+        name.setFixedWidth(TIMING_COL_NAME)
+        h.addWidget(name)
+
+        clock_text = _fmt_clock(start_ts) or "—"
+        clock = QLabel(clock_text)
+        clock.setFixedWidth(TIMING_COL_CLOCK)
+        clock.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        # 等宽字体：毫秒列逐位对齐，扫一眼就能看出时间间隔
+        clock.setStyleSheet("font-family: monospace;")
+        clock.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        h.addWidget(clock)
+
+        value = QLabel(f"{value_ms:.1f} ms")
+        value.setFixedWidth(TIMING_COL_VALUE)
+        value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        h.addWidget(value)
+
+        bar = QProgressBar()
+        bar.setRange(0, 1000)
+        bar.setValue(int(round(pct * 10)))
+        bar.setTextVisible(False)
+        bar.setFixedHeight(12)
+        h.addWidget(bar, stretch=1)
+
+        pct_label = QLabel(f"{pct:.0f}%")
+        pct_label.setFixedWidth(TIMING_COL_PCT)
+        pct_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        h.addWidget(pct_label)
+
+        tip = self._row_tooltip(start_ts, end_ts, base_ts)
+        if tip:
+            clock.setToolTip(tip)
+            name.setToolTip(tip)
+            row.setToolTip(tip)
+
+        self.rows_layout.addWidget(row)
+        return {
+            "widget": row,
+            "name": name,
+            "clock": clock,
+            "value": value,
+            "bar": bar,
+            "pct": pct_label,
+        }
+
+    def _row_tooltip(self, start_ts, end_ts, base_ts) -> str:
+        """完整起止时刻 + 相对起点的偏移（缺失的锚点不占行）。
+
+        建连/TLS 早于请求发送，偏移是负数——用 ``:+.1f`` 让符号自带，
+        别拼出「+-71.0 ms」这种既错又难读的串。
+        """
+        lines = []
+        if start_ts:
+            lines.append(self.tr("开始：{0}").format(_fmt_clock(start_ts, True)))
+        if end_ts:
+            lines.append(self.tr("结束：{0}").format(_fmt_clock(end_ts, True)))
+        if start_ts and base_ts:
+            offset = (float(start_ts) - float(base_ts)) * 1000
+            lines.append(
+                self.tr("相对起点：{0} ms").format(f"{offset:+.1f}")
+            )
+        return "\n".join(lines)
+
+    def _retheme(self) -> None:
+        """主题切换：进度条 chunk 与说明文字重染。
+
+        样式表里的颜色是快照，不会跟随 QPalette 变化——只重设 chunk 会让
+        说明行在深浅色切换后仍是旧色，所以一并处理。时刻列刻意不写 color
+        （只留 font-family），让它跟随 palette 的正文色，主题切换零成本。
+        """
+        hint = theme.css("hint")
+        self.note_label.setStyleSheet(f"color: {hint};")
+        self.axis_label.setStyleSheet(f"color: {hint};")
+        self.header.setStyleSheet(f"color: {hint};")
+        chunk = (
+            f"QProgressBar {{ background: {theme.css('alt_row')}; "
+            f"border: none; border-radius: 2px; }}"
+            f"QProgressBar::chunk {{ background: {theme.css('info')}; "
+            f"border-radius: 2px; }}"
+        )
+        for row in self._rows:
+            row["bar"].setStyleSheet(chunk)
+
+
 class DetailPanel(QWidget):
-    """请求 / 响应 / WebSocket 三个页签。
+    """请求 / 响应 / 耗时 / WebSocket 四个页签。
 
     WebSocket 页只在当前会话是 WS 时才可见——普通 HTTP 会话挂一个空页签
-    只会让人以为功能坏了。
+    只会让人以为功能坏了；耗时页同理：没有计时数据时隐藏。
     """
 
     wrap_changed = Signal(bool)
@@ -1019,9 +1391,13 @@ class DetailPanel(QWidget):
         self.tabs = QTabWidget()
         self.request_pane = MessagePane(wrap_default=wrap_default)
         self.response_pane = MessagePane(wrap_default=wrap_default)
+        self.timings_pane = TimingsPane()
         self.ws_pane = WebSocketPane(wrap_default=wrap_default)
         self.tabs.addTab(self.request_pane, self.tr("请求"))
-        self.tabs.addTab(self.response_pane, self.tr("响应"))
+        self.response_index = self.tabs.addTab(self.response_pane, self.tr("响应"))
+        # 默认停在「响应」页（见 show_flow）：本工具是 tab 切换布局，抓包时
+        # 优先关注响应内容，故不在 addTab 阶段用首个 tab 当默认。
+        self.timings_index = self.tabs.addTab(self.timings_pane, self.tr("耗时"))
         self.ws_index = self.tabs.addTab(self.ws_pane, "WebSocket")
         self.tabs.setTabVisible(self.ws_index, False)
         layout.addWidget(self.tabs)
@@ -1031,6 +1407,11 @@ class DetailPanel(QWidget):
         self.ws_pane.body_pane.wrap_changed.connect(self.wrap_changed)
 
         self._flow = None
+        # 粘性页签：启动默认停在「响应」页；用户手动切换后，当次运行内记住该选择
+        # （后续选流不再强制拉回响应）。重启程序重新初始化，回到默认响应页。
+        self._sticky_tab = self.response_index
+        self._suppress_tab_signal = False
+        self.tabs.currentChanged.connect(self._on_tab_changed)
 
     def set_wrap_default(self, on: bool) -> None:
         self.wrap_default = on
@@ -1078,10 +1459,33 @@ class DetailPanel(QWidget):
         self.tabs.setTabVisible(self.ws_index, ws is not None)
         if ws is not None:
             self.ws_pane.show_flow(flow)
-            if self.tabs.currentIndex() != self.ws_index and not res:
-                self.tabs.setCurrentIndex(self.ws_index)
+            # WS 会话：请求/响应半边对 WS 无意义，始终停在 WebSocket 页，
+            # 不占用粘性选择（粘性只作用于普通 HTTP 会话）。
+            self._set_current(self.ws_index)
         else:
             self.ws_pane.clear()
+            # 普通 HTTP 会话：停在用户当次运行内最后选择的页（默认响应页）。
+            # 启动即 response_index，故首屏默认响应；用户切过就记住。
+            self._set_current(self._sticky_tab)
+
+        # 耗时页：有计时数据才显示（mock / 未选择会话不挂空页签）
+        self.timings_pane.show_flow(flow)
+        has_timings = bool(self.timings_pane._rows) or bool(
+            self.timings_pane.note_label.text()
+        )
+        self.tabs.setTabVisible(self.timings_index, has_timings)
+
+    def _on_tab_changed(self, index: int) -> None:
+        """用户手动切换页签时，把选择记为粘性选择（程序内 set 已被抑制）。"""
+        if self._suppress_tab_signal:
+            return
+        self._sticky_tab = index
+
+    def _set_current(self, index: int) -> None:
+        """程序化切换页签，且不把它误记为用户的粘性选择。"""
+        self._suppress_tab_signal = True
+        self.tabs.setCurrentIndex(index)
+        self._suppress_tab_signal = False
 
     def update_flow(self, flow) -> bool:
         """同一条 flow 有新数据时增量刷新（WebSocket 消息到达）。
@@ -1101,6 +1505,8 @@ class DetailPanel(QWidget):
         self._show_comment("")
         self.request_pane.clear()
         self.response_pane.clear()
+        self.timings_pane.clear()
+        self.tabs.setTabVisible(self.timings_index, False)
         self.ws_pane.clear()
         self.tabs.setTabVisible(self.ws_index, False)
 

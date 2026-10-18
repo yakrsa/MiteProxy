@@ -179,6 +179,42 @@ class TestRoundTrip:
         assert copy.response is None          # 重放副本不带走旧响应
         assert flow.response is not None      # 原会话不受影响
 
+    def test_http2_flow_restores_authority_for_replay(self, tmp_path):
+        """回归：HTTP/2 的 :authority 既不在 headers 里、也不落盘，恢复时必须
+        复原。否则重放出去是「无 Host、无 :authority」的裸请求，上游网关直接
+        判 400（实测 hq.yxzq.com 返回 alibaba-ga 的 400 Bad Request）。"""
+        from app.replay import make_replay_copy
+
+        flow = _flow()
+        flow.request.headers.pop("Host", None)   # HTTP/2 没有 Host 头
+        flow.request.http_version = "HTTP/2.0"
+        target = tmp_path / "s.jsonl"
+        save_session(target, [flow])
+        restored = load_session(target).flows[0]
+
+        assert restored.request.http_version == "HTTP/2.0"
+        assert restored.request.authority == "api.example.com"
+        assert restored.request.first_line_format == "absolute"
+        assert make_replay_copy(restored).request.authority == "api.example.com"
+
+    def test_ipv6_flow_roundtrip_keeps_valid_url(self, tmp_path):
+        """回归：`pretty_url` 对 IPv6 不加方括号，存档后是 `http://::1:8080/x`，
+        恢复时 `Request.make` 直接抛 ValueError（No hostname given）——
+        整份会话都打不开。存档 URL 必须带方括号。
+        """
+        flow = _flow(url="http://[::1]:8080/api/x")
+        flow.request.headers.pop("Host", None)   # HTTP/2 没有 Host 头
+        flow.request.http_version = "HTTP/2.0"
+        target = tmp_path / "s.jsonl"
+        save_session(target, [flow])
+
+        assert '"http://[::1]:8080/api/x"' in target.read_text(encoding="utf-8")
+        result = load_session(target)            # 不允许抛异常
+        assert len(result.flows) == 1
+        assert result.skipped == 0
+        assert result.flows[0].request.host == "::1"
+        assert result.flows[0].request.authority == "[::1]:8080"
+
     def test_restored_server_conn_carries_ip(self, tmp_path):
         """合成连接的 peername 用保存的服务端 IP，服务器 IP 列语义与抓包一致。"""
         target = tmp_path / "s.jsonl"

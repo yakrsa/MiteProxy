@@ -138,6 +138,24 @@ class ApiPanel(QWidget):
         self._resp_kind = "hint"        # 主题切换时按最近一次结果重染
         theme.add_listener(self._retheme)
         resp_layout.addWidget(self.resp_label)
+
+        # 响应 Header 表：API 调试页原本只把响应头「数了一下」，从不渲染，
+        # 这里补上与详情面板一致的响应头列表（见 _fill_resp_headers）。
+        self.resp_headers_table = QTableWidget(0, 2)
+        self.resp_headers_table.setHorizontalHeaderLabels(
+            [self.tr("响应 Header"), "Value"]
+        )
+        self.resp_headers_table.horizontalHeader().setStretchLastSection(True)
+        self.resp_headers_table.verticalHeader().setVisible(False)
+        self.resp_headers_table.setAlternatingRowColors(True)
+        self.resp_headers_table.setShowGrid(False)
+        self.resp_headers_table.verticalHeader().setDefaultSectionSize(22)
+        self.resp_headers_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )
+        self.resp_headers_table.setMaximumHeight(140)
+        resp_layout.addWidget(self.resp_headers_table)
+
         self.resp_pane = BodyPane(wrap_default=True)
         resp_layout.addWidget(self.resp_pane, stretch=1)
         splitter.addWidget(resp_widget)
@@ -169,6 +187,7 @@ class ApiPanel(QWidget):
         self.body_edit.setPlainText(body or "")
         self.resp_label.setText(self.tr("已带入请求，点击「发送」（或 Ctrl+Return）"))
         self.resp_pane.clear()
+        self._fill_resp_headers([])
 
     def set_body_text(self, text: str) -> None:
         """「在工具页中打开 body」路径：只灌请求 body。"""
@@ -242,6 +261,7 @@ class ApiPanel(QWidget):
             self.resp_label.setText(f"✗ {result.error}（{result.elapsed_ms}ms）")
             self.resp_label.setStyleSheet(f"color: {theme.css('error')};")
             self.resp_pane.clear()
+            self._fill_resp_headers([])
             return
         headers = dict(result.headers)  # dict 即可满足 BodyPane 的 .get 需求
         size = len(result.body)
@@ -250,11 +270,24 @@ class ApiPanel(QWidget):
         self.resp_label.setText(
             self.tr('HTTP {0} {1} · {2}ms · {3} 字节 · {4} 个响应头').format(result.status, result.reason, result.elapsed_ms, size, len(result.headers))
         )
-        self.resp_pane.show_body(headers, result.body, raw_len=size)
+        # body 已由 httpclient 解压；raw_len 传线上原始（压缩后）长度，BodyPane 据此显示「已解压」提示
+        self.resp_pane.show_body(headers, result.body, raw_len=result.raw_len or size)
+        # 响应 Header 表（见 self.resp_headers_table）
+        self._fill_resp_headers(result.headers)
 
     def _retheme(self) -> None:
         """主题切换：响应状态行按最近一次结果重染。"""
         self.resp_label.setStyleSheet(f"color: {theme.css(self._resp_kind)};")
+
+    def _fill_resp_headers(self, headers) -> None:
+        """把响应头渲染成 [(name, value)] 列表；空列表 → 清空。"""
+        self.resp_headers_table.setRowCount(0)
+        if not headers:
+            return
+        self.resp_headers_table.setRowCount(len(headers))
+        for i, (name, value) in enumerate(headers):
+            self.resp_headers_table.setItem(i, 0, QTableWidgetItem(str(name)))
+            self.resp_headers_table.setItem(i, 1, QTableWidgetItem(str(value)))
 
     def _delete_header_row(self) -> None:
         for idx in sorted(

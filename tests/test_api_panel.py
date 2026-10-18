@@ -68,6 +68,42 @@ class TestApiPanel:
         assert payload["body"] == "hello"
         panel.deleteLater()
 
+    def test_response_headers_table_populated(self, qapp, server):
+        """bug2：API 调试页要渲染响应 Header 表，不能只数个数。"""
+        panel = _panel(qapp)
+        panel.url_edit.setText(f"http://127.0.0.1:{server.port}/echo")
+        panel.body_edit.setPlainText("hello")
+        panel._on_send()
+        deadline = time.time() + 5
+        while time.time() < deadline and panel._sending:
+            qapp.processEvents()
+            time.sleep(0.02)
+        qapp.processEvents()
+        assert panel.resp_headers_table.rowCount() > 0
+        names = [
+            panel.resp_headers_table.item(r, 0).text()
+            for r in range(panel.resp_headers_table.rowCount())
+        ]
+        assert "X-Echo" in names
+        panel.deleteLater()
+
+    def test_gzip_response_body_shown_as_text(self, qapp, server):
+        """bug1：gzip 压缩响应经 httpclient 解压后，BodyPane 应显示明文而非十六进制。"""
+        panel = _panel(qapp)
+        panel.url_edit.setText(f"http://127.0.0.1:{server.port}/gz")
+        panel._on_send()
+        deadline = time.time() + 5
+        while time.time() < deadline and panel._sending:
+            qapp.processEvents()
+            time.sleep(0.02)
+        qapp.processEvents()
+        assert "HTTP 200" in panel.resp_label.text()
+        body = panel.resp_pane.body_bytes
+        assert body is not None
+        payload = json.loads(body)
+        assert payload["hello"] == "world"
+        panel.deleteLater()
+
     def test_send_error_shown(self, qapp):
         panel = _panel(qapp)
         panel.url_edit.setText("http://127.0.0.1:1/")  # 不可达

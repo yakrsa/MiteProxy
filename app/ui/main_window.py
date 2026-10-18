@@ -22,7 +22,6 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, QTimer, Qt, QCoreApplication
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractSpinBox,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -37,7 +36,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
-    QSpinBox,
     QSplitter,
     QTabWidget,
     QVBoxLayout,
@@ -64,7 +62,7 @@ from app.export import (
     name_filters,
 )
 from app.proxy import ProxyService
-from app.replay import apply_request_edits, make_replay_copy
+from app.replay import apply_request_edits, format_request_url, make_replay_copy
 from app.rules import Action, EXACT, Match, Rule, RuleStore
 from app import session as session_mod
 from app.session import (
@@ -95,6 +93,7 @@ from app.ui.network_panel import NetworkPanel
 from app.ui.replay_dialog import ReplayEditDialog
 from app.ui.rules_panel import RulesPanel
 from app.ui.rule_editor import RuleEditorDialog
+from app.ui.settings_dialog import SettingsDialog
 from app.ui.signals import FlowBridge
 from app.ui.log_panel import LogPanel
 from app.ui.traffic_table import FilterBar, SearchBar, TrafficTable
@@ -117,18 +116,6 @@ def _ca_export_hint(path) -> str:
 COMPARE_TIMEOUT_S = 20
 #: 对比对话框保留个数：开太多不关也不至于无限攒着
 COMPARE_DIALOG_KEEP = 5
-
-
-class _PortSpinBox(QSpinBox):
-    """端口输入框：只允许键盘输入，彻底屏蔽所有误改手段。
-
-    - 上下微调按钮已在构造处用 ``NoButtons`` 去掉；
-    - 这里再屏蔽滚轮事件，避免鼠标悬停在端口框上滚动页面时把端口改掉。
-    """
-
-    def wheelEvent(self, event):  # noqa: N802 (Qt 命名约定)
-        # 不调用 super()，滚轮事件直接丢弃，端口值保持不变
-        event.ignore()
 
 
 class MainWindow(QMainWindow):
@@ -212,10 +199,14 @@ class MainWindow(QMainWindow):
     # ================================================================ 窗口状态
 
     def _on_theme_selected(self, mode: str) -> None:
-        """外观菜单切档：立即应用并落盘（下次启动保持）。"""
-        self.settings.theme = mode
-        save_settings(self.settings)
-        theme.apply(mode)
+        """外观菜单切档 / 设置对话框改主题：立即应用并落盘（下次启动保持）。"""
+        if mode != self.settings.theme:
+            self.settings.theme = mode
+            save_settings(self.settings)
+            theme.apply(mode)
+        # 菜单勾选态同步（设置对话框改主题时菜单也要跟上）
+        for m, act in self._theme_actions.items():
+            act.setChecked(m == mode)
 
     def eventFilter(self, obj, event) -> bool:  # noqa: N802
         # 系统深浅色切换（或手动切档）后 Qt 广播 PaletteChange——singleShot(0)
@@ -223,30 +214,7 @@ class MainWindow(QMainWindow):
         if event.type() == QEvent.Type.PaletteChange \
                 and obj is QApplication.instance():
             QTimer.singleShot(0, theme.notify)
-        # 端口框聚焦时，鼠标点到其他任意位置（含标签/空白这类不抢焦点的控件）
-        # 也触发保存：editingFinished 只在焦点真正离开时发信号，点到不抢焦点
-        # 的地方焦点不离开就不发。先 interpretText 把输入文本同步进 value()
-        # （编辑中 value() 还是旧值），再走与回车一致的保存逻辑；保存本身
-        # 幂等（值没变直接 return），与随后 editingFinished 的重复触发无冲突。
-        elif event.type() == QEvent.Type.MouseButtonPress:
-            if self.port_spin.hasFocus() and not self._spin_within(
-                self.port_spin, obj
-            ):
-                self.port_spin.interpretText()
-                self._on_port_changed()
-            if self.cert_port_spin.hasFocus() and not self._spin_within(
-                self.cert_port_spin, obj
-            ):
-                self.cert_port_spin.interpretText()
-                self._on_cert_port_changed()
         return super().eventFilter(obj, event)
-
-    @staticmethod
-    def _spin_within(spin, watched) -> bool:
-        """点击目标是否落在端口框内部（框本身或其子控件如行编辑器）。"""
-        return isinstance(watched, QWidget) and (
-            watched is spin or spin.isAncestorOf(watched)
-        )
 
     def _restore_geometry(self) -> None:
         geo = self.settings.window_geometry
@@ -358,20 +326,8 @@ class MainWindow(QMainWindow):
         toolbar_row.addSpacing(12)
         self.proxy_btn = QPushButton(self.tr("启动代理"))
         self.proxy_btn.setCheckable(True)
+        self._refresh_proxy_btn_tooltip()
         toolbar_row.addWidget(self.proxy_btn)
-
-        toolbar_row.addWidget(QLabel(self.tr("端口:")))
-        self.port_spin = _PortSpinBox()
-        self.port_spin.setRange(1024, 65535)
-        self.port_spin.setValue(self.settings.proxy_port)
-        # 去掉上下微调按钮：端口是敏感值，箭头点一下就改端口太容易误操；
-        # 只允许键盘输入，回车/失焦时统一提交（见 _on_port_changed）
-        self.port_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.port_spin.setAccelerated(False)
-        # editingFinished（回车/失焦提交）而非 valueChanged：后者每敲一个数字
-        # 触发一次，运行中会连续 stop/start 代理，中间值还可能撞别的端口
-        self.port_spin.editingFinished.connect(self._on_port_changed)
-        toolbar_row.addWidget(self.port_spin)
 
         toolbar_row.addSpacing(12)
         toolbar_row.addWidget(QLabel(self.tr("顺序:")))
@@ -397,22 +353,8 @@ class MainWindow(QMainWindow):
         toolbar_row.addWidget(self.layout_combo)
 
         # 证书功能不常用，放到工具栏最后面（DESIGN：低频操作靠右）
+        # （证书端口同代理端口，只在「设置 → 偏好设置 → 代理」里配置）
         toolbar_row.addSpacing(12)
-        toolbar_row.addWidget(QLabel(self.tr("证书端口:")))
-        self.cert_port_spin = _PortSpinBox()
-        self.cert_port_spin.setRange(1024, 65535)
-        self.cert_port_spin.setValue(self.settings.cert_port)
-        # 同样去掉上下按钮：避免误点改端口；只允许键盘输入，提交逻辑见
-        # _on_cert_port_changed（运行中改端口立即用新端口重启证书服务）
-        self.cert_port_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.cert_port_spin.setAccelerated(False)
-        self.cert_port_spin.setToolTip(
-            self.tr("证书下载服务的监听端口（默认 8081，被占用时自动顺延）\n"
-            "证书服务运行中修改会立即用新端口重启")
-        )
-        self.cert_port_spin.editingFinished.connect(self._on_cert_port_changed)
-        toolbar_row.addWidget(self.cert_port_spin)
-
         self.cert_btn = QPushButton(self.tr("证书服务"))
         self.cert_btn.setToolTip(self.tr("启动局域网证书下载服务（手机装 CA 用）"))
         toolbar_row.addWidget(self.cert_btn)
@@ -577,6 +519,13 @@ class MainWindow(QMainWindow):
         compare_action.triggered.connect(lambda: self._goto_tool("compare"))
         tool_menu.addAction(compare_action)
 
+        # -- 设置：偏好设置对话框（收拢工具栏/菜单里散落的可配置项）
+        settings_menu = self.menuBar().addMenu(self.tr("设置"))
+        settings_action = QAction(self.tr("偏好设置…"), self)
+        settings_action.setShortcut(QKeySequence("Ctrl+,"))
+        settings_action.triggered.connect(self._open_settings)
+        settings_menu.addAction(settings_action)
+
         # -- 外观：跟随系统 / 浅色 / 深色（默认跟随系统，选择随 settings 持久化）
         view_menu = self.menuBar().addMenu(self.tr("外观"))
         self._theme_group = QActionGroup(self)
@@ -640,6 +589,48 @@ class MainWindow(QMainWindow):
             self.tr("语言已切换"),
             self.tr("语言将在重启 MiteProxy 后生效。"),
         )
+
+    def _open_settings(self) -> None:
+        """打开偏好设置对话框；确认后逐项应用并同步工具栏/菜单。"""
+        dlg = SettingsDialog(self.settings, self)
+        if dlg.exec():
+            self._apply_settings(dlg.values())
+
+    def _apply_settings(self, values: dict) -> None:
+        """把设置对话框的值逐项落到 settings，并同步工具栏/菜单控件。
+
+        同步一律走既有控件与处理器（setChecked / setCurrentIndex /
+        _apply_*），不绕开界面直接改 settings——保持「单一写入口 +
+        界面即真相」，工具栏与设置页永远指向同一份配置。
+        """
+        # -- 端口：唯一入口是设置对话框（工具栏不再放端口框），复用同一
+        #    应用通路（含运行中重启询问 / 证书服务立即重启）
+        proxy_port = int(values["proxy_port"])
+        if proxy_port != self.settings.proxy_port:
+            self._apply_proxy_port(proxy_port)
+        cert_port = int(values["cert_port"])
+        if cert_port != self.settings.cert_port:
+            self._apply_cert_port(cert_port)
+
+        # -- 有对应控件的项：setChecked/setCurrentIndex 的信号即保存通路
+        self.sysproxy_cb.setChecked(bool(values["auto_system_proxy"]))
+        max_flows = int(values["max_flows"])
+        self._apply_flow_limit(max_flows)      # 只改内存与列表，不落盘
+        save_settings(self.settings)           # 统一在这里落一次盘
+        idx = self.limit_combo.findData(max_flows)
+        if idx >= 0:
+            self.limit_combo.setCurrentIndex(idx)
+        self.auto_scroll_cb.setChecked(bool(values["auto_scroll"]))
+        self.order_combo.setCurrentIndex(1 if values["newest_first"] else 0)
+        # 详情页换行默认值（内部会同步各 Body 面板的「换行」勾选框）
+        self.detail_panel.set_wrap_default(bool(values["body_wrap"]))
+        self._on_theme_selected(values["theme"])
+        self._on_language_selected(values["language"])
+        self.autosave_action.setChecked(bool(values["auto_save_session"]))
+        check_update = bool(values["check_update_on_startup"])
+        if check_update != self.settings.check_update_on_startup:
+            self.settings.check_update_on_startup = check_update
+            save_settings(self.settings)
 
     def _goto_tool(self, page: str = "codec") -> None:
         """切到工具页的指定子页并把焦点给输入框。"""
@@ -754,8 +745,6 @@ class MainWindow(QMainWindow):
         actual = self.proxy.port
         if actual != requested:
             self.settings.proxy_port = actual
-            # setValue 不触发 editingFinished，不会递归进 _on_port_changed
-            self.port_spin.setValue(actual)
             save_settings(self.settings)
             # MockAddon 的重定向死循环校验按真实端口判断
             self.mock.proxy_addr = ("127.0.0.1", actual)
@@ -896,17 +885,19 @@ class MainWindow(QMainWindow):
         self.flow_store.set_max_rows(limit)
         self._update_status()
 
-    def _on_port_changed(self) -> None:
-        """端口变更（回车/失焦提交）：保存设置；运行中弹窗询问是否立即重启。
+    def _apply_proxy_port(self, port: int) -> None:
+        """端口变更（设置对话框确认 / 顺延同步）：保存设置；运行中弹窗询问
+        是否立即重启。
 
         对齐 Fiddler 心智：改端口需要重启代理才生效，让用户自己决定——
         选「是」立即重启（系统代理同步切到新端口），选「否」下次启动生效。
         """
-        port = self.port_spin.value()
+        port = int(port)
         if port == self.settings.proxy_port:
             return
         self.settings.proxy_port = port
         save_settings(self.settings)
+        self._refresh_proxy_btn_tooltip()
         if not self.proxy.running:
             self.status_bar.showMessage(
                 self.tr('代理端口已保存为 {0}（重启后生效）').format(port), 5000
@@ -924,6 +915,14 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(
                 self.tr('新端口 {0} 将在下次启动时生效').format(port), 6000
             )
+
+    def _refresh_proxy_btn_tooltip(self) -> None:
+        """代理按钮提示同步当前端口（端口只能在设置页改，按钮提示指路）。"""
+        self.proxy_btn.setToolTip(
+            self.tr("抓包代理开关。监听 127.0.0.1:{0}——端口在「设置 → 偏好设置 → 代理」里改。").format(
+                self.settings.proxy_port
+            )
+        )
 
     def _app_restart_command(self) -> list[str] | None:
         """构造「重新拉起自己」的命令；构造不出来返回 None（走兜底）。"""
@@ -990,7 +989,7 @@ class MainWindow(QMainWindow):
         actual = self.proxy.port
         if actual != port:
             self.settings.proxy_port = actual
-            self.port_spin.setValue(actual)
+            self._refresh_proxy_btn_tooltip()
             save_settings(self.settings)
             self.mock.proxy_addr = ("127.0.0.1", actual)
             self.status_bar.showMessage(
@@ -1069,9 +1068,9 @@ class MainWindow(QMainWindow):
             )
         self._update_status()
 
-    def _on_cert_port_changed(self) -> None:
-        """证书端口变更（回车/失焦提交）：保存设置；运行中立即用新端口重启。"""
-        port = self.cert_port_spin.value()
+    def _apply_cert_port(self, port: int) -> None:
+        """证书端口变更（设置对话框确认）：保存设置；运行中立即用新端口重启。"""
+        port = int(port)
         if port == self.settings.cert_port:
             return
         self.settings.cert_port = port
@@ -1206,14 +1205,18 @@ class MainWindow(QMainWindow):
         )
         self.flow_store.append(summary)
         self._update_status()
-        # 重放并对比：副本的 id 与pending 里记的 copy_id 一致，精确关联
-        self._match_pending_compare(summary)
         if follow:
             self.traffic_table.scroll_to_newest(self.settings.newest_first)
 
     def _on_flow_updated(self, summary: dict) -> None:
-        """已存在会话的增量更新（WebSocket 消息到达）。"""
+        """已存在会话的增量更新（响应到达 / WebSocket 消息到达）。
+
+        重放并对比的待比关联只在这里触发——必须等**响应**到达，副本才有 body 可对比；
+        早期版本在 `_on_flow_arrived`（请求到达、响应尚为 None）就弹对比框，
+        于是「重放的都是无响应」。is_replay 守卫保证只匹配重放副本。
+        """
         self.flow_store.update(summary)
+        self._match_pending_compare(summary)
         selected = self._selected_flow()
         if selected is not None and getattr(selected, "id", None) == summary.get("id"):
             self.detail_panel.update_flow(selected)
@@ -1478,7 +1481,9 @@ class MainWindow(QMainWindow):
         """把选中会话的 body 送进工具页（有响应就用响应，否则用请求）。
 
         抓到一段 base64 参数或一段 JSON，直接送过去解/格式化，不用手选中再复制。
-        送到哪个子页由用户当前停留在哪一页决定。
+        送到哪个子页由用户当前停留在哪一页决定——但 API 调试页的输入框是
+        「要发送的请求体」，不是用来查看抓包 body 的，落到那里用户会以为点了
+        没反应，所以停在 API 页时改投 JSON / 编码转换，保证看得见内容。
         """
         flows = self._selected_flows()
         if len(flows) != 1:
@@ -1492,7 +1497,9 @@ class MainWindow(QMainWindow):
         getter = getattr(message, "get_content", None)
         data = getter(strict=False) if callable(getter) else None
         if not data:
-            self.status_bar.showMessage(self.tr("该会话没有 body 可转换"), 4000)
+            self.status_bar.showMessage(
+                self.tr("该会话没有可查看的 body（响应为空或尚未捕获）"), 5000
+            )
             return
         try:
             content_type = message.headers.get("content-type", "") or ""
@@ -1511,6 +1518,10 @@ class MainWindow(QMainWindow):
         else:
             note = self.tr("（已截断到前 512KB）") if truncated else ""
         page = self.tool_panel.current_key
+        # API 调试页：body 输入框是「要发送的请求体」，不是看抓包 body 的地方，
+        # 改投 JSON（像 JSON）或编码转换，避免「点了没反应」的错觉。
+        if page == "api":
+            page = "json" if self._body_looks_json(text, content_type) else "codec"
         self.tabs.setCurrentWidget(self.tool_panel)
         self.tool_panel.set_body_text(text, page)
         label = {"json": self.tr("JSON 工具"), "compare": self.tr("JSON 比对"), "api": self.tr("API 调试")}.get(
@@ -1519,6 +1530,15 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(
             self.tr('已把该会话的 body 送入工具页 · {0}{1}').format(label, note), 5000
         )
+
+    @staticmethod
+    def _body_looks_json(text: str, content_type: str) -> bool:
+        """粗略判断 body 像不像 JSON（决定投到哪个工具子页）。"""
+        ct = (content_type or "").split(";")[0].strip().lower()
+        if ct in ("application/json", "text/json") or ct.endswith("+json"):
+            return True
+        t = (text or "").strip()
+        return bool(t) and t[:1] in ("{", "[")
 
     def _send_request_to_api(self) -> None:
         """把选中会话的**整个请求**（method/URL/headers/body）带入 API 调试页。
@@ -1554,7 +1574,7 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(self.tool_panel)
         self.tool_panel.show_page("api")
         self.tool_panel.api_panel.load_request(
-            method=req.method, url=req.pretty_url, headers=headers, body=body_text
+            method=req.method, url=format_request_url(req), headers=headers, body=body_text
         )
         self.status_bar.showMessage(self.tr("已把该请求带入 API 调试页（改完点「发送」）"), 5000)
 

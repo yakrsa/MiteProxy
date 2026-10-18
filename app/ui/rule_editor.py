@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from PySide6.QtCore import Qt, QCoreApplication
+from PySide6.QtCore import Qt, QT_TRANSLATE_NOOP, QCoreApplication
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -45,24 +45,27 @@ from app.ui import theme
 
 STATUS_PRESETS = [200, 400, 401, 403, 404, 429, 500, 502, 503, 504]
 
+# 模块级中文标签必须打 QT_TRANSLATE_NOOP 标（同 network_panel/import_dialog 范式）：
+# 一是 tests/test_i18n.py 的 AST 守卫要求模块级中文不能裸奔；
+# 二是 self.tr(变量) 形式的运行时字符串 lupdate 抽不到，不打标就没有译文。
 MATCH_LABELS = [
-    (EXACT, "精确（完整 URL 相等）"),
-    (CONTAINS, "包含（URL 含子串）"),
-    (WILDCARD, "通配符（* 不含 /，** 任意）"),
-    (REGEX, "正则表达式"),
+    (EXACT, QT_TRANSLATE_NOOP("RuleEditorDialog", "精确（完整 URL 相等）")),
+    (CONTAINS, QT_TRANSLATE_NOOP("RuleEditorDialog", "包含（URL 含子串）")),
+    (WILDCARD, QT_TRANSLATE_NOOP("RuleEditorDialog", "通配符（* 不含 /，** 任意）")),
+    (REGEX, QT_TRANSLATE_NOOP("RuleEditorDialog", "正则表达式")),
 ]
 
 METHODS = ["", "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
 
 METHOD_LABELS = {
-    "": "任意方法",
-    "GET": "GET",
-    "POST": "POST",
-    "PUT": "PUT",
-    "DELETE": "DELETE",
-    "PATCH": "PATCH",
-    "HEAD": "HEAD",
-    "OPTIONS": "OPTIONS",
+    "": QT_TRANSLATE_NOOP("RuleEditorDialog", "任意方法"),
+    "GET": QT_TRANSLATE_NOOP("RuleEditorDialog", "GET"),
+    "POST": QT_TRANSLATE_NOOP("RuleEditorDialog", "POST"),
+    "PUT": QT_TRANSLATE_NOOP("RuleEditorDialog", "PUT"),
+    "DELETE": QT_TRANSLATE_NOOP("RuleEditorDialog", "DELETE"),
+    "PATCH": QT_TRANSLATE_NOOP("RuleEditorDialog", "PATCH"),
+    "HEAD": QT_TRANSLATE_NOOP("RuleEditorDialog", "HEAD"),
+    "OPTIONS": QT_TRANSLATE_NOOP("RuleEditorDialog", "OPTIONS"),
 }
 
 
@@ -97,7 +100,9 @@ class RuleEditorDialog(QDialog):
         match_type_layout.setContentsMargins(0, 0, 0, 0)
         self.match_type_combo = QComboBox()
         for mtype, label in MATCH_LABELS:
-            self.match_type_combo.addItem(self.tr(label), mtype)
+            self.match_type_combo.addItem(
+                QCoreApplication.translate("RuleEditorDialog", label), mtype
+            )
         match_type_layout.addWidget(self.match_type_combo)
         match_type_layout.addStretch(1)
         self.match_value_edit = QLineEdit()
@@ -115,7 +120,12 @@ class RuleEditorDialog(QDialog):
         # 请求方法过滤（比 Fiddler 好：不用自己拼正则区分方法）
         self.method_combo = QComboBox()
         for m in METHODS:
-            self.method_combo.addItem(self.tr(METHOD_LABELS.get(m, m)), m)
+            self.method_combo.addItem(
+                QCoreApplication.translate(
+                    "RuleEditorDialog", METHOD_LABELS.get(m, m)
+                ),
+                m,
+            )
         form.addRow(self.tr("请求方法:"), self.method_combo)
 
         # 从抓包请求生成 Mock 时带入的原始请求 Body（只读参考，不参与 URL 匹配）

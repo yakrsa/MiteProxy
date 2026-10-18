@@ -1,19 +1,83 @@
 {
-  "version": "2.2.1",
-  "published_at": "2026-10-17",
+  "version": "2.4.0",
+  "published_at": "2026-10-17T19:20:48+08:00",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "修复英文界面下请求/响应 Body 的视图切换按钮仍显示中文的问题（自动/原文/表单/图片/十六进制在翻译器装载前就被求值，现改为运行时翻译）",
-      "en": "Fixed the request/response body view-switch buttons staying in Chinese in the English UI (Auto/Raw/Form/Image/Hex were evaluated before the translator loaded; they are now translated at runtime)."
+      "zh": "详情面板「耗时」页新增「开始时刻」列：每个网络阶段除耗时外还显示绝对时钟（毫秒精度），顶部给出整条请求的「起点 → 终点（时段跨度）」——能直接和服务端日志、上下游链路按时间对账（对齐 Fiddler Statistics 的 Timer 表）",
+      "en": "Added a \"Start time\" column to the Timings tab: each network phase now shows its absolute clock time (millisecond precision) next to the duration, with the request's overall start → end span on top — so timings can be lined up with server logs and upstream traces (matching Fiddler's Statistics timers)."
     },
     {
-      "zh": "同类问题一并修复：导出对话框的格式名（HAR 归档/原始报文/完整响应/仅 Body）与 JSON 解析错误提示在英文模式下同样未翻译",
-      "en": "Fixed the same class of bug elsewhere: export dialog format names (HAR/Raw/Full response/Body only) and JSON parse-error hints were also untranslated in English mode."
+      "zh": "「耗时」页说明时段跨度与总耗时的差额：TLS 完成后到客户端真正发出请求之间的间隙不属于任何网络分段，原先这段「消失的时间」看不出来",
+      "en": "The Timings tab now explains the gap between the wall-clock span and the summed phases: the pause between the TLS handshake and the client actually sending the request belongs to no phase, and previously looked like missing time."
     },
     {
-      "zh": "新增防回归测试：AST 扫描禁止在模块级调用 translate()，并逐字锁定上述三张常量表的英文输出",
-      "en": "Added regression guards: an AST scan that forbids module-level translate() calls, plus exact assertions locking the English output of the three affected tables."
+      "zh": "补齐英文界面遗漏的 5 条中文文案（API 调试「响应 Header」、耗时页的两条对账说明、时长为空时的 body 提示等）",
+      "en": "Filled in 5 strings that had no English translation (API debug \"Response Header\", two timing notes, the empty-body hint, and others)."
+    },
+    {
+      "zh": "修复重放请求返回 400：HTTP/2 的 :authority 既不在请求头里、也不随会话落盘，从会话恢复出来的请求重放时会变成「无 Host、无 :authority」的裸请求而被上游网关拒绝（实测网关直接返回 400 alibaba-ga）。现恢复会话、生成重放副本、编辑 URL/请求头后都会补齐 :authority；HTTP/1 且带 Host 的请求保持原样，不会被改成绝对形式",
+      "en": "Fixed replays returning 400: HTTP/2's :authority is neither in the headers nor persisted with the session, so flows restored from a session were replayed as bare requests with no Host and no :authority, which upstream gateways reject (observed: a 400 from an alibaba-ga gateway). :authority is now restored when loading a session, when creating a replay copy, and after editing the URL or headers; HTTP/1 requests that already carry a Host header are left untouched and are not rewritten to absolute form."
+    },
+    {
+      "zh": "支持 IPv6 主机的请求：authority 与 URL 统一给 IPv6 地址加方括号（原先会拼成 ::1:8080 这类无法解析的形式）。这同时修复了 IPv6 会话存档后恢复时报错、整份会话打不开的问题，以及 IPv6 请求导出 curl 后无法执行、带入 API 调试页提示 URL 非法的问题",
+      "en": "Added IPv6 host support: authority and URLs now bracket IPv6 literals (previously assembled as unparseable values such as ::1:8080). This also fixes sessions containing IPv6 requests failing to load at all, exported curl commands for IPv6 requests being unrunnable, and sending such requests to the API debug page reporting an invalid URL."
+    },
+    {
+      "zh": "导出 HAR 补上 Host 请求头：HTTP/2 的 :authority 是伪头、不在请求头列表里，此前导出的 HAR 会缺 Host（HAR 1.2 要求 request.headers 含 Host），导入到其他工具时可能丢失主机信息",
+      "en": "HAR export now includes the Host request header: HTTP/2's :authority is a pseudo-header and not part of the header list, so exported HAR files were missing Host (HAR 1.2 expects request.headers to contain it) and could lose the host when imported into other tools."
+    },
+    {
+      "zh": "会话恢复容错：单条记录重建失败时只跳过该条并计入「已跳过」，不再因为一条坏记录导致整份会话加载失败",
+      "en": "More resilient session loading: if a single record cannot be rebuilt, only that record is skipped and counted, instead of the whole session failing to load because of one bad record."
+    },
+    {
+      "zh": "新增设置页（菜单「设置 → 偏好设置…」，快捷键 Ctrl+,）：端口（代理/证书）、保存条数、列表顺序、自动滚动、Body 换行、系统代理接管、主题、语言、退出自动保存会话、启动检查更新——原先散落在工具栏和各菜单里的开关集中到一处，改完点「确定」立即生效并同步工具栏",
+      "en": "New Settings page (menu \"Settings → Preferences…\", shortcut Ctrl+,): ports (proxy/certificate), save limit, list order, auto-scroll, Body wrapping, system proxy takeover, theme, language, auto-save on quit and update check — switches previously scattered across the toolbar and menus, now in one place and synced with the toolbar on OK."
+    },
+    {
+      "zh": "设置改动与工具栏/菜单共用同一写入通路：运行中改端口仍会询问是否立即重启，改系统代理立即接管或还原，改主题立即应用，改语言提示重启生效",
+      "en": "Settings changes share the same write path as the toolbar/menus: changing the port while running still asks whether to restart immediately, toggling the system proxy takes over or restores at once, theme changes apply immediately, and language changes prompt for a restart."
+    },
+    {
+      "zh": "端口输入框防误改（无微调按钮、屏蔽滚轮）从工具栏抽出为公共组件，设置页同款复用",
+      "en": "The port input's mis-click protection (no spin buttons, wheel events dropped) is now a shared component reused by both the toolbar and the Settings page."
+    },
+    {
+      "zh": "修复英文模式下 Mock 规则编辑弹窗「URL 匹配方式」「请求方法」两个下拉框仍是中文的问题（匹配方式与请求方法标签补英文翻译）",
+      "en": "Fixed the Mock rule editor's \"URL match\" and \"Request method\" dropdowns staying in Chinese under English UI (match-type and method labels now translated)."
+    },
+    {
+      "zh": "工具栏移除代理/证书端口输入框：端口只在「设置 → 偏好设置 → 代理」配置，「启动代理」按钮悬停显示当前监听端口并指路设置页",
+      "en": "Removed the proxy/certificate port inputs from the toolbar: ports are configured only in Settings → Preferences → Proxy, and the \"Start proxy\" button's tooltip shows the current listening port and points to Settings."
+    },
+    {
+      "zh": "Mock 规则页新增搜索框：按 URL / 名称实时过滤（大小写不敏感），与「只显示启用」叠加，空结果有空态提示",
+      "en": "Added a search box to the Mock rules page: real-time filtering by URL/name (case-insensitive), combined with \"Only enabled\", with an empty-state hint when nothing matches."
+    },
+    {
+      "zh": "新增请求耗时分析（对齐 Fiddler Statistics）：详情面板「耗时」页把请求拆成连接（含 DNS）/ TLS / 发送 / 等待（TTFB）/ 接收五段占比条，随会话保存/恢复",
+      "en": "Added request timing analysis (matching Fiddler Statistics): the detail panel's \"Timings\" page breaks each request into Connect (incl. DNS) / TLS / Send / Waiting (TTFB) / Receive with proportion bars, and persists across session save/restore."
+    },
+    {
+      "zh": "修复 API 调试页 body 恒显示十六进制、无法切换格式：服务端返回 gzip/deflate/br/zstd 等压缩响应时现按 Content-Encoding 自动解压，可正常以原文/JSON/表单等格式查看与切换",
+      "en": "Fixed the API debug page always showing the body as hex with no way to switch formats: compressed responses (gzip/deflate/br/zstd) are now auto-decompressed by Content-Encoding, so the body renders and switches correctly as raw/JSON/form."
+    },
+    {
+      "zh": "修复 API 调试页不展示响应 Header：新增响应头列表（与详情面板一致），状态行同步显示响应头数量",
+      "en": "Fixed the API debug page not showing response headers: added a response-header list (consistent with the detail panel) and the status line now reports the header count."
+    },
+    {
+      "zh": "修复「重放并对比」无响应、无法对比：对比框改为在重放请求的响应真正到达后才弹出（原逻辑在请求到达即弹，响应尚为空），现可正常对比原请求与重放响应",
+      "en": "Fixed \"Replay & Compare\" showing no response / failing to compare: the compare dialog now opens only after the replayed response actually arrives (previously it opened on request arrival with an empty response), so the original and replayed responses compare correctly."
+    },
+    {
+      "zh": "修复「在工具页中打开 body」选择后无可见变化：工具页停在 API 调试子页时自动改投 JSON/编码转换子页（JSON 进 JSON 工具，否则进编码转换），空 body 给出更明确的提示",
+      "en": "Fixed \"Open body in Tools\" appearing to do nothing: when the Tools page is on the API debug tab, the body is now routed to the JSON tool (for JSON) or the codec tool (otherwise), and an empty body shows a clearer hint."
+    },
+    {
+      "zh": "详情面板默认显示「响应」页（抓包场景优先看响应）；用户手动切换页签后，当次运行内记住该选择，下次启动回到默认响应页",
+      "en": "The detail panel now defaults to the \"Response\" tab (since packet capture focuses on responses); once you manually switch tabs, the choice sticks for the rest of the session, and a fresh launch returns to the default Response tab."
     }
   ]
 }
