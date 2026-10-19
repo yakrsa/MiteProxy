@@ -1,8 +1,16 @@
 {
-  "version": "2.4.0",
-  "published_at": "2026-10-17T19:20:48+08:00",
+  "version": "2.4.1",
+  "published_at": "2026-10-19T10:09:32+08:00",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
+    {
+      "zh": "新增「树」视图：JSON body 可折叠展开（两列：键 / 值），点箭头展开收起，右键复制值 / 键 / 路径 / 整节点 JSON，搜索命中会定位并高亮。现有视图一行未改，树是解析后的结构视图，要逐字节校对仍用原文视图——超过 2MB 自动回落 JSON 文本",
+      "en": "New \"Tree\" view: JSON bodies can now be collapsed/expanded (two columns: key / value). Click the arrow to fold, right-click to copy value/key/path/whole-node JSON, and search hits are located and highlighted. Existing views are untouched; the tree is a parsed structural view, so use the Raw view for byte-exact checks — payloads over 2MB fall back to the JSON text view automatically"
+    },
+    {
+      "zh": "自动快照截断的 body 在界面上明确标注：从会话恢复出的 body 若被自动快照切在 64KB，详情面板 / 详情弹窗 / 重放对比会提示「已截断：快照只保留前 64KB，原 XKB（重新抓包可看全）」，不再被误认为格式化能力不行",
+      "en": "Snapshots now flag truncated bodies clearly: when a body restored from a session was cut at 64KB by the auto-snapshot, the detail panel, detail dialog, and replay-compare all show \"Truncated: session snapshots keep only the first 64KB…\" instead of looking like a JSON-formatting failure"
+    },
     {
       "zh": "详情面板「耗时」页新增「开始时刻」列：每个网络阶段除耗时外还显示绝对时钟（毫秒精度），顶部给出整条请求的「起点 → 终点（时段跨度）」——能直接和服务端日志、上下游链路按时间对账（对齐 Fiddler Statistics 的 Timer 表）",
       "en": "Added a \"Start time\" column to the Timings tab: each network phase now shows its absolute clock time (millisecond precision) next to the duration, with the request's overall start → end span on top — so timings can be lined up with server logs and upstream traces (matching Fiddler's Statistics timers)."
