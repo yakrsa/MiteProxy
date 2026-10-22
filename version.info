@@ -1,91 +1,35 @@
 {
-  "version": "2.4.1",
-  "published_at": "2026-10-19T10:09:32+08:00",
+  "version": "2.4.2",
+  "published_at": "2026-10-22T11:00:00+08:00",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "新增「树」视图：JSON body 可折叠展开（两列：键 / 值），点箭头展开收起，右键复制值 / 键 / 路径 / 整节点 JSON，搜索命中会定位并高亮。现有视图一行未改，树是解析后的结构视图，要逐字节校对仍用原文视图——超过 2MB 自动回落 JSON 文本",
-      "en": "New \"Tree\" view: JSON bodies can now be collapsed/expanded (two columns: key / value). Click the arrow to fold, right-click to copy value/key/path/whole-node JSON, and search hits are located and highlighted. Existing views are untouched; the tree is a parsed structural view, so use the Raw view for byte-exact checks — payloads over 2MB fall back to the JSON text view automatically"
+      "zh": "新增「两条会话对比」：流量列表里**多选两条**右键「对比两条会话」，并排看方法 / URL / 状态 / headers 差异，body 走键级 diff（JSON）或行级 diff（文本），二进制只报同/不同——不用先重放就能比线上与本地",
+      "en": "New \"Compare two sessions\": select exactly two flows in the list and right-click \"Compare two sessions\" to see method / URL / status / headers side by side; bodies go through key-level diff (JSON) or line-level diff (text), and binaries only report same/different — no replay needed to compare live vs local"
     },
     {
-      "zh": "自动快照截断的 body 在界面上明确标注：从会话恢复出的 body 若被自动快照切在 64KB，详情面板 / 详情弹窗 / 重放对比会提示「已截断：快照只保留前 64KB，原 XKB（重新抓包可看全）」，不再被误认为格式化能力不行",
-      "en": "Snapshots now flag truncated bodies clearly: when a body restored from a session was cut at 64KB by the auto-snapshot, the detail panel, detail dialog, and replay-compare all show \"Truncated: session snapshots keep only the first 64KB…\" instead of looking like a JSON-formatting failure"
+      "zh": "新增列显隐与自定义列：表头右键勾选显示/隐藏列，**内容类型 / 开始时刻 / 备注** 三个可选列默认隐藏；显隐状态随设置持久化（按列 key 存，以后加列不会错位）",
+      "en": "New column show/hide and custom columns: right-click the header to toggle columns; the three optional columns content-type / start time / comment are hidden by default, and the visibility state persists in settings (keyed by column key, so adding columns later won't shift saved state)"
     },
     {
-      "zh": "详情面板「耗时」页新增「开始时刻」列：每个网络阶段除耗时外还显示绝对时钟（毫秒精度），顶部给出整条请求的「起点 → 终点（时段跨度）」——能直接和服务端日志、上下游链路按时间对账（对齐 Fiddler Statistics 的 Timer 表）",
-      "en": "Added a \"Start time\" column to the Timings tab: each network phase now shows its absolute clock time (millisecond precision) next to the duration, with the request's overall start → end span on top — so timings can be lined up with server logs and upstream traces (matching Fiddler's Statistics timers)."
+      "zh": "新增多套过滤预设：工具栏过滤栏可把当前过滤条件存为「预设」并命名，一键切换 / 删除；设置里记录激活的预设，启动自动套用",
+      "en": "New filter presets: the toolbar filter bar can save the current filter as a named preset and switch/delete with one click; settings remember the active preset and apply it on launch"
     },
     {
-      "zh": "「耗时」页说明时段跨度与总耗时的差额：TLS 完成后到客户端真正发出请求之间的间隙不属于任何网络分段，原先这段「消失的时间」看不出来",
-      "en": "The Timings tab now explains the gap between the wall-clock span and the summed phases: the pause between the TLS handshake and the client actually sending the request belongs to no phase, and previously looked like missing time."
+      "zh": "新增 SSE 流式响应展示：body 视图自动识别 `text/event-stream`，把逐条 `event / data / id / retry` 事件拆开渲染，便于看 Server-Sent Events 流",
+      "en": "New SSE streaming view: the body view auto-detects text/event-stream and renders each event (event / data / id / retry) separately, making Server-Sent Events streams readable"
     },
     {
-      "zh": "补齐英文界面遗漏的 5 条中文文案（API 调试「响应 Header」、耗时页的两条对账说明、时长为空时的 body 提示等）",
-      "en": "Filled in 5 strings that had no English translation (API debug \"Response Header\", two timing notes, the empty-body hint, and others)."
+      "zh": "MCP 接口新增写操作（默认关，需手动开）：`add_mock_rule`（加 Mock 规则）/ `replay_flow`（重放某条会话）/ `set_breakpoint`（设断点）；没开写操作时工具列表不暴露、调用直接拒绝，保证默认只读安全",
+      "en": "MCP now exposes write operations (off by default, opt-in): add_mock_rule / replay_flow / set_breakpoint; with writes disabled the tools are hidden from the tool list and calls are rejected, keeping the default read-only posture safe"
     },
     {
-      "zh": "修复重放请求返回 400：HTTP/2 的 :authority 既不在请求头里、也不随会话落盘，从会话恢复出来的请求重放时会变成「无 Host、无 :authority」的裸请求而被上游网关拒绝（实测网关直接返回 400 alibaba-ga）。现恢复会话、生成重放副本、编辑 URL/请求头后都会补齐 :authority；HTTP/1 且带 Host 的请求保持原样，不会被改成绝对形式",
-      "en": "Fixed replays returning 400: HTTP/2's :authority is neither in the headers nor persisted with the session, so flows restored from a session were replayed as bare requests with no Host and no :authority, which upstream gateways reject (observed: a 400 from an alibaba-ga gateway). :authority is now restored when loading a session, when creating a replay copy, and after editing the URL or headers; HTTP/1 requests that already carry a Host header are left untouched and are not rewritten to absolute form."
+      "zh": "新增用户脚本（插件）：`~/.miteproxy/scripts/*.py` 里写 mitmproxy 风格的 flow 钩子（模块级函数或 Addon 类，支持可选 `ctx` 第一参），在「脚本」页增删改 / 启停，保存后**热替换**无需重启代理；单个脚本报错被隔离，不拖垮其他脚本与代理主流程",
+      "en": "New user scripts (plugins): write mitmproxy-style flow hooks in ~/.miteproxy/scripts/*.py (module-level functions or an Addon class, with an optional ctx first argument), manage and toggle them from the Scripts tab, and hot-reload on save without restarting the proxy; a broken script is isolated and won't take down other scripts or the proxy"
     },
     {
-      "zh": "支持 IPv6 主机的请求：authority 与 URL 统一给 IPv6 地址加方括号（原先会拼成 ::1:8080 这类无法解析的形式）。这同时修复了 IPv6 会话存档后恢复时报错、整份会话打不开的问题，以及 IPv6 请求导出 curl 后无法执行、带入 API 调试页提示 URL 非法的问题",
-      "en": "Added IPv6 host support: authority and URLs now bracket IPv6 literals (previously assembled as unparseable values such as ::1:8080). This also fixes sessions containing IPv6 requests failing to load at all, exported curl commands for IPv6 requests being unrunnable, and sending such requests to the API debug page reporting an invalid URL."
-    },
-    {
-      "zh": "导出 HAR 补上 Host 请求头：HTTP/2 的 :authority 是伪头、不在请求头列表里，此前导出的 HAR 会缺 Host（HAR 1.2 要求 request.headers 含 Host），导入到其他工具时可能丢失主机信息",
-      "en": "HAR export now includes the Host request header: HTTP/2's :authority is a pseudo-header and not part of the header list, so exported HAR files were missing Host (HAR 1.2 expects request.headers to contain it) and could lose the host when imported into other tools."
-    },
-    {
-      "zh": "会话恢复容错：单条记录重建失败时只跳过该条并计入「已跳过」，不再因为一条坏记录导致整份会话加载失败",
-      "en": "More resilient session loading: if a single record cannot be rebuilt, only that record is skipped and counted, instead of the whole session failing to load because of one bad record."
-    },
-    {
-      "zh": "新增设置页（菜单「设置 → 偏好设置…」，快捷键 Ctrl+,）：端口（代理/证书）、保存条数、列表顺序、自动滚动、Body 换行、系统代理接管、主题、语言、退出自动保存会话、启动检查更新——原先散落在工具栏和各菜单里的开关集中到一处，改完点「确定」立即生效并同步工具栏",
-      "en": "New Settings page (menu \"Settings → Preferences…\", shortcut Ctrl+,): ports (proxy/certificate), save limit, list order, auto-scroll, Body wrapping, system proxy takeover, theme, language, auto-save on quit and update check — switches previously scattered across the toolbar and menus, now in one place and synced with the toolbar on OK."
-    },
-    {
-      "zh": "设置改动与工具栏/菜单共用同一写入通路：运行中改端口仍会询问是否立即重启，改系统代理立即接管或还原，改主题立即应用，改语言提示重启生效",
-      "en": "Settings changes share the same write path as the toolbar/menus: changing the port while running still asks whether to restart immediately, toggling the system proxy takes over or restores at once, theme changes apply immediately, and language changes prompt for a restart."
-    },
-    {
-      "zh": "端口输入框防误改（无微调按钮、屏蔽滚轮）从工具栏抽出为公共组件，设置页同款复用",
-      "en": "The port input's mis-click protection (no spin buttons, wheel events dropped) is now a shared component reused by both the toolbar and the Settings page."
-    },
-    {
-      "zh": "修复英文模式下 Mock 规则编辑弹窗「URL 匹配方式」「请求方法」两个下拉框仍是中文的问题（匹配方式与请求方法标签补英文翻译）",
-      "en": "Fixed the Mock rule editor's \"URL match\" and \"Request method\" dropdowns staying in Chinese under English UI (match-type and method labels now translated)."
-    },
-    {
-      "zh": "工具栏移除代理/证书端口输入框：端口只在「设置 → 偏好设置 → 代理」配置，「启动代理」按钮悬停显示当前监听端口并指路设置页",
-      "en": "Removed the proxy/certificate port inputs from the toolbar: ports are configured only in Settings → Preferences → Proxy, and the \"Start proxy\" button's tooltip shows the current listening port and points to Settings."
-    },
-    {
-      "zh": "Mock 规则页新增搜索框：按 URL / 名称实时过滤（大小写不敏感），与「只显示启用」叠加，空结果有空态提示",
-      "en": "Added a search box to the Mock rules page: real-time filtering by URL/name (case-insensitive), combined with \"Only enabled\", with an empty-state hint when nothing matches."
-    },
-    {
-      "zh": "新增请求耗时分析（对齐 Fiddler Statistics）：详情面板「耗时」页把请求拆成连接（含 DNS）/ TLS / 发送 / 等待（TTFB）/ 接收五段占比条，随会话保存/恢复",
-      "en": "Added request timing analysis (matching Fiddler Statistics): the detail panel's \"Timings\" page breaks each request into Connect (incl. DNS) / TLS / Send / Waiting (TTFB) / Receive with proportion bars, and persists across session save/restore."
-    },
-    {
-      "zh": "修复 API 调试页 body 恒显示十六进制、无法切换格式：服务端返回 gzip/deflate/br/zstd 等压缩响应时现按 Content-Encoding 自动解压，可正常以原文/JSON/表单等格式查看与切换",
-      "en": "Fixed the API debug page always showing the body as hex with no way to switch formats: compressed responses (gzip/deflate/br/zstd) are now auto-decompressed by Content-Encoding, so the body renders and switches correctly as raw/JSON/form."
-    },
-    {
-      "zh": "修复 API 调试页不展示响应 Header：新增响应头列表（与详情面板一致），状态行同步显示响应头数量",
-      "en": "Fixed the API debug page not showing response headers: added a response-header list (consistent with the detail panel) and the status line now reports the header count."
-    },
-    {
-      "zh": "修复「重放并对比」无响应、无法对比：对比框改为在重放请求的响应真正到达后才弹出（原逻辑在请求到达即弹，响应尚为空），现可正常对比原请求与重放响应",
-      "en": "Fixed \"Replay & Compare\" showing no response / failing to compare: the compare dialog now opens only after the replayed response actually arrives (previously it opened on request arrival with an empty response), so the original and replayed responses compare correctly."
-    },
-    {
-      "zh": "修复「在工具页中打开 body」选择后无可见变化：工具页停在 API 调试子页时自动改投 JSON/编码转换子页（JSON 进 JSON 工具，否则进编码转换），空 body 给出更明确的提示",
-      "en": "Fixed \"Open body in Tools\" appearing to do nothing: when the Tools page is on the API debug tab, the body is now routed to the JSON tool (for JSON) or the codec tool (otherwise), and an empty body shows a clearer hint."
-    },
-    {
-      "zh": "详情面板默认显示「响应」页（抓包场景优先看响应）；用户手动切换页签后，当次运行内记住该选择，下次启动回到默认响应页",
-      "en": "The detail panel now defaults to the \"Response\" tab (since packet capture focuses on responses); once you manually switch tabs, the choice sticks for the rest of the session, and a fresh launch returns to the default Response tab."
+      "zh": "大流量长跑稳定性：列表与缓存都有 5000 条硬上限，喂超量流量后行数/缓存条数精确裁到上限、内存不会随抓包时长无限增长；统计聚合在满容量下仍远低于 1 秒",
+      "en": "Large-capture long-run stability: both the list and the cache are hard-capped at 5000 entries, so feeding excess traffic trims rows/cache precisely to the cap and memory no longer grows unbounded over long captures; stats aggregation stays well under 1 second even at full capacity"
     }
   ]
 }

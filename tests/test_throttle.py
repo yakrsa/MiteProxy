@@ -235,20 +235,23 @@ def test_summarize_mocked_response_duration_uses_now():
 
 def test_main_window_throttle_before_capture():
     """capture 排在 throttle 之后才能读到延迟 metadata（顺序回归防护）。"""
+    import re
     from pathlib import Path
 
     src = (
         Path(__file__).resolve().parent.parent / "app" / "ui" / "main_window.py"
     ).read_text(encoding="utf-8")
-    order_line = [l for l in src.splitlines() if "addons=[self." in l]
-    assert order_line, "找不到 addon 注册行"
-    line = order_line[0]
+    # 注册列表换行后就抓不到整行了：把 addons=[...] 整段取出压成一行再比。
+    # 本用例盯的是**顺序**，不是源码格式——格式不该让回归防护失效。
+    m = re.search(r"addons=\[(.*?)\]", src, re.S)
+    assert m, "找不到 addon 注册行"
+    line = " ".join(m.group(1).split())
     assert line.index("self.throttle") < line.index("self.capture"), (
-        f"throttle 必须排在 capture 之前: {line.strip()}"
+        f"throttle 必须排在 capture 之前: {line}"
     )
     assert line.index("self.mock") < line.index("self.throttle"), (
-        f"mock 必须排在 throttle 之前: {line.strip()}"
+        f"mock 必须排在 throttle 之前: {line}"
     )
     assert line.index("self.maplocal") < line.index("self.throttle"), (
-        f"maplocal 必须排在 throttle 之前: {line.strip()}"
+        f"maplocal 必须排在 throttle 之前: {line}"
     )

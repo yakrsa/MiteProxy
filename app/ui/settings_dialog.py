@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.i18n import available_languages
+from app.mcpserver import is_exposed, local_ips
 from app.rules import CONFIG_DIR
 from app.settings import DEFAULT_MAX_FLOWS, FLOW_LIMIT_CHOICES
 from app.ui import dialogs, theme
@@ -224,6 +225,108 @@ class SettingsDialog(QDialog):
         form.addWidget(hint)
         layout.addWidget(box)
 
+        # -- 断点调试：总开关在工具栏「断点」按钮，这里配阶段与命中范围
+        bp_box = QGroupBox(self.tr("断点调试"))
+        bp_form = QVBoxLayout(bp_box)
+        bp_form.setSpacing(6)
+
+        self.bp_request_cb = QCheckBox(self.tr("请求发出前暂停"))
+        self.bp_request_cb.setChecked(bool(settings.breakpoint.on_request))
+        self.bp_request_cb.setToolTip(
+            self.tr("挂起后可改 URL / Header / Body，再放行发往服务器")
+        )
+        self.bp_response_cb = QCheckBox(self.tr("响应返回前暂停"))
+        self.bp_response_cb.setChecked(bool(settings.breakpoint.on_response))
+        self.bp_response_cb.setToolTip(
+            self.tr("挂起后可改状态码 / Header / Body，再放行返回给客户端")
+        )
+        bp_form.addWidget(self.bp_request_cb)
+        bp_form.addWidget(self.bp_response_cb)
+
+        kw_row = QHBoxLayout()
+        kw_row.addWidget(QLabel(self.tr("URL 关键词:")))
+        self.bp_keywords_edit = QLineEdit(", ".join(settings.breakpoint.url_keywords))
+        self.bp_keywords_edit.setPlaceholderText(
+            self.tr("逗号分隔；留空 = 拦截全部")
+        )
+        kw_row.addWidget(self.bp_keywords_edit, stretch=1)
+        bp_form.addLayout(kw_row)
+
+        bp_form.addWidget(self._hint(
+            self.tr("总开关在工具栏的「断点」按钮上：开启后命中会话会挂起，"
+                    "改完点「继续放行」。")
+        ))
+        layout.addWidget(bp_box)
+
+        # -- MCP 接口：监听地址 + 端口（开关仍在工具栏「MCP」按钮上）
+        mcp_box = QGroupBox(self.tr("MCP 接口"))
+        mcp_form = QVBoxLayout(mcp_box)
+        mcp_form.setSpacing(6)
+
+        host_row = QHBoxLayout()
+        host_row.addWidget(QLabel(self.tr("监听地址:")))
+        self.mcp_host_combo = QComboBox()
+        self.mcp_host_combo.setEditable(True)
+        self.mcp_host_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.mcp_host_combo.setMinimumWidth(180)
+        # 先给两个固定档位，再把探测到的本机局域网 IP 列出来（方便只开某一张网卡）
+        for value, label in (
+            ("127.0.0.1", self.tr("仅本机（127.0.0.1）")),
+            ("0.0.0.0", self.tr("局域网：全部网卡（0.0.0.0）")),
+        ):
+            self.mcp_host_combo.addItem(label, value)
+        for ip in local_ips():
+            self.mcp_host_combo.addItem(self.tr("局域网：{0}").format(ip), ip)
+        self.mcp_host_combo.setToolTip(
+            self.tr("MCP 服务绑定哪个网卡。\n"
+                    "仅本机 = 只有这台机器能调；改成局域网后，同网段设备（含手机、\n"
+                    "另一台电脑上的 AI 客户端）都能读到完整抓包——含 Cookie / 鉴权头。\n"
+                    "也可直接填某个网卡 IP，只允许经该网卡访问。")
+        )
+        host_row.addWidget(self.mcp_host_combo)
+        host_row.addStretch(1)
+        mcp_form.addLayout(host_row)
+
+        port_row = QHBoxLayout()
+        port_row.addWidget(QLabel(self.tr("端口:")))
+        self.mcp_port_spin = QSpinBox()
+        self.mcp_port_spin.setRange(1, 65535)
+        self.mcp_port_spin.setValue(int(getattr(settings, "mcp_port", 8899) or 8899))
+        self.mcp_port_spin.setToolTip(
+            self.tr("被占用时会向上顺延，实际端口看启动后的状态栏提示。")
+        )
+        port_row.addWidget(self.mcp_port_spin)
+        port_row.addStretch(1)
+        mcp_form.addLayout(port_row)
+
+        saved_host = str(getattr(settings, "mcp_host", "127.0.0.1") or "").strip()
+        idx = self.mcp_host_combo.findData(saved_host)
+        if idx >= 0:
+            self.mcp_host_combo.setCurrentIndex(idx)
+        elif saved_host:
+            self.mcp_host_combo.setEditText(saved_host)
+
+        # 写操作开关：默认关。打开后 MCP 客户端可新增 Mock 规则、重放会话、
+        # 开关断点——等于把改写流量行为的能力交出去，必须显式授权
+        self.mcp_write_cb = QCheckBox(self.tr("允许 MCP 写操作"))
+        self.mcp_write_cb.setChecked(
+            bool(getattr(settings, "mcp_write_enabled", False))
+        )
+        self.mcp_write_cb.setToolTip(
+            self.tr("打开后 AI 客户端可调用 add_mock_rule（新增 Mock 规则）/ "
+                    "replay_flow（重放会话）/ set_breakpoint（开关断点）。\n"
+                    "关闭时这三个工具对客户端不存在。监听地址为局域网时尤其要谨慎。")
+        )
+        mcp_form.addWidget(self.mcp_write_cb)
+
+        self.mcp_exposed_hint = self._hint("")
+        mcp_form.addWidget(self.mcp_exposed_hint)
+        # 选到局域网地址时提示要变红警告——这一步是安全提示，不能只在 tooltip 里
+        self.mcp_host_combo.currentIndexChanged.connect(self._update_mcp_hint)
+        self.mcp_host_combo.editTextChanged.connect(self._update_mcp_hint)
+        self._update_mcp_hint()
+        layout.addWidget(mcp_box)
+
         layout.addStretch(1)
         return page
 
@@ -362,6 +465,20 @@ class SettingsDialog(QDialog):
             "language": self.lang_combo.currentData() or "zh_CN",
             "auto_save_session": self.autosave_cb.isChecked(),
             "check_update_on_startup": self.check_update_cb.isChecked(),
+            # MCP：开关归工具栏按钮管，这里只回传监听地址与端口
+            "mcp_host": self._mcp_host_value(),
+            "mcp_port": int(self.mcp_port_spin.value()),
+            "mcp_write_enabled": bool(self.mcp_write_cb.isChecked()),
+            # 断点：总开关归工具栏按钮管，这里只回传阶段与命中范围
+            "breakpoint": {
+                "on_request": self.bp_request_cb.isChecked(),
+                "on_response": self.bp_response_cb.isChecked(),
+                "url_keywords": [
+                    k.strip()
+                    for k in self.bp_keywords_edit.text().split(",")
+                    if k.strip()
+                ],
+            },
         }
 
     # ================================================================ 内部
@@ -369,6 +486,38 @@ class SettingsDialog(QDialog):
     def _on_row_changed(self, row: int) -> None:
         if row >= 0:
             self.pages.setCurrentIndex(row)
+
+    def _mcp_host_value(self) -> str:
+        """监听地址下拉的当前值。
+
+        坑：可编辑 combo 里手输文本时 ``currentIndex()`` 仍停在原项上，
+        直接取 ``currentData()`` 会把手输的 IP 顶掉（实测输 192.168.1.7
+        交回 127.0.0.1）。所以只在「当前文本就是该项文本」时才用 data——
+        那说明是选中了预设项而不是手输。
+        """
+        text = (self.mcp_host_combo.currentText() or "").strip()
+        idx = self.mcp_host_combo.currentIndex()
+        if idx >= 0 and self.mcp_host_combo.itemText(idx) == self.mcp_host_combo.currentText():
+            data = self.mcp_host_combo.itemData(idx)
+            if isinstance(data, str) and data:
+                return data
+        return text or "127.0.0.1"
+
+    def _update_mcp_hint(self) -> None:
+        """监听地址对局域网开放时把提示切成警告色。"""
+        host = self._mcp_host_value()
+        if is_exposed(host):
+            self.mcp_exposed_hint.setText(
+                self.tr("警告：当前地址对局域网开放，同网段任何人都能读到完整抓包"
+                        "（含 Cookie / 鉴权头）。用完记得关掉工具栏的「MCP」按钮。")
+            )
+            self.mcp_exposed_hint.setStyleSheet(f"color: {theme.css('warn')};")
+        else:
+            self.mcp_exposed_hint.setText(
+                self.tr("总开关在工具栏的「MCP」按钮上，默认关。改完点「确定」立即生效"
+                        "（MCP 正在运行时会自动重启）。")
+            )
+            self.mcp_exposed_hint.setStyleSheet(f"color: {theme.css('hint')};")
 
     def _hint(self, text: str) -> QLabel:
         label = QLabel(text)

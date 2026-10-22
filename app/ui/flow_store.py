@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from PySide6.QtCore import QAbstractTableModel, QCoreApplication, Qt, QModelIndex
 from PySide6.QtGui import QColor, QFont, QBrush
 
 from app.ui import theme
 
+#: 全部列（含可选列）。**列顺序即逻辑列号**，COL_* 常量与之一一对应；
+#: 新增列只能追加到末尾——插中间会让存量设置（hidden_columns 用 key 存，
+#: 不受影响）与测试里写死的列号全部错位。
 COLUMNS = [
     "#",
     "方法",
@@ -18,11 +23,36 @@ COLUMNS = [
     "响应",
     "耗时(ms)",
     "标记",
+    # -- 可选列（默认隐藏，右键表头勾选显示，见 main_window._show_column_menu）
+    "内容类型",
+    "开始时刻",
+    "备注",
 ]
 COL_ID, COL_METHOD, COL_HOST, COL_SERVER_IP = 0, 1, 2, 3
 COL_PATH, COL_STATUS = 4, 5
 COL_REQ_SIZE, COL_RESP_SIZE = 6, 7
 COL_DURATION, COL_MARK = 8, 9
+COL_CONTENT_TYPE, COL_STARTED, COL_COMMENT = 10, 11, 12
+
+#: 列的稳定 key（持久化 settings.hidden_columns 用）。**不能用列号**——
+#: 以后加列时列号会漂移，key 不会。顺序与 COLUMNS 一致。
+COLUMN_KEYS = (
+    "num", "method", "host", "server_ip", "path", "status",
+    "req_size", "resp_size", "duration", "mark",
+    "content_type", "started", "comment",
+)
+
+#: 默认隐藏的可选列（内容类型 / 开始时刻 / 备注）：抓包主场景用不到，
+#: 默认全开会让列表一下子宽三列；需要的人在表头右键里勾。
+DEFAULT_HIDDEN_COLUMNS = ("content_type", "started", "comment")
+
+
+def column_index(key: str) -> int | None:
+    """列 key → 逻辑列号（未知 key 返回 None）。"""
+    try:
+        return COLUMN_KEYS.index(key)
+    except ValueError:
+        return None
 
 #: 列头的翻译文案。**必须懒执行**：翻译器是在 app/main.py 里 QApplication
 #: 创建之后才装载的，若在 import 时求值会永远拿到中文原文。
@@ -45,6 +75,9 @@ def column_labels() -> list[str]:
             QCoreApplication.translate("FlowStore", "响应"),
             QCoreApplication.translate("FlowStore", "耗时(ms)"),
             QCoreApplication.translate("FlowStore", "标记"),
+            QCoreApplication.translate("FlowStore", "内容类型"),
+            QCoreApplication.translate("FlowStore", "开始时刻"),
+            QCoreApplication.translate("FlowStore", "备注"),
         ]
     return _column_labels_cache
 
@@ -100,6 +133,22 @@ def format_size(n: int) -> str:
     if n < 1024 * 1024:
         return f"{n / 1024:.1f} KB"
     return f"{n / 1024 / 1024:.1f} MB"
+
+
+def format_clock(ts) -> str:
+    """epoch 秒 → 本地 `HH:MM:SS.mmm`（「开始时刻」列）。
+
+    与详情页耗时页的绝对时刻同源（都是 time.time() 域的时间戳），
+    毫秒截断而不是四舍五入——对账时要能和服务端日志逐位对上。
+    无时间戳（0 / None）给 `-`，与「服务器 IP」列的无值显示一致。
+    """
+    if not ts:
+        return "-"
+    try:
+        dt = datetime.fromtimestamp(float(ts))
+    except (TypeError, ValueError, OSError, OverflowError):
+        return "-"
+    return dt.strftime("%H:%M:%S.") + f"{dt.microsecond // 1000:03d}"
 
 
 def status_color(status: int) -> QColor | None:
@@ -178,6 +227,14 @@ class FlowStore(QAbstractTableModel):
                 return format_size(row["size"])
             if col == COL_DURATION:
                 return row["duration_ms"]
+            if col == COL_CONTENT_TYPE:
+                # 响应 content-type；无响应（pending / 连接失败）给 -
+                return row.get("content_type") or "-"
+            if col == COL_STARTED:
+                # 请求开始的本地时钟（毫秒），与服务端日志对账用
+                return format_clock(row.get("timestamp"))
+            if col == COL_COMMENT:
+                return row.get("comment") or ""
             if col == COL_MARK:
                 # 用户备注优先（自己写的比系统徽标更想看见）；
                 # MOCK 徽标次之；WebSocket 会话显示 WS；重放会话显示 REPLAY。
@@ -256,6 +313,12 @@ class FlowStore(QAbstractTableModel):
                 return int(row["size"] or 0)
             if col == COL_DURATION:
                 return float(row["duration_ms"] or 0.0)
+            if col == COL_CONTENT_TYPE:
+                return (row.get("content_type") or "").lower()
+            if col == COL_STARTED:
+                return float(row.get("timestamp") or 0.0)
+            if col == COL_COMMENT:
+                return (row.get("comment") or "").lower()
             if col == COL_MARK:
                 key = row.get("comment") or row["marked"] or (
                     "REPLAY" if row.get("is_replay") else ""
@@ -319,6 +382,26 @@ class FlowStore(QAbstractTableModel):
         self.beginResetModel()
         self.rows.clear()
         self.endResetModel()
+
+    def remove_ids(self, flow_ids) -> int:
+        """按 id 删除若干行，返回实际删除条数。
+
+        只动列表显示——不动 capture 缓存：缓存是按容量自淘汰的查询缓存，
+        留着不影响界面，也让「删除后仍想看详情/对比」不至于立刻失效。
+        整段替换（begin/endResetModel）而不是逐行 removeRow：删除通常是
+        批量动作，逐行发号会让排序/过滤连着重算 N 遍。
+        """
+        ids = set(flow_ids)
+        if not ids:
+            return 0
+        keep = [r for r in self.rows if r.get("id") not in ids]
+        removed = len(self.rows) - len(keep)
+        if not removed:
+            return 0
+        self.beginResetModel()
+        self.rows = keep
+        self.endResetModel()
+        return removed
 
     def set_comment(self, flow_id: str, comment: str) -> bool:
         """给一条会话写/清用户备注（只动「标记」列，不重建整行）。

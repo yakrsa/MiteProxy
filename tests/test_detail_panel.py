@@ -131,3 +131,70 @@ def test_normal_flow_has_no_truncation_note(qapp):
     p.show_flow(flow)
     assert "已截断" not in p.response_pane.body_pane.view_note.text()
     p.deleteLater()
+
+
+def _raw_flow():
+    """带 http_version 与 body 的流，用于验证 Raw 页展示完整报文。"""
+    req = SimpleNamespace(
+        method="POST",
+        pretty_url="https://example.com/api",
+        http_version="HTTP/1.1",
+        headers={"Host": "example.com", "Content-Type": "application/json"},
+        raw_content=b'{"a":1}',
+    )
+    req.get_content = lambda strict=False: b'{"a":1}'
+    res = SimpleNamespace(
+        status_code=201,
+        reason="Created",
+        http_version="HTTP/1.1",
+        headers={"Content-Type": "application/json"},
+        raw_content=b'{"id":7}',
+    )
+    res.get_content = lambda strict=False: b'{"id":7}'
+    return SimpleNamespace(request=req, response=res, id="raw-flow")
+
+
+def test_message_pane_has_inspect_and_raw_tabs(qapp):
+    """请求/响应页内部应同时有「查看」与「原始」两个 tab（Fiddler 风格）。"""
+    p = DetailPanel()
+    labels = [
+        p.request_pane.view_tabs.tabText(i)
+        for i in range(p.request_pane.view_tabs.count())
+    ]
+    assert "查看" in labels
+    assert "原始" in labels
+    p.deleteLater()
+
+
+def test_raw_pane_shows_full_request(qapp):
+    """原始页必须把请求行 + 全部头 + body 拼成完整报文。"""
+    p = DetailPanel()
+    p.show_flow(_raw_flow())
+    raw = p.request_pane.raw_pane.text.toPlainText()
+    assert "POST https://example.com/api HTTP/1.1" in raw
+    assert "Host: example.com" in raw
+    assert "Content-Type: application/json" in raw
+    assert '{"a":1}' in raw
+    # 顺序：请求行 → 头 → 空行 → body
+    assert raw.index("POST https://example.com/api HTTP/1.1") < raw.index("Host:")
+    assert raw.index("Host:") < raw.index('{"a":1}')
+    p.deleteLater()
+
+
+def test_raw_pane_shows_full_response(qapp):
+    p = DetailPanel()
+    p.show_flow(_raw_flow())
+    raw = p.response_pane.raw_pane.text.toPlainText()
+    assert "HTTP/1.1 201 Created" in raw
+    assert '{"id":7}' in raw
+    p.deleteLater()
+
+
+def test_raw_pane_searchable(qapp):
+    """搜索应覆盖原始页（与「查看」页一致）。"""
+    p = DetailPanel()
+    p.show_flow(_raw_flow())
+    # 「查看」页（body）与「原始」页都含 example.com，命中应 > 0
+    hits = p.request_pane.highlight("example.com", case_sensitive=False)
+    assert hits > 0
+    p.deleteLater()

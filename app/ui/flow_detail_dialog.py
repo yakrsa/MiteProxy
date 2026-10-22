@@ -58,9 +58,13 @@ class FlowDetailDialog(QDialog):
         btn_row.addWidget(close_btn)
         layout.addLayout(btn_row)
 
-        # 填充内容：与 DetailPanel.show_flow 同一套取值
+        # 填充内容：与 DetailPanel.show_flow 同一套取值（含 Raw 页首行）
         truncated_sides, truncated_sizes = truncation_flags(flow)
         if req is not None:
+            req_first = f"{req.method} {req.pretty_url}".rstrip()
+            ver = getattr(req, "http_version", "") or ""
+            if ver:
+                req_first = f"{req_first} {ver}"
             self.request_pane.show_message(
                 f"{req.method} {req.pretty_url}",
                 req.headers,
@@ -68,11 +72,16 @@ class FlowDetailDialog(QDialog):
                 len(req.raw_content or b""),
                 "request" in truncated_sides,
                 truncated_sizes.get("request"),
+                req_first,
             )
         else:
             self.request_pane.clear()
 
         if res is not None:
+            res_first = f"HTTP {res.status_code} {res.reason or ''}".strip()
+            ver = getattr(res, "http_version", "") or ""
+            if ver:
+                res_first = f"{ver} {res.status_code} {res.reason or ''}".strip()
             self.response_pane.show_message(
                 f"HTTP {res.status_code} {res.reason or ''}".strip(),
                 res.headers,
@@ -80,6 +89,7 @@ class FlowDetailDialog(QDialog):
                 len(res.raw_content or b""),
                 "response" in truncated_sides,
                 truncated_sizes.get("response"),
+                res_first,
             )
         else:
             # pending：请求已发出但响应未到，响应半边给明确占位而非「未选择会话」

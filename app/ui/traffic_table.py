@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import QPoint, Qt, Signal, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QTableView,
     QWidget,
@@ -26,6 +27,7 @@ from app.ui.filter_model import (
     SearchConfig,
 )
 from app.ui.flow_store import (
+    COLUMN_KEYS,
     COL_DURATION,
     COL_HOST,
     COL_ID,
@@ -36,6 +38,7 @@ from app.ui.flow_store import (
     COL_RESP_SIZE,
     COL_SERVER_IP,
     COL_STATUS,
+    column_index,
 )
 
 
@@ -43,6 +46,8 @@ class FilterBar(QWidget):
     """域名过滤（黑/白名单）+ 类型隐藏。变更即发信号，由主窗口持久化。"""
 
     changed = Signal()
+    #: 「预设」菜单即将弹出：主窗口借此机会重建菜单内容（动态数据）
+    preset_menu_about_to_show = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -66,6 +71,19 @@ class FilterBar(QWidget):
         self.hide_image_cb = QCheckBox(self.tr("隐藏 Image"))
         layout.addWidget(self.hide_connect_cb)
         layout.addWidget(self.hide_image_cb)
+
+        # 过滤预设（路线图 #7）：一个按钮 + 动态菜单。菜单内容由主窗口在
+        # aboutToShow 时重建（预设列表 / 当前套用 / 是否已手改偏离），
+        # FilterBar 本身不碰持久化——和列显隐菜单同一套路。
+        self.preset_btn = QPushButton(self.tr("预设"))
+        self.preset_btn.setToolTip(
+            self.tr("过滤预设：把当前过滤条件存成命名预设，切换场景一键套用"
+                    "（域名黑白名单 + 隐藏 CONNECT/Image）")
+        )
+        self.preset_menu = QMenu(self)
+        self.preset_menu.aboutToShow.connect(self.preset_menu_about_to_show)
+        self.preset_btn.setMenu(self.preset_menu)
+        layout.addWidget(self.preset_btn)
 
         self.mode_combo.currentIndexChanged.connect(self.changed)
         self.keywords_edit.textChanged.connect(self.changed)
@@ -208,6 +226,8 @@ class TrafficTable(QTableView):
     # 选中某条请求后按 R / E 触发的重放信号（无修饰键）
     replay_requested = Signal()
     edit_replay_requested = Signal()
+    # 表头右键：弹出列显隐菜单（主窗口构建菜单内容，这里只转发位置）
+    column_menu_requested = Signal(QPoint)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -221,6 +241,8 @@ class TrafficTable(QTableView):
         self.verticalHeader().setDefaultSectionSize(22)   # Fiddler 式紧凑行高
         header = self.horizontalHeader()
         header.setSortIndicatorShown(True)
+        header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        header.customContextMenuRequested.connect(self.column_menu_requested)
         self.setSortingEnabled(True)
         # 注意：列宽策略不能只在这里设一次——QHeaderView::setModel() 会把
         # 按列设置的 resize 模式与宽度全部重置回默认（120px），而主窗口是
@@ -246,6 +268,18 @@ class TrafficTable(QTableView):
         self.setColumnWidth(COL_RESP_SIZE, 64)
         self.setColumnWidth(COL_DURATION, 64)
         self.setColumnWidth(COL_MARK, 280)
+        # 可选列（默认隐藏，勾选后才看得见；宽度仍先配好，勾选即合适）
+        self.setColumnWidth(column_index("content_type"), 150)
+        self.setColumnWidth(column_index("started"), 96)
+        self.setColumnWidth(column_index("comment"), 120)
+
+    def hide_column_by_key(self, key: str, hidden: bool) -> bool:
+        """按列 key 显示/隐藏（未知 key 返回 False，不炸）。"""
+        idx = column_index(key)
+        if idx is None:
+            return False
+        self.setColumnHidden(idx, bool(hidden))
+        return True
 
     def setModel(self, model):  # noqa: N802
         """接入模型后清掉初始排序指示（section=-1 → 保持抓包到达顺序）。

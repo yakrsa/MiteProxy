@@ -44,6 +44,7 @@ from app.bodyview import (  # noqa: E402
     VIEW_IMAGE,
     VIEW_JSON,
     VIEW_RAW,
+    VIEW_SSE,
     VIEW_TREE,
     BODY_PREVIEW_LIMIT,
     HIGHLIGHT_LIMIT,
@@ -114,7 +115,8 @@ class TestContentTypeDetection:
     def test_mode_items_cover_all(self):
         keys = [k for k, _ in view_mode_items()]
         assert keys == [
-            VIEW_AUTO, VIEW_RAW, VIEW_JSON, VIEW_TREE, VIEW_FORM, VIEW_IMAGE, VIEW_HEX
+            VIEW_AUTO, VIEW_RAW, VIEW_JSON, VIEW_TREE, VIEW_FORM, VIEW_IMAGE,
+            VIEW_HEX, VIEW_SSE,
         ]
         assert view_mode_label(VIEW_IMAGE) == "图片"
         assert view_mode_label(VIEW_JSON) == "JSON"
@@ -294,7 +296,7 @@ class TestBodyPane:
         pane = _pane()
         assert not hasattr(pane, "mode_combo")
         assert list(pane.mode_buttons) == [VIEW_AUTO, VIEW_RAW, VIEW_JSON, VIEW_TREE,
-                                           VIEW_FORM, VIEW_IMAGE, VIEW_HEX]
+                                           VIEW_FORM, VIEW_IMAGE, VIEW_HEX, VIEW_SSE]
         assert pane.mode_buttons[VIEW_AUTO].isChecked()
         assert pane.mode_group.exclusive()
         # set_mode 同步按钮选中态（先给个 body，让 current_mode 有实际解析值）

@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from addons.breakpoint import BreakpointAddon
 from addons.capture import CaptureAddon
 from addons.maplocal import MapLocalAddon
 from addons.mock import MockAddon
@@ -63,7 +64,16 @@ from app.export import (
 )
 from app.proxy import ProxyService
 from app.replay import apply_request_edits, format_request_url, make_replay_copy
-from app.rules import Action, EXACT, Match, Rule, RuleStore
+from app.rules import (
+    CONTAINS,
+    MATCH_TYPES,
+    REGEX,
+    Action,
+    EXACT,
+    Match,
+    Rule,
+    RuleStore,
+)
 from app import session as session_mod
 from app.session import (
     SESSION_EXT,
@@ -85,10 +95,24 @@ from app.updater import CURRENT_VERSION, UpdateChecker, is_newer
 from app.bodyview import BODY_PREVIEW_LIMIT as BODY_SEND_LIMIT
 from app import sysproxy
 from app.textutil import decode_body
+from app.mcpserver import (
+    DEFAULT_MCP_HOST,
+    DEFAULT_MCP_PORT,
+    McpServer,
+    resolve_flow,
+)
+from app.ui.breakpoint_dialog import BreakpointDialog
 from app.ui.compare_dialog import CompareDialog
+from app.ui.flow_diff_dialog import FlowDiffDialog
 from app.ui.detail_panel import DetailPanel
-from app.ui.filter_model import FlowFilterProxyModel
-from app.ui.flow_store import COL_ID, FlowStore, format_size
+from app.ui.filter_model import FilterConfig, FlowFilterProxyModel
+from app.ui.flow_store import (
+    COLUMN_KEYS,
+    COL_ID,
+    FlowStore,
+    column_labels,
+    format_size,
+)
 from app.ui.network_panel import NetworkPanel
 from app.ui.replay_dialog import ReplayEditDialog
 from app.ui.rules_panel import RulesPanel
@@ -96,9 +120,12 @@ from app.ui.rule_editor import RuleEditorDialog
 from app.ui.settings_dialog import SettingsDialog
 from app.ui.signals import FlowBridge
 from app.ui.log_panel import LogPanel
+from app.ui.stats_panel import StatsPanel
+from app.ui.scripts_panel import ScriptsPanel
 from app.ui.traffic_table import FilterBar, SearchBar, TrafficTable
 from app.ui import dialogs
 from app.ui import theme
+from app.scripts import ScriptsManager
 
 log = logging.getLogger(__name__)
 
@@ -144,11 +171,33 @@ class MainWindow(QMainWindow):
             on_flow=self.bridge.emit_flow,
             on_update=self.bridge.emit_flow_update,
         )
+        # 断点：传的是活的 Settings.breakpoint，界面上开关即时生效
+        self.breakpoint = BreakpointAddon(
+            self.settings.breakpoint,
+            on_intercept=self.bridge.emit_intercepted,
+        )
+        # MCP：注入取会话的回调，服务不反向依赖 Qt / capture。
+        # 写操作（add_mock_rule / replay_flow / set_breakpoint）默认关，
+        # 由设置的 mcp_write_enabled 门控（McpServer.write_enabled 可变）
+        self.mcp = McpServer(
+            flow_provider=self._mcp_flows, port=self.settings.mcp_port,
+            host=self.settings.mcp_host, flow_by_id=self._mcp_flow_by_id,
+            write_enabled=self.settings.mcp_write_enabled,
+            write_ops={
+                "add_mock_rule": self._mcp_add_mock_rule,
+                "replay_flow": self._mcp_replay_flow,
+                "set_breakpoint": self._mcp_set_breakpoint,
+            },
+        )
         self.mock = MockAddon(self.rule_store)
         self.throttle = ThrottleAddon(self.settings.throttle)
         self.maplocal = MapLocalAddon(
             map_local_entries(self.settings.map_rules)
         )
+        # 用户脚本（路线图 #10）：~/.miteproxy/scripts/*.py，启用态在
+        # settings.scripts。要在 _make_proxy 之前建——代理的 addon 列表
+        # 里包含加载出来的脚本 addon
+        self.scripts_mgr = ScriptsManager()
 
         self.proxy = self._make_proxy(self.settings.proxy_port)
         self.cert_server: CertServer | None = None
@@ -163,6 +212,10 @@ class MainWindow(QMainWindow):
         self._update_checker: UpdateChecker | None = None
         self._update_manual = False
         self._compare_dialogs: list[CompareDialog] = []
+        #: 断点编辑器（非模态，多条会话可同时挂起 → 都留着引用，关掉时清）
+        self._breakpoint_dialogs: list[BreakpointDialog] = []
+        #: 会话对比对话框（非模态；开太多不关也不至于无限攒着）
+        self._diff_dialogs: list[FlowDiffDialog] = []
         self._compare_timer = QTimer(self)
         self._compare_timer.setInterval(5000)
         self._compare_timer.timeout.connect(self._expire_pending_compare)
@@ -179,6 +232,14 @@ class MainWindow(QMainWindow):
         QApplication.instance().installEventFilter(self)
 
         self._apply_filter_config(self.settings.filter)
+        # 栏位控件也要加载持久化配置：此前只推了代理模型，重启后过滤栏
+        # 显示默认值（黑名单/空关键词/未勾选），与模型里的实际过滤条件
+        # 不一致——用户一改动就会从错误的基础改起。load_config 内部
+        # blockSignals，不会触发 changed 引起重复落盘。
+        self.filter_bar.load_config(self.settings.filter)
+        # 上次开着 MCP 就接着开（默认关，用户手动开过才记 True）
+        if self.settings.mcp_enabled:
+            self.mcp_btn.setChecked(True)
         self._apply_flow_limit(self.settings.max_flows)
         self._apply_list_order()
         self._restore_geometry()
@@ -278,6 +339,16 @@ class MainWindow(QMainWindow):
         self.clear_btn = QPushButton(self.tr("清除列表"))
         toolbar_row.addWidget(self.clear_btn)
 
+        # 搜索是高频动作，给个常驻入口——之前只有 Ctrl+F 才唤得出搜索栏，
+        # 不知道快捷键的人根本发现不了这个功能。
+        self.search_btn = QPushButton(self.tr("搜索"))
+        self.search_btn.setCheckable(True)
+        self.search_btn.setToolTip(
+            self.tr("搜索会话（URL / Header / Body）  Ctrl+F")
+        )
+        self.search_btn.toggled.connect(self._on_search_toggled)
+        toolbar_row.addWidget(self.search_btn)
+
         toolbar_row.addSpacing(12)
         toolbar_row.addWidget(QLabel(self.tr("保存数量:")))
         self.limit_combo = QComboBox()
@@ -362,6 +433,28 @@ class MainWindow(QMainWindow):
         self.export_ca_btn = QPushButton(self.tr("导出 CA 证书"))
         toolbar_row.addWidget(self.export_ca_btn)
 
+        toolbar_row.addSpacing(12)
+        self.breakpoint_btn = QPushButton(self.tr("断点"))
+        self.breakpoint_btn.setCheckable(True)
+        self.breakpoint_btn.setChecked(self.settings.breakpoint.enabled)
+        self.breakpoint_btn.setToolTip(
+            self.tr("断点调试：命中的会话会挂起，改完再放行（请求前 / 响应前在设置里配）")
+        )
+        self.breakpoint_btn.toggled.connect(self._on_breakpoint_toggled)
+        toolbar_row.addWidget(self.breakpoint_btn)
+
+        toolbar_row.addSpacing(12)
+        self.mcp_btn = QPushButton(self.tr("MCP"))
+        self.mcp_btn.setCheckable(True)
+        self.mcp_btn.setToolTip(
+            self.tr("MCP 接口：把最近抓包暴露给 AI 客户端（默认关）。\n"
+                    "监听地址与端口在「设置 → 流量列表 → MCP 接口」里改：\n"
+                    "默认 127.0.0.1 仅本机可连；改成 0.0.0.0 或网卡 IP 后"
+                    "局域网内的设备也能读到完整抓包。")
+        )
+        self.mcp_btn.toggled.connect(self._on_mcp_toggled)
+        toolbar_row.addWidget(self.mcp_btn)
+
         toolbar_row.addStretch(1)
         root.addLayout(toolbar_row)
 
@@ -379,6 +472,7 @@ class MainWindow(QMainWindow):
 
         # 流量页
         traffic_page = QWidget()
+        self.traffic_page = traffic_page
         traffic_layout = QVBoxLayout(traffic_page)
         traffic_layout.setContentsMargins(0, 0, 0, 0)
         # 左右（Fiddler 风格，默认）或上下，用户可在工具栏切换
@@ -394,6 +488,9 @@ class MainWindow(QMainWindow):
         self.proxy_model.setSourceModel(self.flow_store)
         self.proxy_model.flow_lookup = self.capture.get_flow
         self.traffic_table.setModel(self.proxy_model)
+        # 列显隐必须在 setModel 之后应用：QHeaderView 换模型时会重置
+        # 按列配置（含隐藏态）。默认隐藏内容类型/开始时刻/备注三个可选列
+        self._apply_hidden_columns()
         self.detail_panel = DetailPanel(wrap_default=self.settings.body_wrap)
         # 水平方向 Ignored：详情面板不向 splitter 申报宽度意图。
         # 否则切换请求时（长 URL 摘要、表单列宽、图片页等 sizeHint 变化）会
@@ -422,9 +519,27 @@ class MainWindow(QMainWindow):
         self.tool_panel = ToolPanel()
         self.tabs.addTab(self.tool_panel, self.tr("工具"))
 
+        # 脚本页（用户 Python 插件，挂 mitmproxy flow 钩子）
+        self.scripts_panel = ScriptsPanel(
+            self.scripts_mgr, enabled=self.settings.scripts
+        )
+        self.tabs.addTab(self.scripts_panel, self.tr("脚本"))
+
         # 日志页：实时显示运行日志（级别筛选 / 清空 / 打开磁盘日志文件）
         self.log_panel = LogPanel()
         self.tabs.addTab(self.log_panel, self.tr("日志"))
+
+        # 统计页（对齐 Fiddler Statistics）：总览 + 域名/状态码/方法 + 慢请求
+        # + 时间直方图。聚合逻辑在 app/stats.py，与 MCP 的 get_stats 共用
+        self.stats_panel = StatsPanel(flow_provider=self._stats_flows)
+        self.tabs.addTab(self.stats_panel, self.tr("统计"))
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        # 统计防抖：新流量可能成批到达（页面加载时一串请求），没必要每条都
+        # 全量聚合；500ms 内的多条变化合并成一次重算
+        self._stats_timer = QTimer(self)
+        self._stats_timer.setSingleShot(True)
+        self._stats_timer.setInterval(500)
+        self._stats_timer.timeout.connect(self._refresh_stats)
 
         # -- 状态栏
         self.status_bar = self.statusBar()
@@ -442,10 +557,10 @@ class MainWindow(QMainWindow):
         self.capture_label.mousePressEvent = lambda _ev: self._on_capture_clicked()
         self.status_bar.insertWidget(0, self.capture_label)
 
-        # Ctrl+F 全局快捷键
+        # Ctrl+F 归「工具 → 搜索会话」的 QAction 管（避免和 QShortcut 重复绑定
+        # 触发 Qt 的 Ambiguous shortcut 警告）
         from PySide6.QtGui import QShortcut
 
-        QShortcut(QKeySequence("Ctrl+F"), self, self._on_find_shortcut)
         # Ctrl+R 重放选中请求（对齐 Fiddler）
         QShortcut(QKeySequence("Ctrl+R"), self, lambda: self._replay_selected(edit=False))
         # 复制 / 导出选中会话（对齐 Fiddler 的右键 Copy / Save 菜单）
@@ -460,10 +575,14 @@ class MainWindow(QMainWindow):
         )
         # Ctrl+X 清空流量列表（仅在请求列表获得焦点时生效，避免误删其它输入框文本）
         QShortcut(QKeySequence("Ctrl+X"), self.traffic_table, self._on_clear)
+        # Del 删除选中会话（同样只在列表有焦点时生效）
+        QShortcut(QKeySequence("Del"), self.traffic_table, self._delete_selected_flows)
 
         # 流量表格右键菜单
         self.traffic_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.traffic_table.customContextMenuRequested.connect(self._on_table_context_menu)
+        # 表头右键：列显隐菜单（与「外观 → 流量列表列…」同一个构建函数）
+        self.traffic_table.column_menu_requested.connect(self._on_column_menu_requested)
         # 键盘快捷键：R 重放、E 编辑后重放（选中某条请求时，见 traffic_table.py）
         self.traffic_table.replay_requested.connect(
             lambda: self._replay_selected(edit=False)
@@ -504,6 +623,13 @@ class MainWindow(QMainWindow):
         file_menu.addAction(quit_action)
 
         tool_menu = self.menuBar().addMenu(self.tr("工具"))
+        # 搜索会话：Ctrl+F 之外的显式入口（菜单栏 + 工具栏按钮各一个）
+        search_action = QAction(self.tr("搜索会话…"), self)
+        search_action.setShortcut(QKeySequence("Ctrl+F"))
+        search_action.triggered.connect(self._on_find_shortcut)
+        tool_menu.addAction(search_action)
+        tool_menu.addSeparator()
+
         codec_action = QAction(self.tr("编码转换…"), self)
         codec_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
         codec_action.triggered.connect(lambda: self._goto_tool("codec"))
@@ -528,6 +654,13 @@ class MainWindow(QMainWindow):
 
         # -- 外观：跟随系统 / 浅色 / 深色（默认跟随系统，选择随 settings 持久化）
         view_menu = self.menuBar().addMenu(self.tr("外观"))
+        columns_action = QAction(self.tr("流量列表列…"), self)
+        columns_action.setToolTip(
+            self.tr("勾选/取消要显示的列（内容类型、开始时刻、备注默认隐藏）")
+        )
+        columns_action.triggered.connect(self._show_column_menu_from_menu_bar)
+        view_menu.addAction(columns_action)
+        view_menu.addSeparator()
         self._theme_group = QActionGroup(self)
         self._theme_group.setExclusive(True)
         self._theme_actions: dict[str, QAction] = {}
@@ -631,6 +764,34 @@ class MainWindow(QMainWindow):
         if check_update != self.settings.check_update_on_startup:
             self.settings.check_update_on_startup = check_update
             save_settings(self.settings)
+        # 断点：只回写阶段与命中范围（enabled 归工具栏按钮，避免互相打架）
+        bp = values.get("breakpoint") or {}
+        self.settings.breakpoint.on_request = bool(bp.get("on_request", True))
+        self.settings.breakpoint.on_response = bool(bp.get("on_response", False))
+        self.settings.breakpoint.url_keywords = list(bp.get("url_keywords") or [])
+        save_settings(self.settings)
+        # MCP：监听地址 / 端口（服务开着就重启到新地址，否则只更新配置）
+        mcp_host = str(values.get("mcp_host") or DEFAULT_MCP_HOST).strip()
+        mcp_host = mcp_host or DEFAULT_MCP_HOST
+        mcp_port = int(values.get("mcp_port") or DEFAULT_MCP_PORT)
+        if mcp_host != self.settings.mcp_host or mcp_port != self.settings.mcp_port:
+            was_running = self.mcp.running
+            if was_running:
+                self.mcp.stop()
+            self.settings.mcp_host = mcp_host
+            self.settings.mcp_port = mcp_port
+            save_settings(self.settings)
+            if was_running and not self._start_mcp():
+                # 新地址起不来（比如填了个本机没有的 IP）：别留个"开着"的假状态
+                self.settings.mcp_enabled = False
+                save_settings(self.settings)
+        # MCP 写操作开关：只改门控（McpServer.write_enabled 可变），
+        # 不需要重启服务——客户端重新 tools/list 即可看到变化
+        mcp_write = bool(values.get("mcp_write_enabled", False))
+        if mcp_write != self.settings.mcp_write_enabled:
+            self.settings.mcp_write_enabled = mcp_write
+            self.mcp.write_enabled = mcp_write
+            save_settings(self.settings)
 
     def _goto_tool(self, page: str = "codec") -> None:
         """切到工具页的指定子页并把焦点给输入框。"""
@@ -658,7 +819,10 @@ class MainWindow(QMainWindow):
         self.bridge.rule_hit.connect(self.rules_panel.update_hit)
         self.bridge.rule_error.connect(self.rules_panel.update_rule_error)
         self.bridge.sysproxy_done.connect(self._on_sysproxy_done)
+        self.bridge.flow_intercepted.connect(self._on_flow_intercepted)
         self.filter_bar.changed.connect(self._on_filter_changed)
+        self.filter_bar.preset_menu_about_to_show.connect(self._rebuild_preset_menu)
+        self.scripts_panel.scripts_changed.connect(self._on_scripts_changed)
         self.search_bar.config_changed.connect(self._on_search_changed)
         self.search_bar.closed.connect(self._on_search_closed)
         self.search_bar.prev_btn.clicked.connect(lambda: self._cycle_match(-1))
@@ -679,6 +843,8 @@ class MainWindow(QMainWindow):
         )
 
         self.network_panel.changed.connect(self._on_network_changed)
+        # 统计页双击慢请求 → 跳到流量列表对应行
+        self.stats_panel.flow_activated.connect(self._reveal_flow)
 
     # ================================================================ 代理控制
 
@@ -702,10 +868,29 @@ class MainWindow(QMainWindow):
             #    mock 出来的接口上；
             # ② capture 必须排在 throttle 之后——capture 的 response 钩子总结
             #    耗时时要读 throttle 写入 metadata 的实际延迟（计入耗时列），
-            #    排在前面就读不到，弱网延迟也体现不到耗时上
-            addons=[self.mock, self.maplocal, self.throttle, self.capture],
+            #    排在前面就读不到，弱网延迟也体现不到耗时上；
+            # ③ breakpoint 排在最前：它的钩子只"打标记"（flow.intercept），
+            #    真正的等待由内核在钩子跑完后 await wait_for_resume 完成，
+            #    所以放前面能让 mock / throttle 等照常先跑完，再统一挂起；
+            # ④ 用户脚本排在最后：它们看到的是经过前面所有 addon 之后的
+            #    最终 flow（含 mock / 弱网 / 捕获），写起来最符合直觉。
+            #    单个脚本的加载错误在 build 时就拦掉，不影响别的 addon。
+            addons=[self.breakpoint, self.mock, self.maplocal,
+                    self.throttle, self.capture, *self._build_script_addons()],
             options={"map_remote": specs},
         )
+
+    def _build_script_addons(self) -> list:
+        """加载启用的用户脚本 → addon 列表（启动 / 热替换共用）。
+
+        加载失败的脚本记进 ``scripts_mgr.load_errors``（脚本页状态列
+        可见），不抛出——一个坏脚本不该让代理起不来。
+        """
+        try:
+            return self.scripts_mgr.build_addons(self.settings.scripts)
+        except Exception:
+            log.exception("加载用户脚本失败")
+            return []
 
     def _on_toggle_proxy(self) -> None:
         if self.proxy.running:
@@ -1192,6 +1377,7 @@ class MainWindow(QMainWindow):
         self.capture.clear()
         self.detail_panel.clear()
         self._update_status()
+        self._refresh_stats()
 
     # ================================================================ 流量展示
 
@@ -1207,6 +1393,8 @@ class MainWindow(QMainWindow):
         self._update_status()
         if follow:
             self.traffic_table.scroll_to_newest(self.settings.newest_first)
+        # 统计页防抖刷新（500ms 内的批量到达合并成一次重算）
+        self._stats_timer.start()
 
     def _on_flow_updated(self, summary: dict) -> None:
         """已存在会话的增量更新（响应到达 / WebSocket 消息到达）。
@@ -1221,6 +1409,8 @@ class MainWindow(QMainWindow):
         if selected is not None and getattr(selected, "id", None) == summary.get("id"):
             self.detail_panel.update_flow(selected)
         self._update_status()
+        # 响应到达后大小/耗时会变，统计同样要重算（防抖同上）
+        self._stats_timer.start()
 
     def _following_arrival(self) -> bool:
         """当前排序是否是"到达顺序"（未排序或按 # 列排）。"""
@@ -1303,15 +1493,149 @@ class MainWindow(QMainWindow):
     def _on_filter_changed(self) -> None:
         config = self.filter_bar.to_config()
         self.settings.filter = config
+        # 手改过滤条件 = 偏离当前预设：清掉 active 标记（菜单里不再显示
+        # 「已套用」勾选），但预设本身保留——改回去还能对上。
+        if self.settings.active_preset and not self._matches_active_preset(config):
+            self.settings.active_preset = ""
         save_settings(self.settings)
         self._apply_filter_config(config)
+
+    def _matches_active_preset(self, config) -> bool:
+        """当前过滤条件是否与 active_preset 保存的一致。"""
+        for preset in self.settings.filter_presets:
+            if preset.get("name") == self.settings.active_preset:
+                return preset.get("config") == config.to_dict()
+        return False
 
     def _apply_filter_config(self, config) -> None:
         self.proxy_model.set_filter_config(config)
         self._update_status()
 
+    # ------------------------------------------------------------ 过滤预设（#7）
+
+    def _rebuild_preset_menu(self) -> None:
+        """「预设」菜单内容动态重建（aboutToShow 时调，数据永远是最新的）。"""
+        menu = self.filter_bar.preset_menu
+        menu.clear()
+        presets = self.settings.filter_presets
+        active = self.settings.active_preset
+        dirty = bool(active) and not self._matches_active_preset(
+            self.filter_bar.to_config()
+        )
+
+        if not presets:
+            empty = menu.addAction(self.tr("（没有预设，保存一个吧）"))
+            empty.setEnabled(False)
+        for preset in presets:
+            name = str(preset.get("name") or "")
+            label = name + (self.tr("（已修改）") if name == active and dirty else "")
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(name == active)
+            action.triggered.connect(
+                lambda _checked=False, n=name: self._apply_preset(n)
+            )
+        menu.addSeparator()
+        save_action = menu.addAction(self.tr("保存当前过滤为预设…"))
+        save_action.triggered.connect(self._save_preset_prompt)
+        if active:
+            menu.addSeparator()
+            update_action = menu.addAction(self.tr('更新预设「{0}」').format(active))
+            update_action.triggered.connect(
+                lambda: self._update_preset(active)
+            )
+            delete_action = menu.addAction(self.tr('删除预设「{0}」').format(active))
+            delete_action.triggered.connect(
+                lambda: self._delete_preset(active)
+            )
+
+    def _apply_preset(self, name: str) -> None:
+        """套用命名预设：配置进 settings + 过滤栏 + 代理模型，一并落盘。"""
+        for preset in self.settings.filter_presets:
+            if preset.get("name") != name:
+                continue
+            config = FilterConfig.from_dict(preset.get("config") or {})
+            self.settings.filter = config
+            self.settings.active_preset = name
+            save_settings(self.settings)
+            self.filter_bar.load_config(config)
+            self._apply_filter_config(config)
+            self.status_bar.showMessage(
+                self.tr('已套用过滤预设「{0}」').format(name), 3000
+            )
+            return
+
+    def _save_preset_prompt(self) -> None:
+        """弹框问名字 → 保存（重名覆盖，与「更新」等效）。"""
+        name, ok = QInputDialog.getText(
+            self,
+            self.tr("保存过滤预设"),
+            self.tr("预设名称："),
+            text=self.tr("预设 {0}").format(len(self.settings.filter_presets) + 1),
+        )
+        if not ok:
+            return
+        name = (name or "").strip()
+        if not name:
+            return
+        self._save_preset(name)
+
+    def _save_preset(self, name: str) -> None:
+        """把当前过滤条件存为预设（重名覆盖）。"""
+        presets = [
+            p for p in self.settings.filter_presets
+            if p.get("name") != name
+        ]
+        presets.append({
+            "name": name,
+            "config": self.settings.filter.to_dict(),
+        })
+        self.settings.filter_presets = presets
+        self.settings.active_preset = name
+        save_settings(self.settings)
+        self.status_bar.showMessage(
+            self.tr('已保存过滤预设「{0}」').format(name), 3000
+        )
+
+    def _update_preset(self, name: str) -> None:
+        """用当前过滤条件覆盖指定预设。"""
+        for preset in self.settings.filter_presets:
+            if preset.get("name") == name:
+                preset["config"] = self.settings.filter.to_dict()
+                save_settings(self.settings)
+                self.status_bar.showMessage(
+                    self.tr('已更新过滤预设「{0}」').format(name), 3000
+                )
+                return
+
+    def _delete_preset(self, name: str) -> None:
+        """删除预设；删的是当前套用的那套就顺带清掉 active 标记。"""
+        self.settings.filter_presets = [
+            p for p in self.settings.filter_presets if p.get("name") != name
+        ]
+        if self.settings.active_preset == name:
+            self.settings.active_preset = ""
+        save_settings(self.settings)
+        self.status_bar.showMessage(
+            self.tr('已删除过滤预设「{0}」').format(name), 3000
+        )
+
     def _on_find_shortcut(self) -> None:
         self.search_bar.focus_input()
+        # 快捷键唤出时同步按钮的按下态（blockSignals 避免再触发一次 toggled）
+        self._set_search_btn_checked(True)
+
+    def _on_search_toggled(self, on: bool) -> None:
+        """工具栏按钮：开 = 显示并聚焦，关 = 收起并清空搜索条件。"""
+        if on:
+            self.search_bar.focus_input()
+        else:
+            self._on_search_closed()
+
+    def _set_search_btn_checked(self, on: bool) -> None:
+        self.search_btn.blockSignals(True)
+        self.search_btn.setChecked(on)
+        self.search_btn.blockSignals(False)
 
     def _on_search_changed(self) -> None:
         cfg = self.search_bar.to_config()
@@ -1326,6 +1650,8 @@ class MainWindow(QMainWindow):
         self.proxy_model.set_search_config(self.search_bar.to_config())
         self.detail_panel.highlight("", False)
         self._update_status()
+        # 收起时按钮要弹起来（Esc 关闭 / 按钮关闭走的是同一条路）
+        self._set_search_btn_checked(False)
 
     def _cycle_match(self, delta: int) -> None:
         """Enter / 上下按钮：在匹配行间循环跳转（可见行即匹配行）。"""
@@ -1345,6 +1671,54 @@ class MainWindow(QMainWindow):
         menu = self._build_table_context_menu(flows)
         menu.exec(self.traffic_table.viewport().mapToGlobal(pos))
 
+    # ================================================================ 列显隐
+
+    def _apply_hidden_columns(self) -> None:
+        """按 settings.hidden_columns 应用列显隐（启动 / 恢复设置时调用）。"""
+        hidden = set(self.settings.hidden_columns)
+        for key in COLUMN_KEYS:
+            self.traffic_table.hide_column_by_key(key, key in hidden)
+
+    def _on_column_menu_requested(self, pos) -> None:
+        """表头右键 → 在表头处弹列菜单（位置用表头局部坐标换算，防被裁剪）。"""
+        menu = self._build_column_menu()
+        menu.exec(self.traffic_table.horizontalHeader().mapToGlobal(pos))
+
+    def _build_column_menu(self) -> "QMenu":
+        """列显隐菜单（表头右键与「外观 → 流量列表列…」共用）。
+
+        勾选态 = 显示；取消勾选 = 隐藏。只默认隐藏可选列，但任何列都能藏——
+        窄屏下把 host / 路径藏掉只留状态和耗时是常见玩法。
+        """
+        menu = QMenu(self)
+        hidden = set(self.settings.hidden_columns)
+        for key, label in zip(COLUMN_KEYS, column_labels()):
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(key not in hidden)
+            action.triggered.connect(
+                lambda checked=False, k=key: self._toggle_column(k, checked)
+            )
+        return menu
+
+    def _toggle_column(self, key: str, checked: bool) -> None:
+        """勾选/取消一列：立即生效并持久化（key 存 settings，重启不丢）。"""
+        if not self.traffic_table.hide_column_by_key(key, not checked):
+            return
+        hidden = set(self.settings.hidden_columns)
+        if checked:
+            hidden.discard(key)
+        else:
+            hidden.add(key)
+        self.settings.hidden_columns = sorted(hidden)
+        save_settings(self.settings)
+
+    def _show_column_menu_from_menu_bar(self) -> None:
+        """「外观 → 流量列表列…」入口：在表头位置弹出同一个菜单。"""
+        header = self.traffic_table.horizontalHeader()
+        menu = self._build_column_menu()
+        menu.exec(header.mapToGlobal(header.rect().bottomLeft()))
+
     def _build_table_context_menu(self, flows) -> "QMenu":
         """构建流量列表右键菜单（抽出便于单元测试，不直接 exec）。"""
         has_selection = bool(flows)
@@ -1360,6 +1734,9 @@ class MainWindow(QMainWindow):
         replay_action = menu.addAction(self.tr("重放请求 (R / Ctrl+R)"))
         edit_replay_action = menu.addAction(self.tr("编辑并重放… (E)"))
         compare_action = menu.addAction(self.tr("重放并对比…"))
+        # 两条会话对比：与「重放并对比」不同——它比的是任意两条独立会话
+        # （线上 vs 测试同一个接口的返回差在哪），不需要重放
+        diff_action = menu.addAction(self.tr("对比两条会话…"))
         menu.addSeparator()
         curl_action = menu.addAction(self.tr('复制为 cURL (bash){0}  Ctrl+Shift+C').format(batch))
         curl_cmd_action = menu.addAction(self.tr('复制为 cURL (Windows cmd){0}').format(batch))
@@ -1367,6 +1744,10 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         export_action = menu.addAction(self.tr('导出选中会话{0}…  Ctrl+E').format(batch))
         export_resp_action = menu.addAction(self.tr("导出完整响应（Headers+Body）…"))
+        menu.addSeparator()
+        delete_action = menu.addAction(self.tr('删除选中会话{0}  Del').format(batch))
+        delete_action.setEnabled(has_selection)
+        delete_action.triggered.connect(self._delete_selected_flows)
         menu.addSeparator()
         tool_body_action = menu.addAction(self.tr("在工具页中打开 body"))
         tool_body_action.setEnabled(count == 1)
@@ -1393,6 +1774,23 @@ class MainWindow(QMainWindow):
                        export_action, export_resp_action):
             action.setEnabled(has_selection)
 
+        # 编辑/对比是单条语义：弹窗一次只能处理一条，多选时若照旧启用会
+        # 只偷偷重放第一条（很反直觉），这里显式禁用并把原因写进 tooltip。
+        if count > 1:
+            for action in (edit_replay_action, compare_action):
+                action.setEnabled(False)
+                action.setToolTip(
+                    self.tr("仅支持单条会话：编辑与对比弹窗一次只能处理一条")
+                )
+        # 两条会话对比：恰好选中两条才有意义
+        if count != 2:
+            diff_action.setEnabled(False)
+            diff_action.setToolTip(self.tr("请选中两条会话（Ctrl 点选第二条）"))
+        else:
+            diff_action.triggered.connect(
+                lambda: self._open_flow_diff(flows[0], flows[1])
+            )
+
         replay_action.triggered.connect(lambda: self._replay_selected(edit=False))
         edit_replay_action.triggered.connect(lambda: self._replay_selected(edit=True))
         # 先开编辑对话框（可改请求），确认后重放，响应到达自动弹对比框
@@ -1405,6 +1803,50 @@ class MainWindow(QMainWindow):
         export_action.triggered.connect(self._export_selected)
         export_resp_action.triggered.connect(lambda: self._export_selected(FORMAT_RESPONSE))
         return menu
+
+    # ================================================================ 用户脚本（#10）
+
+    def _on_scripts_changed(self) -> None:
+        """脚本页变更（新建/编辑/删除/启停）：持久化启用态 + 重建 addon。
+
+        代理在跑 → 热替换（ProxyService.reload_script_addons，走事件循环
+        线程，不重启代理）；没在跑 → 下次启动经 _make_proxy 自动带上。
+        """
+        self.settings.scripts = self.scripts_panel.enabled_map()
+        save_settings(self.settings)
+        addons = self._build_script_addons()
+        if self.proxy.running and self.proxy.reload_script_addons(addons):
+            self.status_bar.showMessage(
+                self.tr("用户脚本已热替换（{0} 个生效）").format(len(addons)), 3000
+            )
+        else:
+            self.status_bar.showMessage(
+                self.tr("用户脚本将在下次启动代理时生效"), 3000
+            )
+
+    # ================================================================ 两条会话对比
+
+    def _open_flow_diff(self, flow_a, flow_b) -> None:
+        """打开「两条会话对比」对话框（非模态，与 CompareDialog 一致）。
+
+        场景：选中两条独立会话（如线上域名 vs 测试域名的同一接口），
+        比请求行 / 请求头 / 响应状态行 / 响应头 / body 的差异。
+        """
+        dialog = FlowDiffDialog(flow_a, flow_b, parent=self,
+                                wrap_default=self.settings.body_wrap)
+        dialog.finished.connect(
+            lambda _r, d=dialog: self._drop_diff_dialog(d)
+        )
+        self._diff_dialogs.append(dialog)
+        dialog.show()
+        dialog.raise_()
+
+    def _drop_diff_dialog(self, dialog) -> None:
+        try:
+            self._diff_dialogs.remove(dialog)
+        except ValueError:
+            pass
+        dialog.deleteLater()
 
     # ================================================================ 加入 Mock
 
@@ -1856,6 +2298,7 @@ class MainWindow(QMainWindow):
         for summary in summaries:
             self.flow_store.append(dict(summary))
         self._update_status()
+        self._refresh_stats()
         return dropped
 
     def _maybe_restore_autosave(self) -> None:
@@ -1947,12 +2390,35 @@ class MainWindow(QMainWindow):
     # ================================================================ 重放
 
     def _replay_selected(self, edit: bool, compare: bool = False) -> None:
-        flow = self._selected_flow()
-        if flow is None:
+        flows = self._selected_flows()
+        if not flows:
             return
         if not self.proxy.running:
             dialogs.information(self, self.tr("提示"), self.tr("请先启动代理再重放"))
             return
+        if len(flows) == 1:
+            self._replay_one(flows[0], edit=edit, compare=compare)
+            return
+        # 批量：逐条入队。编辑/对比是单条语义（弹窗一次只能处理一条），
+        # 菜单已按条数禁用，这里只做「重放」。
+        queued = 0
+        failed = 0
+        for flow in flows:
+            copy = make_replay_copy(flow)
+            if self.proxy.replay_flow(copy):
+                queued += 1
+            else:
+                failed += 1
+        if queued:
+            message = self.tr('已加入重放队列（{0} 条）').format(queued)
+            if failed:
+                message += self.tr('，{0} 条入队失败').format(failed)
+            self.status_bar.showMessage(message, 4000)
+        else:
+            self.status_bar.showMessage(self.tr("重放失败：没有请求进入队列"), 4000)
+
+    def _replay_one(self, flow, edit: bool, compare: bool = False) -> None:
+        """单条重放：支持先编辑、以及响应到达后自动对比。"""
         # 副本重放：原会话保留（start_replay 会改 is_replay/清 response，见 app/replay.py）
         copy = make_replay_copy(flow)
         if edit:
@@ -1968,6 +2434,287 @@ class MainWindow(QMainWindow):
             if compare:
                 message += self.tr("（响应到达后自动打开对比）")
             self.status_bar.showMessage(message, 3000)
+
+    def _delete_selected_flows(self) -> None:
+        """把选中的会话从列表移除（只删显示，不影响 capture 缓存）。"""
+        flows = self._selected_flows()
+        if not flows:
+            return
+        removed = self.flow_store.remove_ids([f.id for f in flows])
+        if not removed:
+            return
+        # 删掉的正好是详情面板当前显示的那条 → 清掉面板，避免显示幽灵内容
+        shown = getattr(self.detail_panel, "_flow", None)
+        if shown is not None and shown.id in {f.id for f in flows}:
+            self.detail_panel.clear()
+        self.traffic_table.clearSelection()
+        self.status_bar.showMessage(
+            self.tr('已删除 {0} 条会话').format(removed), 3000
+        )
+        self._update_status()
+        self._refresh_stats()
+
+    # ================================================================ 断点调试
+
+    def _on_breakpoint_toggled(self, on: bool) -> None:
+        """工具栏断点开关：写进配置，addon 每次钩子现读，无需重启代理。"""
+        self.settings.breakpoint.enabled = bool(on)
+        save_settings(self.settings)
+        state = self.tr("已开启") if on else self.tr("已关闭")
+        self.status_bar.showMessage(
+            self.tr('断点调试{0}').format(state), 3000
+        )
+
+    def _on_flow_intercepted(self, flow, phase: str) -> None:
+        """断点命中：弹编辑器。非模态——多条同时撞断点时要能并排处理。"""
+        dialog = BreakpointDialog(
+            flow, phase,
+            on_resume=self._resume_breakpoint,
+            on_kill=self._kill_breakpoint,
+            parent=self,
+        )
+        # 关掉后清引用，否则一堆 dialog 常驻内存
+        dialog.finished.connect(lambda _r, d=dialog: self._drop_breakpoint_dialog(d))
+        self._breakpoint_dialogs.append(dialog)
+        dialog.show()
+        dialog.raise_()
+        self.status_bar.showMessage(
+            self.tr('断点命中（{0}）：会话已挂起，改完点「继续放行」').format(
+                self.tr("请求前") if phase == "request" else self.tr("响应前")
+            ),
+            5000,
+        )
+
+    def _drop_breakpoint_dialog(self, dialog) -> None:
+        try:
+            self._breakpoint_dialogs.remove(dialog)
+        except ValueError:
+            pass
+        dialog.deleteLater()
+
+    def _resume_breakpoint(self, flow) -> None:
+        """放行：先清 addon 的挂起标记，再经事件循环 resume（线程安全）。"""
+        self.breakpoint.forget(flow)
+        self.proxy.resume_flow(flow)
+
+    def _kill_breakpoint(self, flow) -> None:
+        self.breakpoint.forget(flow)
+        self.proxy.kill_flow(flow)
+
+    # ================================================================ MCP 接口
+
+    def _mcp_flows(self) -> list:
+        """给 MCP 的会话快照。
+
+        capture.flows 由代理线程写入，这里在 HTTP 线程遍历 —— 迭代途中 dict
+        被插入会抛 RuntimeError，重试一次即可（不必加锁，快照允许轻微偏差）。
+        """
+        for _ in range(2):
+            try:
+                return list(self.capture.flows.values())
+            except RuntimeError:
+                continue
+        return []
+
+    def _mcp_flow_by_id(self, flow_id: str):
+        """按 id 取单条（详情工具用）：走 capture 自己的查表，与 UI 同一条路。"""
+        try:
+            return self.capture.get_flow(flow_id)
+        except Exception:
+            return None
+
+    # ================================================================ MCP 写操作
+
+    def _mcp_add_mock_rule(self, args: dict) -> dict:
+        """MCP add_mock_rule：按参数建一条 Mock 规则并入库（即时生效）。
+
+        规则模型与「新增 Mock 规则」窗口完全一致（Rule + Match + Action），
+        经 RuleStore.add 落库——规则页 / MockAddon 走的都是这一份。
+        """
+        import re as _re
+
+        url = str(args.get("url") or "").strip()
+        if not url:
+            return {"error": self.tr("缺少 url 参数")}
+        match_type = str(args.get("match_type") or CONTAINS).strip().lower()
+        if match_type not in MATCH_TYPES:
+            return {"error": self.tr(
+                "不支持的匹配方式：{0}（可用 {1}）").format(
+                match_type, " / ".join(MATCH_TYPES))}
+        if match_type == REGEX:
+            try:
+                _re.compile(url)
+            except _re.error as e:
+                return {"error": self.tr("正则无法编译：{0}").format(e)}
+        try:
+            status = int(args.get("status", 200))
+        except (TypeError, ValueError):
+            return {"error": self.tr("status 必须是整数")}
+        if not (100 <= status <= 599):
+            return {"error": self.tr("status 必须在 100~599 之间")}
+        headers = args.get("headers") or {}
+        if not isinstance(headers, dict):
+            return {"error": self.tr("headers 必须是 JSON 对象")}
+
+        rule = Rule.create(name=str(args.get("name") or "").strip() or url)
+        rule.enabled = bool(args.get("enabled", True))
+        rule.match = Match(
+            type=match_type,
+            value=url,
+            method=str(args.get("method") or "").strip().upper(),
+        )
+        rule.action = Action(
+            status=status,
+            headers={str(k): str(v) for k, v in headers.items()},
+            body=str(args.get("body") or ""),
+        )
+        self.rule_store.add(rule)
+        return {
+            "ok": True,
+            "rule": {
+                "id": rule.id,
+                "name": rule.name,
+                "enabled": rule.enabled,
+                "match": rule.match.to_dict(),
+                "action": rule.action.to_dict(),
+            },
+        }
+
+    def _mcp_replay_flow(self, args: dict) -> dict:
+        """MCP replay_flow：按 id 重放一条会话（副本重放，原会话不动）。"""
+        flow, err = resolve_flow(
+            self._mcp_flows(), args.get("id"), self._mcp_flow_by_id
+        )
+        if flow is None:
+            return {"error": err}
+        if not self.proxy.running:
+            return {"error": self.tr("代理未运行，无法重放")}
+        copy = make_replay_copy(flow)
+        if not self.proxy.replay_flow(copy):
+            return {"error": self.tr("重放入队失败")}
+        return {
+            "ok": True,
+            "replayed_id": flow.id,
+            "method": getattr(copy.request, "method", ""),
+            "url": format_request_url(copy.request),
+        }
+
+    def _mcp_set_breakpoint(self, args: dict) -> dict:
+        """MCP set_breakpoint：改断点开关 / 阶段 / 关键词（活对象，即时生效）。"""
+        bp = self.settings.breakpoint
+        keywords = args.get("url_keywords")
+        if keywords is not None and not isinstance(keywords, list):
+            return {"error": self.tr("url_keywords 必须是字符串数组")}
+
+        if "enabled" in args:
+            bp.enabled = bool(args.get("enabled"))
+        if "on_request" in args:
+            bp.on_request = bool(args.get("on_request"))
+        if "on_response" in args:
+            bp.on_response = bool(args.get("on_response"))
+        if keywords is not None:
+            bp.url_keywords = [str(k) for k in keywords]
+        save_settings(self.settings)
+        # 工具栏开关同步（blockSignals：不走 _on_breakpoint_toggled 的重复落盘）
+        self.breakpoint_btn.blockSignals(True)
+        self.breakpoint_btn.setChecked(bp.enabled)
+        self.breakpoint_btn.blockSignals(False)
+        return {"ok": True, "breakpoint": bp.to_dict()}
+
+    # ================================================================ 统计页
+
+    def _stats_flows(self) -> list:
+        """统计页的会话列表：与流量列表保持一致（删除过的行不计入）。
+
+        与 MCP 的 ``_mcp_flows``（capture 全量快照）刻意不同：统计页回答的是
+        「我现在看的这些请求整体如何」，用户从列表删掉的行不该还留在统计里。
+        聚合逻辑是同一份（``app/stats.py``），只是输入列表不同。
+        """
+        out = []
+        for row in self.flow_store.rows:
+            flow = self.capture.get_flow(row.get("id"))
+            if flow is not None:
+                out.append(flow)
+        return out
+
+    def _refresh_stats(self) -> None:
+        """重算统计页。只在统计页是当前标签时算——别的页忙着时白算纯浪费，
+        切回来由 ``_on_tab_changed`` 补一次，数据不会过期。"""
+        if self.tabs.currentWidget() is not self.stats_panel:
+            return
+        self.stats_panel.refresh()
+
+    def _on_tab_changed(self, index) -> None:
+        """切到统计页时补一次刷新（防抖定时器可能还没到点）。"""
+        if self.tabs.widget(index) is self.stats_panel:
+            self._refresh_stats()
+
+    def _reveal_flow(self, flow_id: str) -> None:
+        """统计页双击慢请求 → 跳到流量列表对应行并选中。
+
+        Top N 看不到上下文就等于没用——能一步跳到原会话才有排查价值。
+        被当前过滤条件藏起来的行给句提示，别让用户以为点击没反应。
+        """
+        row = None
+        for i, r in enumerate(self.flow_store.rows):
+            if r.get("id") == flow_id:
+                row = i
+                break
+        if row is None:
+            return
+        self.tabs.setCurrentWidget(self.traffic_page)
+        idx = self.proxy_model.mapFromSource(self.flow_store.index(row, 0))
+        if not idx.isValid():
+            self.status_bar.showMessage(
+                self.tr("该会话被当前过滤条件隐藏，已切回流量页"), 3000
+            )
+            return
+        self.traffic_table.clearSelection()
+        self.traffic_table.setCurrentIndex(idx)
+        self.traffic_table.scrollTo(idx)
+
+    def _set_mcp_checked(self, on: bool) -> None:
+        """改按钮态但不触发 toggled（失败回滚时用，避免递归）。"""
+        self.mcp_btn.blockSignals(True)
+        self.mcp_btn.setChecked(on)
+        self.mcp_btn.blockSignals(False)
+
+    def _start_mcp(self) -> bool:
+        """按当前 settings 起服务并给出提示（局域网可见时语气不同）。"""
+        self.mcp.port = self.settings.mcp_port
+        self.mcp.host = self.settings.mcp_host
+        if not self.mcp.start():
+            self._set_mcp_checked(False)
+            self.status_bar.showMessage(
+                self.tr('MCP 服务启动失败：地址 {0} 的端口 {1} 起均不可用').format(
+                    self.settings.mcp_host, self.settings.mcp_port
+                ),
+                8000,
+            )
+            return False
+        if self.mcp.exposed:
+            self.status_bar.showMessage(
+                self.tr('MCP 服务已启动（局域网可见）：{0} —— '
+                        '抓包含 Cookie / 鉴权头，用完记得关').format(self.mcp.url),
+                10000,
+            )
+        else:
+            self.status_bar.showMessage(
+                self.tr('MCP 服务已启动：{0}').format(self.mcp.url), 8000
+            )
+        return True
+
+    def _on_mcp_toggled(self, on: bool) -> None:
+        if on:
+            if not self._start_mcp():
+                return
+            self.settings.mcp_enabled = True
+            save_settings(self.settings)
+        else:
+            self.mcp.stop()
+            self.settings.mcp_enabled = False
+            save_settings(self.settings)
+            self.status_bar.showMessage(self.tr("MCP 服务已停止"), 3000)
 
     # ---------------------------------------------------------- 重放并对比
 
@@ -2182,6 +2929,7 @@ class MainWindow(QMainWindow):
         except Exception:
             log.exception("退出时规则落盘失败")
         self._stop_cert_server()             # 进程内 HTTP 服务，停止是毫秒级
+        self.mcp.stop()                      # MCP 服务同样是进程内 HTTP
         autosaver = self._autosave_on_exit()   # 采集同步（数据须完整），写盘后台
         if autosaver is not None:
             autosaver.start()

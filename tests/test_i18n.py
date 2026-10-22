@@ -124,11 +124,17 @@ class TestTranslationCoverage:
     #: - dialogs.py 的 _CN 表：仅中文模式使用的按钮文案
     #: - flow_store COLUMNS：走 column_labels() 懒翻译（import 期无 translator）
     #: - certserver.py：手机端证书下载网页（HTML，另有一套文案）
+    #: - scripts.py SCRIPT_TEMPLATE：给用户看的脚本模板，i18n 不适用
     #: - rules.py 默认规则名：会落盘的数据，不该随语言变
     #: - feedback.py issue 正文 / theme.py QSS：分别面向开发者、是代码
     _EXEMPT_FILES = {"app/ui/dialogs.py", "app/certserver.py"}
     _EXEMPT_LINES = {
-        ("app/ui/flow_store.py", n) for n in range(10, 21)
+        # flow_store COLUMNS：中文列头走 column_labels() 懒翻译；#6 新增 3 个
+        # 可选列（内容类型/开始时刻/备注）追加在末尾，整段都豁免
+        ("app/ui/flow_store.py", n) for n in range(10, 31)
+    } | {
+        # scripts.py SCRIPT_TEMPLATE：用户脚本模板，中文是写给用户看的，不翻译
+        ("app/scripts.py", n) for n in range(46, 62)
     } | {
         ("app/rules.py", n) for n in (209, 219, 448, 463)
     } | {

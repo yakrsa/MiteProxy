@@ -60,6 +60,8 @@ class ProxyService:
         self._thread: Optional[threading.Thread] = None
         self._master: Optional[DumpMaster] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        #: 用户脚本 addon（app/scripts.py）：热替换时先摘旧的再挂新的
+        self._script_addons: list = []
 
     # ------------------------------------------------------------------ API
 
@@ -181,6 +183,69 @@ class ProxyService:
             return True
         except RuntimeError:
             log.warning("事件循环已关闭，无法重放")
+            return False
+
+    def resume_flow(self, flow) -> bool:
+        """放行被断点挂住的 flow（断点调试用）。
+
+        和重放同理：``Flow.resume()`` 内部是 ``asyncio.Event.set()``，
+        从 Qt 线程直接调不安全，必须投递到事件循环线程。
+        """
+        loop = self._loop
+        if loop is None:
+            log.warning("代理未运行，无法放行断点")
+            return False
+        try:
+            loop.call_soon_threadsafe(flow.resume)
+            return True
+        except RuntimeError:
+            log.warning("事件循环已关闭，无法放行断点")
+            return False
+
+    def kill_flow(self, flow) -> bool:
+        """中止被断点挂住的 flow（客户端会收到错误，不会继续发往服务器）。"""
+        loop = self._loop
+        if loop is None:
+            log.warning("代理未运行，无法中止断点")
+            return False
+        try:
+            loop.call_soon_threadsafe(flow.kill)
+            return True
+        except RuntimeError:
+            log.warning("事件循环已关闭，无法中止断点")
+            return False
+
+    def reload_script_addons(self, addons: list) -> bool:
+        """热替换用户脚本 addon（脚本页保存/启停时调，无需重启代理）。
+
+        AddonManager 的 add/remove 必须在事件循环线程执行（内部会触发
+        load/done 钩子与命令收集）。旧的摘掉、新的挂上——单个脚本的
+        编译/加载错误已在 ScriptsManager.build_addons 里拦过，到这里
+        的都是能跑的。
+        """
+        master, loop = self._master, self._loop
+        if master is None or loop is None:
+            return False
+
+        def _swap() -> None:
+            try:
+                for old in self._script_addons:
+                    try:
+                        master.addons.remove(old)
+                    except Exception:
+                        # 已经不在了（比如代理重启过）——当没删掉处理
+                        log.warning("摘除旧脚本 addon 失败", exc_info=True)
+                self._script_addons = list(addons)
+                for new in addons:
+                    master.addons.add(new)
+            except Exception:
+                log.exception("热替换用户脚本失败")
+
+        try:
+            loop.call_soon_threadsafe(_swap)
+            return True
+        except RuntimeError:
+            log.warning("事件循环已关闭，无法热替换用户脚本")
             return False
 
     # -------------------------------------------------------------- internal

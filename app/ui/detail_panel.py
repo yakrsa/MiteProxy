@@ -73,11 +73,13 @@ from app.bodyview import (
     VIEW_IMAGE,
     VIEW_JSON,
     VIEW_RAW,
+    VIEW_SSE,
     VIEW_TREE,
     BODY_PREVIEW_LIMIT,
     HIGHLIGHT_LIMIT,
     RENDER_TEXT_LIMIT,
     STREAM_CHUNK,
+    STREAM_HARD_LIMIT,
     WRAP_MAX_LINE_CHARS,
     content_encoding_of,
     decoded_note,
@@ -92,6 +94,7 @@ from app.bodyview import (
     view_mode_items,
     view_mode_label,
 )
+from app.sse import parse_sse
 from app.jsontree import (
     TREE_MAX_BYTES,
     TREE_WARN_BYTES,
@@ -108,6 +111,10 @@ from app.ui.json_tree import JsonTreeView
 
 #: WebSocket 消息表最多渲染的行数（再多的只记在内存里，别把表格撑爆）
 WS_TABLE_LIMIT = 2000
+
+#: SSE 视图最多渲染的事件数（再多只显示前 N 个并注明）——事件 data 可能
+#: 很大，几千个事件全渲染会把文本视图卡住
+SSE_RENDER_LIMIT = 500
 
 
 def truncation_flags(flow) -> tuple[str, dict]:
@@ -139,6 +146,14 @@ BODY_TREE_TIP = QT_TRANSLATE_NOOP(
     "JSON 树视图：点箭头展开/收起，右键可复制值、键、路径或整个节点的 JSON。\n"
     "树是**解析后**的视图：重复键只保留最后一个，浮点形态可能与原文不同——\n"
     "要一字不差地校对请用「原文」视图。"
+)
+
+#: MessagePane 内部 tab 文案（对齐 Fiddler 的 inspector：查看 / Raw）
+INSPECT_TAB_LABEL = QT_TRANSLATE_NOOP("DetailPanel", "查看")
+RAW_TAB_LABEL = QT_TRANSLATE_NOOP("DetailPanel", "原始")
+RAW_TAB_TIP = QT_TRANSLATE_NOOP(
+    "DetailPanel",
+    "完整 HTTP 报文：请求/状态行 + 全部头 + body（与 Fiddler Raw 一致）",
 )
 
 #: 图片缩放档位：适应窗口 + 固定比例
@@ -836,12 +851,243 @@ class BodyPane(QWidget):
             self._show_text(self._with_truncation(text, len(body)))
             return
 
+        if mode == VIEW_SSE:
+            self._show_sse(body, note)
+            return
+
         # VIEW_RAW
         self._show_text(self._with_truncation(text, len(body)))
+
+    def _show_sse(self, body: bytes, note) -> None:
+        """SSE 视图：按事件边界展示（event / id / retry / data 分行）。
+
+        响应仍在流式返回时，最后一段没有空行收尾——解析器会标
+        trailing_incomplete，这里明确提示「最后一个事件可能不完整」，
+        而不是把半截数据当成一个完整事件显示。
+        """
+        text = decode_body(body[:BODY_PREVIEW_LIMIT], self._content_type)
+        if text is None:
+            note(self.tr("无法按文本解码，已显示十六进制"))
+            self._show_text(hex_dump(body, total=len(body)))
+            return
+        result = parse_sse(text)
+        if not result.events:
+            note(self.tr("未解析到 SSE 事件"))
+            self._show_text(self.tr("（没有可显示的事件）"))
+            return
+
+        shown = result.events[:SSE_RENDER_LIMIT]
+        lines: list[str] = []
+        for ev in shown:
+            title = self.tr('── 事件 {0} ──').format(ev.index)
+            if not ev.complete:
+                title += self.tr("（未收尾）")
+            lines.append(title)
+            if ev.event:
+                lines.append(f"  event: {ev.event}")
+            if ev.id:
+                lines.append(f"  id: {ev.id}")
+            if ev.retry:
+                lines.append(f"  retry: {ev.retry}")
+            if ev.data:
+                for data_line in ev.data.split("\n"):
+                    lines.append(f"  data: {data_line}" if data_line else "  data:")
+            lines.append("")
+
+        detail = self.tr('{0} 个事件').format(len(result.events))
+        if result.trailing_incomplete:
+            detail += self.tr('，最后一个未收尾（响应可能仍在进行）')
+        if result.truncated or len(result.events) > len(shown):
+            detail += self.tr('，仅显示前 {0} 个').format(len(shown))
+        note(detail)
+        self._show_text("\n".join(lines))
 
     @staticmethod
     def _with_truncation(text: str, total: int) -> str:
         return text + truncation_note(total) if total > BODY_PREVIEW_LIMIT else text
+
+
+def _iter_headers(headers):
+    """兼容 dict 与 mitmproxy Headers：同一套兜底，见 MessagePane._fill_headers。"""
+    if headers is None:
+        return
+    try:
+        items = list(headers.items(multi=True))
+    except TypeError:
+        items = list(headers.items())
+    for k, v in items:
+        yield str(k), str(v)
+
+
+class RawPane(QWidget):
+    """完整 HTTP 报文视图（对齐 Fiddler 的 Raw inspector）。
+
+    把「请求/状态行 + 全部头 + 空行 + body」拼成一个纯文本，能直接复制去比对、
+    或贴进 curl 调试。body 与「原文」视图同源（解码 + 解压 + 截断标注），
+    二进制回落十六进制——和 body 视图的回落规则一致，不另搞一套。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
+
+        self.note = QLabel("")
+        self.note.setStyleSheet(f"color: {theme.css('hint')};")
+        layout.addWidget(self.note)
+
+        self.text = QPlainTextEdit()
+        self.text.setReadOnly(True)
+        self.text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        font = QFont("ui-monospace, SF Mono, Menlo, Consolas, monospace")
+        font.setStyleHint(QFont.StyleHint.Monospace)
+        self.text.setFont(font)
+        layout.addWidget(self.text, stretch=1)
+
+        # 大内容（> RENDER_TEXT_LIMIT）走流式：首屏快显 + 分块追加，不冻结界面
+        self._timer = QTimer(self)
+        self._timer.setInterval(0)
+        self._timer.timeout.connect(self._stream_next)
+        self._full = ""
+        self._pos = 0
+        self._active = False
+        theme.add_listener(self._retheme)
+
+    # ------------------------------------------------------------ 展示
+    def show_raw(self, first_line, headers, body_bytes, content_type,
+                 raw_len, truncated, full_size) -> None:
+        self._stop()
+        # 头部块：首行（请求行 / 状态行）+ 每一行 `Name: Value`
+        lines = [first_line]
+        for k, v in _iter_headers(headers):
+            lines.append(f"{k}: {v}")
+        lines.append("")                       # 头与 body 之间的空行（报文规范）
+        header_text = "\n".join(lines)
+
+        body_text, binary = self._body_text(body_bytes, content_type)
+        full = header_text + body_text
+        # 超过 STREAM_HARD_LIMIT 真截断并附说明（同 body 视图的硬上限）
+        if len(full) > STREAM_HARD_LIMIT:
+            full = full[:STREAM_HARD_LIMIT] + truncation_note(
+                len(full), limit=STREAM_HARD_LIMIT
+            )
+        if len(full) <= RENDER_TEXT_LIMIT:
+            self.text.setPlainText(full)
+        else:
+            self._start(full)
+
+        self.note.setText(self._build_note(
+            headers, raw_len, truncated, full_size, binary, len(body_text)
+        ))
+
+    def clear(self) -> None:
+        self._stop()
+        self.text.clear()
+        self.note.setText("")
+
+    # ------------------------------------------------------------ 搜索高亮
+    def highlight(self, term: str, case_sensitive: bool) -> int:
+        self.text.setExtraSelections([])
+        if not term:
+            return 0
+        flags = QTextDocument.FindFlags()
+        if case_sensitive:
+            flags |= QTextDocument.FindFlag.FindCaseSensitively
+        selections = []
+        count = 0
+        doc = self.text.document()
+        hit_fmt = QTextCharFormat()
+        hit_fmt.setBackground(theme.color("hit_bg"))
+        cursor = QTextCursor(doc)
+        while True:
+            cursor = doc.find(term, cursor, flags)
+            if cursor.isNull():
+                break
+            sel = QTextEdit.ExtraSelection()
+            sel.cursor = cursor
+            sel.format = hit_fmt
+            selections.append(sel)
+            count += 1
+            if count > 2000:
+                break
+        self.text.setExtraSelections(selections)
+        return count
+
+    # ------------------------------------------------------------ 主题
+    def _retheme(self) -> None:
+        self.note.setStyleSheet(f"color: {theme.css('hint')};")
+
+    # ------------------------------------------------------------ 内部
+    @staticmethod
+    def _body_text(body_bytes, content_type):
+        """body 文本：能按文本解码就解码；解码不出（二进制）回落十六进制。"""
+        if not body_bytes:
+            return "", False
+        text = decode_body(body_bytes, content_type)
+        if text is None:
+            return hex_dump(body_bytes, total=len(body_bytes)), True
+        return text, False
+
+    def _build_note(self, headers, raw_len, truncated, full_size,
+                    binary, shown_len) -> str:
+        """提示栏：解压说明（非二进制时）+ 截断说明，与 body 视图同源。"""
+        parts = []
+        if not binary:
+            ce = content_encoding_of(headers)
+            if ce and raw_len and raw_len != shown_len:
+                parts.append(decoded_note(ce, raw_len, shown_len, "mitmproxy"))
+        if truncated:
+            limit_kb = AUTOSAVE_BODY_LIMIT // 1024
+            if full_size:
+                parts.append(
+                    QCoreApplication.translate(
+                        "BodyPane",
+                        "已截断：快照只保留前 {0}KB，原 {1}KB（重新抓包可看全）",
+                    ).format(limit_kb, max(1, round(full_size / 1024)))
+                )
+            else:
+                parts.append(
+                    QCoreApplication.translate(
+                        "BodyPane",
+                        "已截断：会话快照单条只保留前 {0}KB，内容不完整（重新抓包可看全）",
+                    ).format(limit_kb)
+                )
+        return " · ".join(parts)
+
+    def _start(self, full: str) -> None:
+        self._full = full
+        self._pos = RENDER_TEXT_LIMIT
+        self._active = True
+        self.text.setPlainText(full[:RENDER_TEXT_LIMIT])
+        self.text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self._timer.start()
+
+    def _stop(self) -> None:
+        self._timer.stop()
+        self._active = False
+        self._full = ""
+        self._pos = 0
+
+    def _stream_next(self) -> None:
+        if not self._active:
+            return
+        full = self._full
+        pos = self._pos
+        if not full or pos >= len(full):
+            self._stop()
+            return
+        end = min(pos + STREAM_CHUNK, len(full))
+        if end < len(full):
+            nl = full.find("\n", end)
+            if nl != -1 and nl < end + 4096:
+                end = nl + 1
+        cursor = self.text.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(full[pos:end])
+        self._pos = end
+        if end >= len(full):
+            self._stop()
 
 
 class MessagePane(QWidget):
@@ -858,6 +1104,13 @@ class MessagePane(QWidget):
         )
         layout.addWidget(self.summary_label)
 
+        # 内部 tab：保留原有的「查看」（headers 表 + body 视图，所有结构化能力不动），
+        # 新增「原始」对齐 Fiddler 的 Raw inspector —— 一屏看完整报文。
+        self.view_tabs = QTabWidget()
+
+        inspect = QWidget()
+        inspect_layout = QVBoxLayout(inspect)
+        inspect_layout.setContentsMargins(0, 0, 0, 0)
         splitter = QSplitter(Qt.Orientation.Vertical)
 
         self.headers_table = QTableWidget(0, 2)
@@ -874,21 +1127,41 @@ class MessagePane(QWidget):
         splitter.addWidget(self.body_pane)
 
         splitter.setSizes([180, 320])
-        layout.addWidget(splitter)
+        inspect_layout.addWidget(splitter)
+        self.view_tabs.addTab(
+            inspect, QCoreApplication.translate("DetailPanel", INSPECT_TAB_LABEL)
+        )
+
+        self.raw_pane = RawPane()
+        self.raw_pane.setToolTip(
+            QCoreApplication.translate("DetailPanel", RAW_TAB_TIP)
+        )
+        self.view_tabs.addTab(
+            self.raw_pane, QCoreApplication.translate("DetailPanel", RAW_TAB_LABEL)
+        )
+
+        layout.addWidget(self.view_tabs, stretch=1)
 
     # ------------------------------------------------------------ 展示
 
     def show_message(self, summary_line: str, headers, body_bytes: bytes | None,
                      raw_len: int | None = None, truncated: bool = False,
-                     full_size: int | None = None) -> None:
+                     full_size: int | None = None, first_line: str = "") -> None:
         self.summary_label.setText(summary_line)
         self._fill_headers(headers)
         self.body_pane.show_body(headers, body_bytes, raw_len, truncated, full_size)
+        # 「原始」页：首行（请求行/状态行）+ 全部头 + body，拼成一个完整报文
+        content_type = self.body_pane._content_type_of(headers)
+        self.raw_pane.show_raw(
+            first_line or summary_line, headers, body_bytes,
+            content_type, raw_len, truncated, full_size,
+        )
 
     def clear(self) -> None:
         self.summary_label.setText(self.tr("（未选择会话）"))
         self.headers_table.setRowCount(0)
         self.body_pane.clear()
+        self.raw_pane.clear()
 
     @property
     def body_pane_view(self) -> BodyPane:
@@ -897,7 +1170,9 @@ class MessagePane(QWidget):
     # ------------------------------------------------------------ 搜索高亮
 
     def highlight(self, term: str, case_sensitive: bool) -> int:
-        return self.body_pane.highlight(term, case_sensitive)
+        total = self.body_pane.highlight(term, case_sensitive)
+        total += self.raw_pane.highlight(term, case_sensitive)
+        return total
 
     # ------------------------------------------------------------ 内部
 
@@ -1581,6 +1856,10 @@ class DetailPanel(QWidget):
         truncated_sides, truncated_sizes = truncation_flags(flow)
 
         if req is not None:
+            req_first = f"{req.method} {req.pretty_url}".rstrip()
+            ver = getattr(req, "http_version", "") or ""
+            if ver:
+                req_first = f"{req_first} {ver}"
             self.request_pane.show_message(
                 f"{req.method} {req.pretty_url}",
                 req.headers,
@@ -1588,11 +1867,16 @@ class DetailPanel(QWidget):
                 len(req.raw_content or b""),
                 "request" in truncated_sides,
                 truncated_sizes.get("request"),
+                req_first,
             )
         else:
             self.request_pane.clear()
 
         if res is not None:
+            res_first = f"HTTP {res.status_code} {res.reason or ''}".strip()
+            ver = getattr(res, "http_version", "") or ""
+            if ver:
+                res_first = f"{ver} {res.status_code} {res.reason or ''}".strip()
             self.response_pane.show_message(
                 f"HTTP {res.status_code} {res.reason or ''}".strip(),
                 res.headers,
@@ -1600,6 +1884,7 @@ class DetailPanel(QWidget):
                 len(res.raw_content or b""),
                 "response" in truncated_sides,
                 truncated_sizes.get("response"),
+                res_first,
             )
         else:
             # 请求已发出、响应还没回来（pending）：响应半边给一个明确占位，

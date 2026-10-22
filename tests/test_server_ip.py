@@ -46,7 +46,12 @@ from app.ui.filter_model import (  # noqa: E402
     FlowFilterProxyModel,
     SearchConfig,
 )
-from app.ui.flow_store import COLUMNS, COL_SERVER_IP, FlowStore  # noqa: E402
+from app.ui.flow_store import (  # noqa: E402
+    COLUMNS,
+    COL_SERVER_IP,
+    COLUMN_KEYS,
+    FlowStore,
+)
 
 
 def _conn(peername=None, address=None):
@@ -144,10 +149,15 @@ class TestSummarize:
 class TestStoreColumn:
     def test_column_order(self):
         assert COL_SERVER_IP == 3
+        # 前 10 列是核心列（顺序固定）；后 3 列是 #6 新增的可选列（默认隐藏，
+        # 必须追加在末尾，否则存量 hidden_columns 设置与写死的列号全部错位）
         assert COLUMNS == [
             "#", "方法", "host", "服务器 IP", "路径",
             "状态", "请求体", "响应", "耗时(ms)", "标记",
+            "内容类型", "开始时刻", "备注",
         ]
+        # 稳定 key 与列号一一对应，新增列只能往 COLUMN_KEYS 末尾加
+        assert COLUMN_KEYS[-3:] == ("content_type", "started", "comment")
 
     def test_display_ip_and_dash_fallback(self):
         store = FlowStore()

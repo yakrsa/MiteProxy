@@ -70,3 +70,23 @@ def test_dialog_close_button(qapp):
     btns = dlg.findChildren(QPushButton)
     assert any(b.text() == "关闭" for b in btns)
     dlg.deleteLater()
+
+
+def test_dialog_raw_pane_shows_full_message(qapp):
+    # Raw 页（对齐 Fiddler Raw inspector）在双击弹窗里同样可用：首行带 HTTP 版本、
+    # 含全部头与 body，与主面板 detail_panel 取值完全一致。
+    flow = _fake_flow()
+    flow.request.http_version = "HTTP/1.1"
+    flow.response.http_version = "HTTP/1.1"
+    dlg = FlowDetailDialog(flow)
+
+    raw_req = dlg.request_pane.raw_pane.text.toPlainText()
+    assert raw_req.startswith("GET https://example.com/api HTTP/1.1")
+    assert "Host: example.com" in raw_req
+    assert "Accept: */*" in raw_req
+
+    raw_res = dlg.response_pane.raw_pane.text.toPlainText()
+    assert raw_res.startswith("HTTP/1.1 200 OK")
+    assert "Content-Type: application/json" in raw_res
+    assert '{"ok":1}' in raw_res
+    dlg.deleteLater()

@@ -24,6 +24,7 @@ import zlib
 from dataclasses import dataclass
 from urllib.parse import parse_qsl
 
+from app.sse import is_sse
 from app.textutil import decode_body
 from PySide6.QtCore import QT_TRANSLATE_NOOP, QCoreApplication
 
@@ -74,6 +75,7 @@ VIEW_TREE = "tree"
 VIEW_FORM = "form"
 VIEW_IMAGE = "image"
 VIEW_HEX = "hex"
+VIEW_SSE = "sse"
 
 #: 视图模式 → 显示名。**NOOP 打标、禁止在这里 translate**：
 #: 本模块经 detail_panel 被 main_window 在 import 期带入（app/main.py 顶部
@@ -88,6 +90,7 @@ VIEW_MODE_ITEMS: tuple[tuple[str, str], ...] = (
     (VIEW_FORM, QT_TRANSLATE_NOOP("bodyview", "表单")),
     (VIEW_IMAGE, QT_TRANSLATE_NOOP("bodyview", "图片")),
     (VIEW_HEX, QT_TRANSLATE_NOOP("bodyview", "十六进制")),
+    (VIEW_SSE, QT_TRANSLATE_NOOP("bodyview", "SSE")),
 )
 
 #: 认定为表单的 content-type（只认这一个，不猜）
@@ -178,6 +181,10 @@ def detect_view_mode(content_type: str, body_bytes: bytes | None,
     if not body_bytes:
         return VIEW_RAW
     ct = _main_content_type(content_type)
+    # SSE 优先于一切：text/event-stream 长得像纯文本，但按事件边界展示
+    # 才是这个格式的本意（AI 流式输出时代的高频格式）
+    if is_sse(ct):
+        return VIEW_SSE
     if is_image_content_type(ct):
         return VIEW_IMAGE
     if is_form_content_type(ct):

@@ -20,6 +20,8 @@ class FlowBridge(QObject):
     proxy_state_changed = Signal(bool)  # True=运行中
     #: 系统代理接管/还原结果（后台线程 → 主线程状态栏提示）
     sysproxy_done = Signal(bool, str)
+    #: 断点命中：(flow, phase) —— 代理线程挂住了这条会话，等 UI 改完放行
+    flow_intercepted = Signal(object, str)
 
     def emit_flow(self, summary: dict) -> None:
         self.flow_arrived.emit(summary)
@@ -32,3 +34,6 @@ class FlowBridge(QObject):
 
     def emit_rule_error(self, rule_id: str, message) -> None:
         self.rule_error.emit(rule_id, message)
+
+    def emit_intercepted(self, flow, phase: str) -> None:
+        self.flow_intercepted.emit(flow, phase)

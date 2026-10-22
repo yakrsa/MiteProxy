@@ -106,6 +106,16 @@ class TestDialogFillsFromSettings:
                 "language": "en",
                 "auto_save_session": True,
                 "check_update_on_startup": False,
+                # 断点：默认「请求前暂停 + 不限制 URL」
+                "breakpoint": {
+                    "on_request": True,
+                    "on_response": False,
+                    "url_keywords": [],
+                },
+                # MCP：默认只监听本机 8899，写操作默认关
+                "mcp_host": "127.0.0.1",
+                "mcp_port": 8899,
+                "mcp_write_enabled": False,
             }
         finally:
             dlg.deleteLater()
@@ -321,3 +331,51 @@ class TestPortChangeWhileRunning:
         )
         window._apply_settings(_values(proxy_port=19085))
         assert restarted == [19085]
+
+
+# ====================================================================== MCP 监听地址
+
+
+class TestMcpHostSettings:
+    def test_defaults_to_localhost(self, qapp):
+        dlg = SettingsDialog(Settings())
+        try:
+            assert dlg.mcp_host_combo.currentData() == "127.0.0.1"
+            assert dlg.mcp_port_spin.value() == 8899
+            assert dlg.values()["mcp_host"] == "127.0.0.1"
+            assert "局域网" not in dlg.mcp_exposed_hint.text()
+        finally:
+            dlg.deleteLater()
+
+    def test_choose_wildcard_warns_and_travels(self, qapp):
+        dlg = SettingsDialog(Settings())
+        try:
+            datas = [dlg.mcp_host_combo.itemData(i)
+                     for i in range(dlg.mcp_host_combo.count())]
+            assert datas[:2] == ["127.0.0.1", "0.0.0.0"]
+            dlg.mcp_host_combo.setCurrentIndex(1)
+            assert dlg.values()["mcp_host"] == "0.0.0.0"
+            # 安全提示必须当场变脸，不能只在 tooltip 里藏着
+            assert "警告" in dlg.mcp_exposed_hint.text()
+            # 切回仅本机，提示也要恢复
+            dlg.mcp_host_combo.setCurrentIndex(0)
+            assert "警告" not in dlg.mcp_exposed_hint.text()
+        finally:
+            dlg.deleteLater()
+
+    def test_manual_ip_is_kept(self, qapp):
+        dlg = SettingsDialog(Settings(mcp_host="192.168.1.7", mcp_port=9100))
+        try:
+            assert dlg.mcp_host_combo.currentText() == "192.168.1.7"
+            assert dlg.values()["mcp_host"] == "192.168.1.7"
+            assert dlg.values()["mcp_port"] == 9100
+        finally:
+            dlg.deleteLater()
+
+    def test_apply_updates_host_without_starting(self, window):
+        """改地址≠开服务：MCP 默认关，改配置不该偷偷起端口。"""
+        window._apply_settings(_values(mcp_host="0.0.0.0", mcp_port=9101))
+        assert window.settings.mcp_host == "0.0.0.0"
+        assert window.settings.mcp_port == 9101
+        assert not window.mcp.running
+        assert window.mcp.host == "0.0.0.0" or window.mcp.host == "127.0.0.1"
