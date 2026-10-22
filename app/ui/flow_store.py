@@ -8,6 +8,7 @@ from PySide6.QtCore import QAbstractTableModel, QCoreApplication, Qt, QModelInde
 from PySide6.QtGui import QColor, QFont, QBrush
 
 from app.ui import theme
+from app.ui.visuals import mono_font
 
 #: 全部列（含可选列）。**列顺序即逻辑列号**，COL_* 常量与之一一对应；
 #: 新增列只能追加到末尾——插中间会让存量设置（hidden_columns 用 key 存，
@@ -45,6 +46,13 @@ COLUMN_KEYS = (
 #: 默认隐藏的可选列（内容类型 / 开始时刻 / 备注）：抓包主场景用不到，
 #: 默认全开会让列表一下子宽三列；需要的人在表头右键里勾。
 DEFAULT_HIDDEN_COLUMNS = ("content_type", "started", "comment")
+
+#: 数值型列：**右对齐 + 等宽字体**。抓包列表里这几列是要上下扫读、逐位
+#: 比对大小的，左对齐会让「1.8 MB」和「18.4 KB」的小数点错位，比例字体还会
+#: 让同一列的宽度跳。统一成等宽右对齐后，纵向对齐线才立得住。
+NUMERIC_COLUMNS = frozenset({
+    COL_ID, COL_STATUS, COL_REQ_SIZE, COL_RESP_SIZE, COL_DURATION, COL_STARTED,
+})
 
 
 def column_index(key: str) -> int | None:
@@ -282,14 +290,21 @@ class FlowStore(QAbstractTableModel):
             if _is_mock_row(row):
                 return QBrush(MOCK_ROW_FG)
 
-        if (
-            role == Qt.ItemDataRole.FontRole
-            and col == COL_MARK
-            and _is_mock_row(row)
-        ):
-            font = QFont()
-            font.setBold(True)
-            return font
+        if role == Qt.ItemDataRole.TextAlignmentRole:
+            # 只给数值列显式右对齐；其余返回 None 走 Qt 默认（本来就是左
+            # 对齐，显式写一遍反而多一处要维护的地方）
+            if col in NUMERIC_COLUMNS:
+                return Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            return None
+
+        if role == Qt.ItemDataRole.FontRole:
+            # 数值列统一等宽（见 NUMERIC_COLUMNS 注释）
+            if col in NUMERIC_COLUMNS:
+                return mono_font()
+            if col == COL_MARK and _is_mock_row(row):
+                font = QFont()
+                font.setBold(True)
+                return font
 
         if role == SORT_ROLE:
             # 排序键：数值列给数值，文本列给小写串（大小写不敏感）。

@@ -54,6 +54,10 @@ COLORS: dict[str, tuple[str, str]] = {
     #    与 mock 浅绿（#e6ffec）色相不同，两者并排也能一眼分开；
     #    错误行红底优先级见 FlowStore.data()
     "hl_row_bg":   ("#ffec99", "#5d5420"),   # 高亮行底色（黄）
+    # -- 表素质感的补充中性色（滚动条 / 分隔条悬停 / 菜单选中底）
+    "scroll_handle": ("#c2c8cf", "#4a525c"),       # 滚动条滑块
+    "scroll_handle_hover": ("#a2aab4", "#5c6875"),  # 滑块悬停
+    "accent_soft": ("#e8f0fe", "#1f2b3a"),          # 淡强调（分隔条悬停）
 }
 
 #: 当前档位（apply() 后与 settings.theme 一致）
@@ -177,6 +181,88 @@ QTableCornerButton::section {{
 """
 
 
+def base_stylesheet() -> str:
+    """全局基础控件质感（与表格专用的 `stylesheet()` 分开生成、拼接生效）。
+
+    只碰「Qt 原生比较糙」或「跨平台差异大」的几处；**刻意不动 QPushButton、
+    QLineEdit、QComboBox、QTabBar**——macOS 原生样式下给它们加任何一条 QSS
+    规则都会让 Qt 切到自绘路径，丢掉 aqua 按钮/输入框的圆角与蓝色高亮，
+    反而更丑。这里收的都是自绘控件，改了只有收益：
+
+    - **滚动条**：Qt 原生是粗灰条（Windows 上尤其重），改成 10px 细条 +
+      圆角滑块 + 悬停加深，视觉重量立刻降下来；
+    - **菜单 / Tooltip**：补内边距与圆角，去掉硬直角；
+    - **分隔条**：默认完全不可见（用户不知道能拖），悬停时给淡强调色；
+    - **状态栏**：加一条顶部分隔线把内容与工作区分开，并去掉 item 的原生框。
+    """
+    grid = css("grid_line")
+    handle = css("scroll_handle")
+    handle_hover = css("scroll_handle_hover")
+    soft = css("accent_soft")
+    sel_bg = css("sel_bg")
+    sel_fg = css("sel_fg")
+    return f"""
+QToolTip {{
+    padding: 5px 9px;
+    border: 1px solid {grid};
+    border-radius: 6px;
+    background-color: palette(tool-tip-base);
+    color: palette(tool-tip-text);
+}}
+QMenu {{
+    padding: 4px;
+    border-radius: 8px;
+}}
+QMenu::item {{
+    padding: 5px 22px 5px 20px;
+    border-radius: 5px;
+}}
+QMenu::item:selected {{
+    background-color: {sel_bg};
+    color: {sel_fg};
+}}
+QMenu::separator {{
+    height: 1px;
+    margin: 4px 8px;
+    background-color: {grid};
+}}
+QSplitter::handle {{
+    background-color: transparent;
+}}
+QSplitter::handle:hover {{
+    background-color: {soft};
+}}
+QScrollBar {{
+    background-color: transparent;
+    border: none;
+}}
+QScrollBar:vertical {{ width: 10px; margin: 0; }}
+QScrollBar:horizontal {{ height: 10px; margin: 0; }}
+QScrollBar::handle {{
+    background-color: {handle};
+    border-radius: 5px;
+    min-height: 26px;
+    min-width: 26px;
+}}
+QScrollBar::handle:hover {{
+    background-color: {handle_hover};
+}}
+QScrollBar::add-line, QScrollBar::sub-line {{
+    width: 0;
+    height: 0;
+}}
+QScrollBar::add-page, QScrollBar::sub-page {{
+    background-color: transparent;
+}}
+QStatusBar {{
+    border-top: 1px solid {grid};
+}}
+QStatusBar::item {{
+    border: none;
+}}
+"""
+
+
 def current_mode() -> str:
     return _mode
 
@@ -202,7 +288,10 @@ def apply(mode: str) -> None:
         _apply_fusion_palette(mode)
     app = QGuiApplication.instance()
     if app is not None:
-        app.setStyleSheet(stylesheet())
+        # 表格质感 + 基础控件质感两份拼在一起：分开写是刻意保留的边界——
+        # stylesheet() 里有不能被 token 值替换的约束（见其中的注释），
+        # 且 test_theme 直接断言它的返回值，混进来会让断言变得难以维护
+        app.setStyleSheet(stylesheet() + base_stylesheet())
     notify()
 
 

@@ -141,8 +141,9 @@ class TestTranslationCoverage:
         # feedback.py：GitHub issue 正文/诊断信息（面向开发者的纯文本）
         ("app/feedback.py", n) for n in (73, 74, 77, 93, 96)
     } | {
-        # theme.py：QSS 样式表里的注释（代码，不是界面文案）
-        ("app/ui/theme.py", 149)
+        # theme.py：QSS 样式表里的注释（代码，不是界面文案）。
+        # 行号指 stylesheet() 里那段多行 f-string 的起始行
+        ("app/ui/theme.py", 153)
     }
 
     @staticmethod
