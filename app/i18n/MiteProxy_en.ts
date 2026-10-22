@@ -1080,6 +1080,41 @@ On parse failure it falls back to raw text with an explanation; no content is lo
 The tree is built from the **parsed** JSON: duplicate keys keep only the last one, and float formatting may differ from the raw bytes —
 use the Raw view when you need byte-exact content.</translation>
     </message>
+    <message>
+        <location filename="../ui/detail_panel.py" line="372"/>
+        <source>层级</source>
+        <translation>Level</translation>
+    </message>
+    <message>
+        <location filename="../ui/detail_panel.py" line="376"/>
+        <source>按层级展开树（避免大数组一次性全展开卡顿）</source>
+        <translation>Expand the tree by level (avoids freezing on large arrays when expanding all at once)</translation>
+    </message>
+    <message>
+        <location filename="../ui/detail_panel.py" line="380"/>
+        <source>全部展开</source>
+        <translation>Expand all</translation>
+    </message>
+    <message>
+        <location filename="../ui/detail_panel.py" line="381"/>
+        <source>展开到第 3 层</source>
+        <translation>Expand to level 3</translation>
+    </message>
+    <message>
+        <location filename="../ui/detail_panel.py" line="382"/>
+        <source>展开到第 2 层</source>
+        <translation>Expand to level 2</translation>
+    </message>
+    <message>
+        <location filename="../ui/detail_panel.py" line="383"/>
+        <source>展开到第 1 层</source>
+        <translation>Expand to level 1</translation>
+    </message>
+    <message>
+        <location filename="../ui/detail_panel.py" line="384"/>
+        <source>全部收起</source>
+        <translation>Collapse all</translation>
+    </message>
 </context>
 <context>
     <name>FeedbackDialog</name>
@@ -1933,6 +1968,11 @@ WebSocket: {0} messages</translation>
         <location filename="../ui/json_tree.py" line="187"/>
         <source>值</source>
         <translation>Value</translation>
+    </message>
+    <message>
+        <location filename="../ui/json_tree.py" line="189"/>
+        <source>类型</source>
+        <translation>Type</translation>
     </message>
     <message>
         <location filename="../ui/json_tree.py" line="192"/>

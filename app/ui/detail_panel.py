@@ -28,6 +28,7 @@ from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer, Signal, QCoreApplication, QT_TRANSLATE_NOOP
 from PySide6.QtGui import (
+    QAction,
     QBrush,
     QFont,
     QImage,
@@ -47,6 +48,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QPlainTextEdit,
     QProgressBar,
     QScrollArea,
@@ -368,7 +370,31 @@ class BodyPane(QWidget):
         self.collapse_btn.setAutoRaise(True)
         self.collapse_btn.setToolTip(self.tr("收起到只剩根节点"))
         self.collapse_btn.clicked.connect(self.tree_view.collapseAll)
-        for btn in (self.expand_btn, self.collapse_btn):
+
+        # 按层级展开：大 JSON 不用「全部展开」一步卡死，逐层钻取
+        self.level_btn = QToolButton()
+        self.level_btn.setText(QCoreApplication.translate("DetailPanel", "层级"))
+        self.level_btn.setAutoRaise(True)
+        self.level_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.level_btn.setToolTip(
+            QCoreApplication.translate("DetailPanel", "按层级展开树（避免大数组一次性全展开卡顿）")
+        )
+        level_menu = QMenu(self.level_btn)
+        a_all = QAction(QCoreApplication.translate("DetailPanel", "全部展开"), self)
+        a_l3 = QAction(QCoreApplication.translate("DetailPanel", "展开到第 3 层"), self)
+        a_l2 = QAction(QCoreApplication.translate("DetailPanel", "展开到第 2 层"), self)
+        a_l1 = QAction(QCoreApplication.translate("DetailPanel", "展开到第 1 层"), self)
+        a_collapse = QAction(QCoreApplication.translate("DetailPanel", "全部收起"), self)
+        a_all.triggered.connect(self.tree_view.expandAll)
+        a_l3.triggered.connect(lambda: self.tree_view.expand_to_level(3))
+        a_l2.triggered.connect(lambda: self.tree_view.expand_to_level(2))
+        a_l1.triggered.connect(lambda: self.tree_view.expand_to_level(1))
+        a_collapse.triggered.connect(self.tree_view.collapseAll)
+        for a in (a_all, a_l3, a_l2, a_l1, a_collapse):
+            level_menu.addAction(a)
+        self.level_btn.setMenu(level_menu)
+
+        for btn in (self.expand_btn, self.collapse_btn, self.level_btn):
             btn.setVisible(False)
             row.addWidget(btn)
         layout.addLayout(row)
@@ -615,6 +641,7 @@ class BodyPane(QWidget):
         """
         self.expand_btn.setVisible(on)
         self.collapse_btn.setVisible(on)
+        self.level_btn.setVisible(on)
         if on:
             self.wrap_cb.setVisible(False)   # 树里换行没有意义
 

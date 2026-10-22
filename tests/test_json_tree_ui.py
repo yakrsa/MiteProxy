@@ -6,6 +6,7 @@
 2. 非 JSON / 超大体量：必须回落文本视图并说明原因，不能留白屏。
 3. 视图切换不能互相污染：切回 JSON 要恢复换行开关、收起树专用按钮。
 4. 右键复制：值 / 键 / 路径 / 整个节点 JSON 四条都要拿到正确的东西。
+5. 类型列与「按层级展开」：结构一眼看清，且大分支不被一次性展开卡死。
 """
 
 from __future__ import annotations
@@ -19,6 +20,10 @@ from PySide6.QtWidgets import QApplication
 from app.bodyview import VIEW_JSON, VIEW_TREE
 from app.jsontree import TREE_MAX_BYTES, TREE_WARN_BYTES
 from app.ui.detail_panel import BodyPane
+from app.ui.json_tree import JsonTreeModel
+
+TYPE_COL = JsonTreeModel.TYPE_COL
+VALUE_COL = JsonTreeModel.VALUE_COL
 
 _FLOW = {"code": 0, "msg": "你好", "data": [{"id": 1, "name": "alice"}]}
 _BODY = json.dumps(_FLOW, ensure_ascii=False).encode()
@@ -89,9 +94,9 @@ class TestTreeStructure:
         node = model.node_at(item)
         assert node.path == "$.data[0]"
         # data 本身是数组（1 项）；它的第 0 项才是含 2 个键的对象
-        assert model.data(model.index(2, 1, root),
+        assert model.data(model.index(2, VALUE_COL, root),
                           Qt.ItemDataRole.DisplayRole) == "[1]"
-        assert model.data(model.index(0, 1, data_row),
+        assert model.data(model.index(0, VALUE_COL, data_row),
                           Qt.ItemDataRole.DisplayRole) == "{2}"
         pane.deleteLater()
 
@@ -100,7 +105,7 @@ class TestTreeStructure:
         model = pane.tree_view.model()
         assert model.headerData(0, Qt.Orientation.Horizontal,
                                 Qt.ItemDataRole.DisplayRole) == "键"
-        assert model.headerData(1, Qt.Orientation.Horizontal,
+        assert model.headerData(VALUE_COL, Qt.Orientation.Horizontal,
                                 Qt.ItemDataRole.DisplayRole) == "值"
         pane.deleteLater()
 
@@ -206,4 +211,119 @@ class TestTreeCopy:
         pane.tree_view.setCurrentIndex(QModelIndex())
         pane.tree_view.copy_value()
         assert QApplication.clipboard().text() == "unchanged"
+        pane.deleteLater()
+
+
+class TestTypeColumn:
+    """第三列「类型」：Fiddler 风格——结构一眼看清，不用悬停看 tooltip。"""
+
+    def test_column_count_and_header(self, qapp):
+        pane = _pane()
+        model = pane.tree_view.model()
+        assert model.columnCount() == 3
+        assert model.headerData(TYPE_COL, Qt.Orientation.Horizontal,
+                                Qt.ItemDataRole.DisplayRole) == "类型"
+        pane.deleteLater()
+
+    def test_type_names_per_node(self, qapp):
+        pane = _pane()
+        model = pane.tree_view.model()
+        root = model.index(0, 0, QModelIndex())
+
+        def type_of(index) -> str:
+            return model.data(model.index(index.row(), TYPE_COL, index.parent()),
+                              Qt.ItemDataRole.DisplayRole)
+
+        assert type_of(root) == "object"
+        assert type_of(model.index(0, 0, root)) == "number"    # code
+        assert type_of(model.index(1, 0, root)) == "string"    # msg
+        assert type_of(model.index(2, 0, root)) == "array"      # data
+        pane.deleteLater()
+
+    def test_boolean_and_null(self, qapp):
+        body = json.dumps({"ok": True, "gone": None}).encode()
+        pane = _pane(body)
+        model = pane.tree_view.model()
+        root = model.index(0, 0, QModelIndex())
+        assert model.data(model.index(0, TYPE_COL, root),
+                          Qt.ItemDataRole.DisplayRole) == "boolean"
+        assert model.data(model.index(1, TYPE_COL, root),
+                          Qt.ItemDataRole.DisplayRole) == "null"
+        pane.deleteLater()
+
+    def test_type_column_foreground_follows_type(self, qapp):
+        """类型列与值列同色（同一套 JSON 类型配色），不能白板一片。"""
+        pane = _pane()
+        model = pane.tree_view.model()
+        root = model.index(0, 0, QModelIndex())
+        value_idx = model.index(1, VALUE_COL, root)             # msg 的值（string）
+        value_brush = model.data(value_idx, Qt.ItemDataRole.ForegroundRole)
+        type_brush = model.data(model.index(1, TYPE_COL, root),
+                                Qt.ItemDataRole.ForegroundRole)
+        assert value_brush is not None and type_brush is not None
+        assert value_brush.color().name() == type_brush.color().name()
+        pane.deleteLater()
+
+
+class TestExpandToLevel:
+    """「按层级展开」：大 JSON 逐层钻取，不能一步 expandAll 卡死。"""
+
+    def test_level_1_expands_root_only(self, qapp):
+        pane = _pane()
+        view = pane.tree_view
+        model = view.model()
+        root = model.index(0, 0, QModelIndex())
+        view.expand_to_level(1)
+        assert view.isExpanded(root)
+        assert not view.isExpanded(model.index(2, 0, root))      # data 数组不展开
+        pane.deleteLater()
+
+    def test_level_2_expands_containers(self, qapp):
+        pane = _pane()
+        view = pane.tree_view
+        model = view.model()
+        root = model.index(0, 0, QModelIndex())
+        view.expand_to_level(2)
+        assert view.isExpanded(root)
+        assert view.isExpanded(model.index(2, 0, root))          # data 展开
+        pane.deleteLater()
+
+    def test_level_0_collapses_below_root(self, qapp):
+        pane = _pane()
+        view = pane.tree_view
+        model = view.model()
+        root = model.index(0, 0, QModelIndex())
+        view.expand_to_level(0)
+        assert view.isExpanded(root)
+        assert not view.isExpanded(model.index(2, 0, root))
+        pane.deleteLater()
+
+    def test_huge_branch_stays_folded(self, qapp):
+        """子节点超过 AUTO_EXPAND_CHILDREN 的分支即使要求展开也不展。"""
+        body = json.dumps({"big": list(range(150))}).encode()
+        pane = _pane(body)
+        view = pane.tree_view
+        model = view.model()
+        root = model.index(0, 0, QModelIndex())
+        big = model.index(0, 0, root)
+        view.expand_to_level(5)
+        assert view.isExpanded(root)
+        assert not view.isExpanded(big)
+        pane.deleteLater()
+
+    def test_negative_level_is_noop(self, qapp):
+        pane = _pane()
+        view = pane.tree_view
+        model = view.model()
+        root = model.index(0, 0, QModelIndex())
+        view.expand_to_level(1)
+        view.expand_to_level(-1)                                 # 不该折叠掉已有状态
+        assert view.isExpanded(root)
+        pane.deleteLater()
+
+    def test_level_button_visible_in_tree_only(self, qapp):
+        pane = _pane()
+        assert not pane.level_btn.isHidden()
+        pane.set_mode(VIEW_JSON)
+        assert pane.level_btn.isHidden()
         pane.deleteLater()

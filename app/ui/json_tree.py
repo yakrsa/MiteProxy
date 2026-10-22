@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from typing import Iterable
 
 from PySide6.QtCore import (
@@ -77,10 +78,17 @@ def _type_color(node: JsonNode, widget: QWidget | None) -> QColor:
 
 
 class JsonTreeModel(QAbstractItemModel):
-    """两列（键 / 值）的树模型，子节点懒加载。"""
+    """三列（键 / 类型 / 值）的树模型，子节点懒加载。
+
+    「类型」列是 Fiddler 风格的补强：每个节点直接显示 object / array /
+    string / number / boolean / null，结构一眼看清，不用把鼠标悬到 tooltip 上
+    才看得出类型。类型紧挨着键、值列吃满剩余宽度——否则窗口一拉宽，类型列会被
+    挤到最右边，看键和类型要横跨半个屏幕。
+    """
 
     KEY_COL = 0
-    VALUE_COL = 1
+    TYPE_COL = 1
+    VALUE_COL = 2
 
     def __init__(self, root: JsonNode, widget: QWidget | None = None, parent=None):
         super().__init__(parent)
@@ -141,7 +149,7 @@ class JsonTreeModel(QAbstractItemModel):
         return len(node.rows()) if node.is_container else 0
 
     def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:
-        return 2
+        return 3
 
     def hasChildren(self, parent: QModelIndex = QModelIndex()) -> bool:
         if not parent.isValid():
@@ -158,15 +166,19 @@ class JsonTreeModel(QAbstractItemModel):
             return None
         column = index.column()
         if role == Qt.ItemDataRole.DisplayRole:
-            return node.label if column == self.KEY_COL else node.value_text
+            if column == self.KEY_COL:
+                return node.label
+            if column == self.VALUE_COL:
+                return node.value_text
+            return node.type_name
         if role == Qt.ItemDataRole.ForegroundRole:
-            if column == self.KEY_COL and node.index is None:
+            if column == self.KEY_COL:
                 # 只有真正的「键」才染色；数组下标 [0] 走次要色
-                return QBrush(QColor(_palette(self._widget)["key"]))
-            # 值列按 JSON 类型染色；下标列用次要色
-            target = _type_color(node, self._widget) if column == self.VALUE_COL \
-                else theme.color("hint")
-            return QBrush(target)
+                if node.index is None:
+                    return QBrush(QColor(_palette(self._widget)["key"]))
+                return QBrush(theme.color("hint"))
+            # 值列与类型列都按 JSON 类型染色（类型列一眼看出 object/array…）
+            return QBrush(_type_color(node, self._widget))
         if role == Qt.ItemDataRole.FontRole and column == self.VALUE_COL:
             return self._mono
         if role == Qt.ItemDataRole.ToolTipRole:
@@ -183,8 +195,11 @@ class JsonTreeModel(QAbstractItemModel):
             return None
         if orientation != Qt.Orientation.Horizontal:
             return None
-        return (QCoreApplication.translate("JsonTreeModel", "键") if section == self.KEY_COL
-                else QCoreApplication.translate("JsonTreeModel", "值"))
+        if section == self.KEY_COL:
+            return QCoreApplication.translate("JsonTreeModel", "键")
+        if section == self.VALUE_COL:
+            return QCoreApplication.translate("JsonTreeModel", "值")
+        return QCoreApplication.translate("JsonTreeModel", "类型")
 
     # ------------------------------------------------------------ 工具
 
@@ -270,6 +285,7 @@ class JsonTreeView(QTreeView):
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.setColumnWidth(self._model.KEY_COL, KEY_COLUMN_WIDTH)
         header.setSectionResizeMode(self._model.VALUE_COL, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(self._model.TYPE_COL, QHeaderView.ResizeMode.ResizeToContents)
         self._default_expand()
 
     def clear(self) -> None:
@@ -294,6 +310,39 @@ class JsonTreeView(QTreeView):
             node = model.node_at(child)
             if node is not None and 0 < node.child_count <= AUTO_EXPAND_CHILDREN:
                 self.expand(child)
+
+    def expand_to_level(self, level: int) -> None:
+        """展开到第 level 层（根为第 0 层，即 nodes at depth==level 可见）。
+
+        用于大 JSON 快速钻取：比「全部展开」温和——只逐层展开到指定深度。
+        护栏与 ``_default_expand`` 一致：某节点自身子节点超过
+        ``AUTO_EXPAND_CHILDREN`` 就不再展开它（一展开就是几千行，
+        实例化与滚动都白花），它的子分支保持折叠但可见。
+        """
+        model = self._model
+        if model is None or level < 0:
+            return
+        self.collapseAll()
+        root_index = model.index(0, model.KEY_COL, QModelIndex())
+        if not root_index.isValid():
+            return
+        self.expand(root_index)
+        if level == 0:
+            return
+        # 广度优先逐层展开：要看到 depth==level 的节点，必须展开所有 depth<level
+        queue: deque[tuple[QModelIndex, int]] = deque([(root_index, 0)])
+        while queue:
+            idx, depth = queue.popleft()
+            if depth >= level:
+                continue
+            node = model.node_at(idx)
+            if node is None or node.child_count > AUTO_EXPAND_CHILDREN:
+                continue
+            self.expand(idx)
+            for row in range(model.rowCount(idx)):
+                child = model.index(row, model.KEY_COL, idx)
+                if child.isValid():
+                    queue.append((child, depth + 1))
 
     # ------------------------------------------------------------ 搜索
 

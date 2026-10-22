@@ -1,35 +1,19 @@
 {
-  "version": "2.4.2",
-  "published_at": "2026-10-22T11:00:00+08:00",
+  "version": "2.5.0",
+  "published_at": "2026-10-22T22:15:00+08:00",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "新增「两条会话对比」：流量列表里**多选两条**右键「对比两条会话」，并排看方法 / URL / 状态 / headers 差异，body 走键级 diff（JSON）或行级 diff（文本），二进制只报同/不同——不用先重放就能比线上与本地",
-      "en": "New \"Compare two sessions\": select exactly two flows in the list and right-click \"Compare two sessions\" to see method / URL / status / headers side by side; bodies go through key-level diff (JSON) or line-level diff (text), and binaries only report same/different — no replay needed to compare live vs local"
+      "zh": "脚本编辑器支持 **Python 语法高亮**：新建/编辑脚本弹窗里关键字、字符串、注释、数字、`def`/`class` 名、装饰器、常用内置分别着色，三引号多行字符串跨行续染不断层；配色跟随深浅主题自动切换，只染前景不盖背景，不影响搜索高亮",
+      "en": "Python syntax highlighting in the script editor: keywords, strings, comments, numbers, def/class names, decorators and common builtins are colored in the new/edit script dialog; triple-quoted strings keep their color across lines, and the palette follows the light/dark theme automatically — foreground only, so search highlighting still works"
     },
     {
-      "zh": "新增列显隐与自定义列：表头右键勾选显示/隐藏列，**内容类型 / 开始时刻 / 备注** 三个可选列默认隐藏；显隐状态随设置持久化（按列 key 存，以后加列不会错位）",
-      "en": "New column show/hide and custom columns: right-click the header to toggle columns; the three optional columns content-type / start time / comment are hidden by default, and the visibility state persists in settings (keyed by column key, so adding columns later won't shift saved state)"
+      "zh": "JSON **树视图改成 Fiddler 风格**：新增「类型」列，每个节点直接显示 object / array / string / number / boolean / null（与值列同一套类型配色），结构一眼看清、不用悬停看 tooltip；列序为 键 | 类型 | 值，类型紧挨着键，值列吃满剩余宽度",
+      "en": "The JSON tree view now follows Fiddler's style: a new Type column shows object / array / string / number / boolean / null for every node (same type palette as the Value column), so the structure is readable at a glance without hovering for tooltips; columns are Key | Type | Value so the type sits next to the key while the value column takes the remaining width"
     },
     {
-      "zh": "新增多套过滤预设：工具栏过滤栏可把当前过滤条件存为「预设」并命名，一键切换 / 删除；设置里记录激活的预设，启动自动套用",
-      "en": "New filter presets: the toolbar filter bar can save the current filter as a named preset and switch/delete with one click; settings remember the active preset and apply it on launch"
-    },
-    {
-      "zh": "新增 SSE 流式响应展示：body 视图自动识别 `text/event-stream`，把逐条 `event / data / id / retry` 事件拆开渲染，便于看 Server-Sent Events 流",
-      "en": "New SSE streaming view: the body view auto-detects text/event-stream and renders each event (event / data / id / retry) separately, making Server-Sent Events streams readable"
-    },
-    {
-      "zh": "MCP 接口新增写操作（默认关，需手动开）：`add_mock_rule`（加 Mock 规则）/ `replay_flow`（重放某条会话）/ `set_breakpoint`（设断点）；没开写操作时工具列表不暴露、调用直接拒绝，保证默认只读安全",
-      "en": "MCP now exposes write operations (off by default, opt-in): add_mock_rule / replay_flow / set_breakpoint; with writes disabled the tools are hidden from the tool list and calls are rejected, keeping the default read-only posture safe"
-    },
-    {
-      "zh": "新增用户脚本（插件）：`~/.miteproxy/scripts/*.py` 里写 mitmproxy 风格的 flow 钩子（模块级函数或 Addon 类，支持可选 `ctx` 第一参），在「脚本」页增删改 / 启停，保存后**热替换**无需重启代理；单个脚本报错被隔离，不拖垮其他脚本与代理主流程",
-      "en": "New user scripts (plugins): write mitmproxy-style flow hooks in ~/.miteproxy/scripts/*.py (module-level functions or an Addon class, with an optional ctx first argument), manage and toggle them from the Scripts tab, and hot-reload on save without restarting the proxy; a broken script is isolated and won't take down other scripts or the proxy"
-    },
-    {
-      "zh": "大流量长跑稳定性：列表与缓存都有 5000 条硬上限，喂超量流量后行数/缓存条数精确裁到上限、内存不会随抓包时长无限增长；统计聚合在满容量下仍远低于 1 秒",
-      "en": "Large-capture long-run stability: both the list and the cache are hard-capped at 5000 entries, so feeding excess traffic trims rows/cache precisely to the cap and memory no longer grows unbounded over long captures; stats aggregation stays well under 1 second even at full capacity"
+      "zh": "JSON 树视图新增 **「层级」菜单**：全部展开 / 展开到第 3 层 / 第 2 层 / 第 1 层 / 全部收起，逐层钻取大 JSON 而不用一步 expandAll 卡死；某个节点自身子节点超过 100 个时该分支保持折叠（仍可手动展开，只是不自动展开），避免几千行一次性铺开",
+      "en": "New Level menu in the JSON tree view: expand all / expand to level 3 / 2 / 1 / collapse all, so large JSON can be drilled into layer by layer instead of freezing on a one-shot expandAll; branches with more than 100 children stay folded (still expandable manually, just not auto-expanded) so thousands of rows never pour out at once"
     }
   ]
 }

@@ -1,8 +1,9 @@
 """用户脚本（插件）管理页（路线图 #10）：脚本的增删改 / 启停 / 状态。
 
 布局：上面一张表（名称 / 启用 / 大小 / 修改时间 / 状态），下面一排按钮，
-再往下是安全说明与钩子文档。刻意不做语法高亮编辑器——代码编辑用用户
-顺手的编辑器（「打开目录」一键过去），这里只管管理与启停。
+再往下是安全说明与钩子文档。新建/编辑弹窗内置 Python 语法高亮
+（app/ui/highlight.py 的 PythonHighlighter，随主题深浅切色）；
+仍保留「打开目录」一键用顺手的外部编辑器改代码。本页只管管理与启停。
 
 线程与生命周期：加载在代理启动 / 热替换时发生（app/scripts.py），
 本页只做文件管理与启用态；任何变更发 ``scripts_changed``，由主窗口
@@ -33,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from app.scripts import SCRIPT_TEMPLATE, ScriptsManager, valid_name
 from app.ui import dialogs
+from app.ui import highlight
 from app.ui import theme
 
 log = logging.getLogger(__name__)
@@ -93,6 +95,10 @@ class ScriptEditDialog(QDialog):
         font.setFamily("ui-monospace, SF Mono, Menlo, Consolas, monospace")
         self.code_edit.setFont(font)
         self.code_edit.setTabStopDistance(28)
+        # Python 语法高亮：随当前主题深浅切色
+        self._highlighter = highlight.PythonHighlighter(
+            self.code_edit.document())
+        self._highlighter.set_enabled(True, dark=theme.is_dark_app())
         layout.addWidget(self.code_edit, stretch=1)
 
         self.error_label = QLabel("")

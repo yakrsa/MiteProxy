@@ -50,8 +50,9 @@ macOS 与 Windows 双平台支持。
   - `.farx` 规则包（AutoResponder / Rules 导出）完整导入
   - `CustomRules.js` 启发式导入（典型 mock 模式，导入前可预览、可勾选）
 - **body 结构化视图**（对齐 Fiddler 的 JSON / WebForm / ImageView inspector）：请求与响应各有  
-  `自动 / 原文 / JSON / 表单 / 图片 / 十六进制 / SSE` 一排切换按钮（Fiddler 风格，非下拉），默认「自动」按 content-type 挑最合适的
+  `自动 / 原文 / JSON / 树 / 表单 / 图片 / 十六进制 / SSE` 一排切换按钮（Fiddler 风格，非下拉），默认「自动」按 content-type 挑最合适的
   - **SSE（Server-Sent Events）**：`text/event-stream` 自动识别并切到 SSE 视图，把逐条 `event / data / id / retry` 事件拆开渲染，便于看流式推送
+  - **树**：折叠树视图，三列 **键 | 类型 | 值**——类型列直接标 `object` / `array` / `string` / `number` / `boolean` / `null`，结构一眼看清；右上角「层级」菜单可**按层展开**（第 1/2/3 层或全部展开/收起），大 JSON 逐层钻取不会一步铺开几千行（子节点超过 100 个的分支保持折叠，可手动再展开）
   - **JSON**：缩进 2 空格 + 语法着色（key / 字符串 / 数字 / 布尔分色，深浅主题各一套）；中文原样显示不转义成 `\uXXXX`；key 顺序保持服务端返回顺序，便于和线上逐行对照
   - **WebForm**：`application/x-www-form-urlencoded` 自动展开成 key / value 表，**URL 已解码**（中文、空格、特殊字符直接可读），空值字段 `flag=` 也保留
   - **图片**：`image/*`（含 SVG）直接预览，显示格式 / 像素尺寸 / 体积，可切「适应窗口 / 25% / 50% / 100% / 200%」
@@ -192,12 +193,11 @@ python -m app.main
 
 > 图标随包提供：`packaging/icon.icns`（macOS）、`packaging/icon.ico`（Windows）。
 
-> ✅ `dist/` 下的 macOS 产物为 **v1.12 全功能版本**（2026-10-14 构建）：在 v1.11 基础上新增  
-> Mock 方法匹配与重定向、JSON 树懒加载、**API 调试页**（含从流量带入完整请求）、  
-> 12 项 bug 修复，并附使用教程 `TUTORIAL.md`。  
-> 冻结验收：offscreen 启动进程存活、代理端口监听正常、无 ImportError；  
-> `segno` 已通过 hiddenimports 钉入（二维码不会静默降级）。  
-> Windows 产物需在 Windows 上另行构建。
+> ✅ 仓库根的 `MiteProxy-v<版本>-macOS-arm64.zip` 是最新产物（当前 **v2.5.0**，2026-10-22 构建）：
+> 脚本编辑器 Python 语法高亮 + JSON 树视图 Fiddler 风格（类型列 / 按层级展开）。
+> 冻结验收：offscreen 启动进程存活、代理端口监听正常、`curl -x` 走代理 HTTP/HTTPS 均 200、
+> 新模块与译文均确认在包内、无 `app.*` 缺失模块。
+> Windows 产物需在 Windows 上另行构建（`build_windows.ps1`）。
 
 ## 导入 Fiddler 规则
 
@@ -486,6 +486,7 @@ mitmproxy 的 `-s script.py`：
   **`Addon` 类**（`class Addon: def response(self, flow): ...`）；
 - 可选 `ctx` 第一参：`def response(ctx, flow)` 会收到一个含脚本名的 dict，方便在日志里区分是哪个脚本；
 - 在「**脚本**」页里增删改、启停；保存后**热替换**，运行中不用重启代理；
+- 弹窗里写代码带 **Python 语法高亮**（关键字 / 字符串 / 注释 / 数字 / `def`·`class` 名 / 装饰器 / 常用内置分别着色，三引号跨行不断层，随深浅主题切配色），保存前还会先做一遍语法检查，语法错的脚本落不了盘；
 - 单个脚本写错只会被隔离（记日志、在状态列显示错误），**不会拖垮其他脚本和代理主流程**；
 - 安全边界（如实说明，不假装沙箱）：脚本在**本进程内**运行，与主程序同等权限——能读抓包内容、
   改流量、动文件。**只把脚本目录交给可信的人**，应用能保证的只有「单个脚本报错被隔离」这一条。
