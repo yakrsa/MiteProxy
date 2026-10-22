@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import platform
 import subprocess
 
@@ -32,6 +33,20 @@ _TIMEOUT_S = 15
 
 #: Windows 独有常量（macOS/Linux 的 subprocess 没有这个属性，需 getattr 防护）
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def _write_state(payload: dict) -> None:
+    """接管状态落盘（原子写 + 抛 OSError 由调用方决定怎么回滚）。
+
+    必须让调用方感知失败：系统代理已经改了却没留下快照的话，之后没法
+    还原，用户系统代理会被永久挂在死端口上——所以这里不吞异常。
+    """
+    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = STATE_PATH.with_suffix(".json.tmp")
+    tmp.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    os.replace(tmp, STATE_PATH)
 
 
 def _run(cmd: list[str], timeout: int = _TIMEOUT_S) -> tuple[int, str, str]:
@@ -183,11 +198,21 @@ def _macos_takeover(port: int, run, elevate: bool) -> tuple[bool, str]:
                     )
                 return False, QCoreApplication.translate("sysproxy", '设置 {0} 代理失败: {1}').format(svc, err.strip() or rc)
             changed.append((svc, secure))
-    STATE_PATH.write_text(
-        json.dumps({"platform": "darwin", "port": port, "services": saved},
-                   ensure_ascii=False, indent=1),
-        encoding="utf-8",
-    )
+    try:
+        _write_state({"platform": "darwin", "port": port, "services": saved})
+    except OSError as e:
+        # 系统代理**已经改了**，但快照没落盘 → 之后 restore() 找不到记录，
+        # 只能靠端口兜底扫，扫不干净就把用户系统代理永久留在死端口上。
+        # 宁可现在把改动回滚掉，也不能留一个还原不了的接管。
+        log.error("接管状态落盘失败，回滚已改动的服务: %s", e)
+        for done_svc, done_secure in reversed(changed):
+            orig = saved[done_svc]["secure" if done_secure else "web"]
+            _macos_set(
+                run, done_svc, done_secure,
+                orig["server"], orig["port"], orig["enabled"],
+            )
+        return False, QCoreApplication.translate(
+            "sysproxy", '接管状态无法写入（{0}），已回滚').format(e)
     return True, QCoreApplication.translate("sysproxy", '已接管 {0} 个网络服务的系统代理').format(len(services))
 
 
@@ -200,11 +225,12 @@ def _win_takeover(port: int, run) -> tuple[bool, str]:
     if rc != 0:
         return False, QCoreApplication.translate("sysproxy", '写注册表失败: {0}').format(err.strip())
     run(["reg", "add", _WIN_KEY, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f"])
-    STATE_PATH.write_text(
-        json.dumps({"platform": "windows", "port": port, "saved": saved},
-                   ensure_ascii=False, indent=1),
-        encoding="utf-8",
-    )
+    try:
+        _write_state({"platform": "windows", "port": port, "saved": saved})
+    except OSError as e:
+        log.error("接管状态落盘失败: %s", e)
+        return False, QCoreApplication.translate(
+            "sysproxy", '接管状态无法写入（{0}），请手动检查系统代理').format(e)
     return True, QCoreApplication.translate("sysproxy", "已接管系统代理")
 
 
@@ -218,14 +244,17 @@ def restore(run=_run, port: int | None = None) -> tuple[bool, str]:
     """
     if not STATE_PATH.exists():
         if port is not None:
-            return _clear_local_proxy(run, port)
+            # 只对外暴露 (ok, 文案)；第三位"是否真的动了"是内部判断用
+            ok, msg, _cleared = _clear_local_proxy(run, port)
+            return ok, msg
         return True, QCoreApplication.translate("sysproxy", "无接管记录")
     try:
         state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         STATE_PATH.unlink(missing_ok=True)
         if port is not None:
-            return _clear_local_proxy(run, port)
+            ok, msg, _cleared = _clear_local_proxy(run, port)
+            return ok, msg
         return False, QCoreApplication.translate("sysproxy", '接管记录损坏，跳过还原: {0}').format(e)
 
     if state.get("platform") == "windows":
@@ -254,11 +283,15 @@ def restore(run=_run, port: int | None = None) -> tuple[bool, str]:
     return True, QCoreApplication.translate("sysproxy", "已还原系统代理")
 
 
-def _clear_local_proxy(run, port: int) -> tuple[bool, str]:
+def _clear_local_proxy(run, port: int) -> tuple[bool, str, bool]:
     """无快照兜底：关闭所有指向 127.0.0.1:port 的系统代理。
 
     只精确匹配本机回环地址 + 我们的端口——用户手动配的其他代理
     （哪怕也是 127.0.0.1 但端口不同）一律不动。
+
+    返回 ``(ok, 文案, 是否真的动了系统代理)``。第三位给调用方做逻辑判断
+    用：早期版本要在文案里搜「兜底」二字来区分，界面切英文后那个子串
+    消失，判断恒假——程序行为不该随语言变化。
     """
     changed = 0
     if platform.system() == "Windows":
@@ -281,8 +314,10 @@ def _clear_local_proxy(run, port: int) -> tuple[bool, str]:
                     _macos_set(run, svc, secure, "", 0, False)
                     changed += 1
     if changed:
-        return True, QCoreApplication.translate("sysproxy", '已还原系统代理（无接管记录，按端口 {0} 兜底关闭）').format(port)
-    return True, QCoreApplication.translate("sysproxy", "无接管记录")
+        return True, QCoreApplication.translate(
+            "sysproxy", '已还原系统代理（无接管记录，按端口 {0} 兜底关闭）'
+        ).format(port), True
+    return True, QCoreApplication.translate("sysproxy", "无接管记录"), False
 
 
 def recover_if_needed(run=_run, port: int | None = None) -> bool:
@@ -290,8 +325,8 @@ def recover_if_needed(run=_run, port: int | None = None) -> bool:
     if not STATE_PATH.exists():
         # 快照不存在也可能有残留接管（快照被外部删除等），按端口兜底扫一遍
         if port is not None:
-            ok, msg = _clear_local_proxy(run, port)
-            if QCoreApplication.translate("sysproxy", "兜底") in msg:
+            ok, msg, cleared = _clear_local_proxy(run, port)
+            if cleared:                 # 用布尔值判断，别去文案里搜字
                 log.info("崩溃恢复系统代理: %s", msg)
                 return ok
         return False

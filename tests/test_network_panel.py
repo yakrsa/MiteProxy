@@ -186,7 +186,10 @@ class TestSettingsPersistence:
         s = load_settings()
         assert s.throttle.preset == "off"
         assert s.map_rules == []
-        assert s.auto_save_session is True
+        # 缺键时的缺省必须与字段默认值一致（from_dict 曾用 True，与
+        # dataclass 的 False 打架：全新装默认关、老用户升级默认开）
+        assert s.auto_save_session is False
+        assert s.auto_save_session == Settings().auto_save_session
 
     def test_junk_in_map_rules_ignored(self, tmp_path, monkeypatch):
         path = tmp_path / "settings.json"

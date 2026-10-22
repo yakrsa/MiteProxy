@@ -52,6 +52,7 @@ class ProxyService:
         port: int = 8080,
         addons: list | None = None,
         options: dict | None = None,
+        on_state_change=None,
     ):
         self.host = host
         self.port = port
@@ -62,6 +63,12 @@ class ProxyService:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         #: 用户脚本 addon（app/scripts.py）：热替换时先摘旧的再挂新的
         self._script_addons: list = []
+        #: 生命周期回调 ``(running: bool, message: str)``。在 asyncio 线程里
+        #: 被调用——回调实现必须自己保证线程安全（本项目传的是 Qt 信号 emit）。
+        #: 没有它，代理线程异常退出时 UI 会一直显示"运行中"（静默丢数据）
+        self._on_state_change = on_state_change
+        #: 本次运行的退出原因（""/空串 = 正常退出），start() 时重置
+        self._exit_reason = ""
 
     # ------------------------------------------------------------------ API
 
@@ -86,6 +93,7 @@ class ProxyService:
                 QCoreApplication.translate("ProxyService", '从端口 {0} 起连续 {1} 个端口均不可用').format(requested, PORT_SCAN_TRIES)
             )
         self.port = chosen
+        self._exit_reason = ""
         if chosen != requested:
             log.warning("端口 %s 被占用，代理自动改用 %s", requested, chosen)
         self._thread = threading.Thread(
@@ -251,7 +259,30 @@ class ProxyService:
     # -------------------------------------------------------------- internal
 
     def _thread_main(self) -> None:
-        asyncio.run(self._amain())
+        try:
+            asyncio.run(self._amain())
+        except BaseException as e:          # noqa: BLE001 - 死也要通知 UI
+            # 只有 _amain 自己没接住的才会到这里（DumpMaster 构造失败等）
+            self._exit_reason = f"{type(e).__name__}: {e}"
+            log.exception("代理线程终止")
+        finally:
+            self._notify_state(False, self._exit_reason)
+
+    def _notify_state(self, running: bool, message: str = "") -> None:
+        """把生命周期变化交给回调（在 asyncio 线程执行）。
+
+        退出通知只在"自己仍是官方线程"时发：stop() 后立刻 start() 时，
+        旧线程的 finally 可能晚于新线程启动，误报会把新状态冲掉。
+        """
+        cb = self._on_state_change
+        if cb is None:
+            return
+        if not running and self._thread is not threading.current_thread():
+            return
+        try:
+            cb(running, message)
+        except Exception:
+            log.exception("通知代理状态变化失败")
 
     async def _amain(self) -> None:
         loop = asyncio.get_running_loop()
@@ -269,8 +300,14 @@ class ProxyService:
                 log.exception("应用启动选项失败: %s", self._options)
         self._master = master
         try:
+            # 先报「已就绪」再进 run()：run() 正常会一直阻塞到 shutdown()，
+            # 返回即意味着退出。放在这里而不是 start() 里，是因为
+            # DumpMaster 构造（证书损坏等）可能抛异常——那种情况根本到不了
+            # 这一行，只能靠 _thread_main 的收尾报失败
+            self._notify_state(True)
             await master.run()
-        except Exception:
+        except Exception as e:
+            self._exit_reason = f"{type(e).__name__}: {e}"
             log.exception("代理线程异常退出")
         finally:
             # mitmproxy 的 ProxyServer addon 没有 done() 钩子：master.run()

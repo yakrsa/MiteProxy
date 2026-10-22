@@ -40,6 +40,7 @@ from app.ui.flow_store import (
     COL_STATUS,
     column_index,
 )
+from app.ui.visuals import MethodBadgeDelegate, StatusBadgeDelegate
 
 
 class FilterBar(QWidget):
@@ -244,6 +245,10 @@ class TrafficTable(QTableView):
         header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         header.customContextMenuRequested.connect(self.column_menu_requested)
         self.setSortingEnabled(True)
+        # 方法 / 状态码画成圆角 pill（HTTP 语义色），一眼分得清哪张有问题。
+        # 委托里背景仍交给 style 画，错误红行 / mock 绿行 / 选中蓝底不受影响。
+        self.setItemDelegateForColumn(COL_METHOD, MethodBadgeDelegate(self))
+        self.setItemDelegateForColumn(COL_STATUS, StatusBadgeDelegate(self))
         # 注意：列宽策略不能只在这里设一次——QHeaderView::setModel() 会把
         # 按列设置的 resize 模式与宽度全部重置回默认（120px），而主窗口是
         # 构造之后才 setModel()。所以真正的配置在 setModel() 里做。
@@ -259,7 +264,8 @@ class TrafficTable(QTableView):
         header.setMinimumSectionSize(24)
         header.setDefaultSectionSize(120)
         self.setColumnWidth(COL_ID, 40)
-        self.setColumnWidth(COL_METHOD, 56)
+        # 方法列要容得下最长的 CONNECT（pill = 文本宽 + 左右内边距）
+        self.setColumnWidth(COL_METHOD, 72)
         self.setColumnWidth(COL_HOST, 220)
         self.setColumnWidth(COL_SERVER_IP, 110)
         self.setColumnWidth(COL_PATH, 440)
@@ -280,6 +286,22 @@ class TrafficTable(QTableView):
             return False
         self.setColumnHidden(idx, bool(hidden))
         return True
+
+    def first_visible_column(self) -> int:
+        """第一个没被隐藏的列号（跳转/滚动定位用）。
+
+        ``scrollTo`` 传一个隐藏列的 index 时 ``visualRect`` 是空的，
+        QAbstractItemView 会直接 return——行选上了但视口纹丝不动，用户
+        以为跳转没反应。「#」列可以被用户勾掉，所以定位不能写死列 0。
+        极端情况下（全被隐藏）退回 0，至少不炸。
+        """
+        model = self.model()
+        if model is None:
+            return 0
+        for col in range(model.columnCount()):
+            if not self.isColumnHidden(col):
+                return col
+        return 0
 
     def setModel(self, model):  # noqa: N802
         """接入模型后清掉初始排序指示（section=-1 → 保持抓包到达顺序）。

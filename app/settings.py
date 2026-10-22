@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -220,7 +221,9 @@ class Settings:
             mcp_host=_host(data.get("mcp_host", DEFAULT_MCP_HOST)),
             mcp_write_enabled=bool(data.get("mcp_write_enabled", False)),
             map_rules=rules_from_dicts(data.get("map_remote")),
-            auto_save_session=bool(data.get("auto_save_session", True)),
+            # 缺省必须与字段默认值一致（False）——早先这里写 True，导致
+            # 全新安装默认关、老用户升级后默认开，同一版本两种行为
+            auto_save_session=bool(data.get("auto_save_session", False)),
             last_session_dir=str(data.get("last_session_dir") or ""),
             auto_scroll=bool(data.get("auto_scroll", True)),
             newest_first=bool(data.get("newest_first", False)),
@@ -305,7 +308,11 @@ def load_settings() -> Settings:
         return Settings()
 
 
-def save_settings(settings: Settings) -> None:
+log = logging.getLogger(__name__)
+
+
+def save_settings(settings: Settings) -> bool:
+    """落盘；返回是否成功（失败只记日志，不改调用方的控制流）。"""
     try:
         SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
         tmp = SETTINGS_PATH.with_suffix(".json.tmp")
@@ -314,5 +321,10 @@ def save_settings(settings: Settings) -> None:
             encoding="utf-8",
         )
         os.replace(tmp, SETTINGS_PATH)
+        return True
     except OSError:
-        pass  # 设置写入失败不致命
+        # 不致命（内存态已生效），但**不能一声不吭**：端口、断点、隐藏列、
+        # 过滤预设这些改动用户以为存住了，下次启动全回退却没人告诉他。
+        # 常见诱因：磁盘满 / 配置目录只读 / 被安全软件拦截。
+        log.exception("设置写入失败：%s（改动仅在本次会话有效）", SETTINGS_PATH)
+        return False

@@ -11,6 +11,8 @@ import logging
 import time
 from typing import Callable, Optional
 
+from app.replay import format_request_url
+
 log = logging.getLogger(__name__)
 
 MAX_FLOWS = 5000  # 默认保留条数（UI 可调，见 app/settings.FLOW_LIMIT_CHOICES）
@@ -237,8 +239,14 @@ class CaptureAddon:
 
         配合 flow_store 的 append（请求）→ update（响应）语义：response 必晚于
         request，列表里已有同 id 的 pending 行，update 按 id 原地替换，不会重复。
+
+        **插入端也要淘汰**：只有 `response()` 淘汰的话，永远收不到响应的
+        会话（HTTPS 的 CONNECT 隧道、连接被重置/超时走 error 的请求）会
+        永久驻留在这个 dict 里——列表那边有 5000 上限，这里没有，长时间
+        抓 HTTPS 站点就是实打实的内存泄漏。
         """
         self.flows[flow.id] = flow
+        self._evict()
         self._emit_flow(flow)
 
     def response(self, flow) -> None:
@@ -267,11 +275,13 @@ class CaptureAddon:
         产出，之后每条消息在这里**增量更新同一行**。
         """
         self.flows.setdefault(flow.id, flow)
+        self._evict()
         self._emit_update(flow)
 
     def websocket_end(self, flow) -> None:
         """连接关闭：补上关闭码与最终耗时。"""
         self.flows.setdefault(flow.id, flow)
+        self._evict()
         self._emit_update(flow)
 
     def _emit_update(self, flow) -> None:
@@ -333,7 +343,11 @@ class CaptureAddon:
             "host": req.pretty_host,
             "server_ip": extract_server_ip(flow),
             "path": req.path,
-            "url": req.pretty_url,
+            # 用 format_request_url 而不是 pretty_url：后者对 IPv6 不加方括号
+            # （`http://::1:8080/x`），这条 URL 会落进会话存档、显示在列表、
+            # 参与过滤搜索和 tooltip——恢复出来的会话会带着一个解析不了的
+            # 畸形 URL（详见 app/replay.py 的说明）
+            "url": format_request_url(req),
             "status": status,
             "size": size,
             "req_size": req_size,
@@ -384,8 +398,8 @@ class CaptureAddon:
     def set_max_flows(self, limit: int, trim_now: bool = False) -> None:
         """改保留条数上限。
 
-        `response()` 跑在 mitmproxy 的 asyncio 线程，UI 线程只能改这个整数
-        （赋值是原子的），真正的淘汰交给下次 `response()` 里的 `_evict()`；
+        `response()` / `request()` 跑在 mitmproxy 的 asyncio 线程，UI 线程只能
+        改这个整数（赋值是原子的），真正的淘汰交给下次钩子里的 `_evict()`；
         代理已停止时才允许 `trim_now=True` 直接裁——避免跨线程遍历 dict。
         """
         self._max_flows = max(1, int(limit))

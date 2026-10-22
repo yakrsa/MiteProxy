@@ -118,11 +118,12 @@ from app.ui.replay_dialog import ReplayEditDialog
 from app.ui.rules_panel import RulesPanel
 from app.ui.rule_editor import RuleEditorDialog
 from app.ui.settings_dialog import SettingsDialog
-from app.ui.signals import FlowBridge
+from app.ui.signals import FlowBridge, UiInvoker
 from app.ui.log_panel import LogPanel
 from app.ui.stats_panel import StatsPanel
 from app.ui.scripts_panel import ScriptsPanel
 from app.ui.traffic_table import FilterBar, SearchBar, TrafficTable
+from app.ui.visuals import StatusDotLabel
 from app.ui import dialogs
 from app.ui import theme
 from app.scripts import ScriptsManager
@@ -179,14 +180,25 @@ class MainWindow(QMainWindow):
         # MCP：注入取会话的回调，服务不反向依赖 Qt / capture。
         # 写操作（add_mock_rule / replay_flow / set_breakpoint）默认关，
         # 由设置的 mcp_write_enabled 门控（McpServer.write_enabled 可变）
+        # 写操作回调跑在 MCP 的 HTTP 工作线程里，必须排回 Qt 主线程再执行
+        # （碰工具栏按钮 / 规则表都是未定义行为）——统一包一层，别指望
+        # 每个回调自己记得：加新写工具时漏包就埋雷
+        self.ui_invoker = UiInvoker(self)
         self.mcp = McpServer(
             flow_provider=self._mcp_flows, port=self.settings.mcp_port,
             host=self.settings.mcp_host, flow_by_id=self._mcp_flow_by_id,
             write_enabled=self.settings.mcp_write_enabled,
             write_ops={
-                "add_mock_rule": self._mcp_add_mock_rule,
-                "replay_flow": self._mcp_replay_flow,
-                "set_breakpoint": self._mcp_set_breakpoint,
+                name: (
+                    lambda args, _fn=fn: self.ui_invoker.invoke(
+                        lambda: _fn(args)
+                    )
+                )
+                for name, fn in (
+                    ("add_mock_rule", self._mcp_add_mock_rule),
+                    ("replay_flow", self._mcp_replay_flow),
+                    ("set_breakpoint", self._mcp_set_breakpoint),
+                )
             },
         )
         self.mock = MockAddon(self.rule_store)
@@ -549,7 +561,7 @@ class MainWindow(QMainWindow):
         for w in (self.count_label, self.proxy_state_label, self.cert_state_label):
             self.status_bar.addPermanentWidget(w)
         # Fiddler 式左下角抓包状态：绿点=接管系统代理抓包中，点击切换
-        self.capture_label = QLabel("")
+        self.capture_label = StatusDotLabel()
         self.capture_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.capture_label.setToolTip(
             self.tr("点击开始/停止抓包（接管或还原系统代理，与工具栏「设为系统代理」联动）")
@@ -820,6 +832,7 @@ class MainWindow(QMainWindow):
         self.bridge.rule_error.connect(self.rules_panel.update_rule_error)
         self.bridge.sysproxy_done.connect(self._on_sysproxy_done)
         self.bridge.flow_intercepted.connect(self._on_flow_intercepted)
+        self.bridge.proxy_state_changed.connect(self._on_proxy_state_changed)
         self.filter_bar.changed.connect(self._on_filter_changed)
         self.filter_bar.preset_menu_about_to_show.connect(self._rebuild_preset_menu)
         self.scripts_panel.scripts_changed.connect(self._on_scripts_changed)
@@ -878,6 +891,13 @@ class MainWindow(QMainWindow):
             addons=[self.breakpoint, self.mock, self.maplocal,
                     self.throttle, self.capture, *self._build_script_addons()],
             options={"map_remote": specs},
+            # 代理线程的真实生死：DumpMaster 构造失败（证书损坏等）或
+            # run() 中途异常时，靠它把 UI 从"运行中"拉回来——否则用户
+            # 以为在抓包，实际一条都没记。回调在 asyncio 线程执行，
+            # 这里只 emit 信号（跨线程 emit 由 Qt 排到主线程）
+            on_state_change=lambda running, msg: (
+                self.bridge.proxy_state_changed.emit(bool(running), str(msg or ""))
+            ),
         )
 
     def _build_script_addons(self) -> list:
@@ -896,7 +916,10 @@ class MainWindow(QMainWindow):
         if self.proxy.running:
             self.stop_proxy()
         else:
-            self.start_proxy(verify=False)   # 手动启动失败已由按钮态自明，无需弹窗
+            # verify=True：启动后 700ms 回查线程是否还活着。手动启动也要
+            # 校验——按钮态在失败时并不会"自明"（DumpMaster 构造失败发生在
+            # 子线程，UI 已经乐观置成"停止代理"了），不校验就是零反馈
+            self.start_proxy(verify=True)
             
     def start_proxy(self, verify: bool = False) -> bool:
         """启动代理（幂等）。verify=True 时异步校验是否真正监听成功。
@@ -960,34 +983,67 @@ class MainWindow(QMainWindow):
     def _sysproxy_enabled(self) -> bool:
         return self.sysproxy_cb.isChecked()
 
+    def _sysproxy_worker(self, name: str, fn) -> None:
+        """后台跑系统代理操作（networksetup 逐服务执行，可能几秒，别卡 UI）。
+
+        异常必须兜住并回报：networksetup 可能被 TCC/沙箱拦截，状态文件
+        也可能写不进。不兜的话线程静默死亡、``sysproxy_done`` 永不 emit，
+        用户看不到任何结果——更糟的是接管**已经改了系统代理**、状态文件
+        却没落盘，之后退出时因找不到快照而还原不掉，把用户的系统代理
+        永久留在死端口上。
+        """
+        def work():
+            try:
+                ok, msg = fn()
+            except Exception as e:      # noqa: BLE001 - 兜住后转成状态栏提示
+                log.exception("系统代理操作异常")
+                ok, msg = False, f"{type(e).__name__}: {e}"
+            self.bridge.sysproxy_done.emit(ok, msg)
+
+        threading.Thread(target=work, daemon=True, name=name).start()
+
     def _takeover_sysproxy_async(self) -> None:
-        """后台接管系统代理（networksetup 逐服务执行，可能要几秒，别卡 UI）。"""
         if not self._sysproxy_enabled():
             return
 
-        def work():
+        def do():
             with self._sysproxy_lock:
-                ok, msg = sysproxy.takeover(self.proxy.port)
-            self.bridge.sysproxy_done.emit(ok, msg)
+                return sysproxy.takeover(self.proxy.port)
 
-        threading.Thread(target=work, daemon=True, name="sysproxy-takeover").start()
+        self._sysproxy_worker("sysproxy-takeover", do)
 
     def _restore_sysproxy_async(self) -> None:
         port = self.proxy.port
 
-        def work():
+        def do():
             with self._sysproxy_lock:
-                ok, msg = sysproxy.restore(port=port)
-            if msg != QCoreApplication.translate("MainWindow", "无接管记录"):
+                return sysproxy.restore(port=port)
+
+        # 无接管记录时不必打扰用户（启动/停止都会走这里，绝大多数是 no-op）
+        noop_msg = QCoreApplication.translate("MainWindow", "无接管记录")
+
+        def work():
+            try:
+                ok, msg = do()
+            except Exception as e:      # noqa: BLE001
+                log.exception("还原系统代理异常")
+                self.bridge.sysproxy_done.emit(False, f"{type(e).__name__}: {e}")
+                return
+            if msg != noop_msg:
                 self.bridge.sysproxy_done.emit(ok, msg)
 
         threading.Thread(target=work, daemon=True, name="sysproxy-restore").start()
 
     def _restore_sysproxy_sync(self) -> None:
         """退出路径用同步还原：必须还原完再关窗口。"""
-        with self._sysproxy_lock:
-            ok, msg = sysproxy.restore(port=self.proxy.port)
-        if ok and msg != self.tr("无接管记录"):
+        try:
+            with self._sysproxy_lock:
+                ok, msg = sysproxy.restore(port=self.proxy.port)
+        except Exception:               # noqa: BLE001 - 退出路径不能因它崩
+            log.exception("退出时还原系统代理失败")
+            return
+        # 这里跑在退出线程，self.tr() 是 QWidget 的，跨线程调不安全
+        if ok and msg != QCoreApplication.translate("MainWindow", "无接管记录"):
             log.info("系统代理已还原: %s", msg)
 
     def _on_sysproxy_done(self, ok: bool, msg: str) -> None:
@@ -1016,8 +1072,13 @@ class MainWindow(QMainWindow):
                 ).start()
 
     def _sysproxy_elevated_takeover(self) -> None:
-        with self._sysproxy_lock:
-            ok, msg = sysproxy.takeover(self.proxy.port, elevate=True)
+        """提权重试（弹 macOS 密码框）；失败也走 sysproxy_done 回报。"""
+        try:
+            with self._sysproxy_lock:
+                ok, msg = sysproxy.takeover(self.proxy.port, elevate=True)
+        except Exception as e:          # noqa: BLE001
+            log.exception("提权接管系统代理异常")
+            ok, msg = False, f"{type(e).__name__}: {e}"
         self.bridge.sysproxy_done.emit(ok, msg)
 
     def _on_sysproxy_toggled(self, checked: bool) -> None:
@@ -1029,6 +1090,33 @@ class MainWindow(QMainWindow):
                 self._takeover_sysproxy_async()
             else:
                 self._restore_sysproxy_async()
+
+    def _on_proxy_state_changed(self, running: bool, message: str) -> None:
+        """代理线程的真实生死（asyncio 线程 emit，Qt 排到主线程执行）。
+
+        False 且 UI 还以为在跑 → 这是最坏的失败模式：按钮停在"停止代理"、
+        状态栏显示运行中，但一条流量都不会来。必须复位 + 明确告知。
+        """
+        if running:
+            return
+        if not self.proxy_btn.isChecked():
+            return                      # 已经在停止态（用户主动停的），no-op
+        log.error("代理线程已退出，UI 状态复位: %s", message or "（无附加信息）")
+        self.proxy_btn.setText(self.tr("启动代理"))
+        self.proxy_btn.setChecked(False)
+        self._update_status()
+        # 可能刚接管完系统代理就挂了，补还原，否则系统代理残留在死端口上
+        self._restore_sysproxy_async()
+        dialogs.critical(
+            self,
+            self.tr("代理已停止"),
+            self.tr(
+                "抓包进程意外退出，可能原因：\n"
+                "- 端口被其他程序占用\n"
+                "- CA 证书损坏或权限不足（可到「设置 → 证书」重建）\n"
+                "- mitmproxy 内部错误\n\n{0}"
+            ).format(message or self.tr("（无详细信息，见应用日志）")),
+        )
 
     def _verify_proxy_started(self) -> None:
         if not self.proxy_btn.isChecked():
@@ -1046,9 +1134,11 @@ class MainWindow(QMainWindow):
         self._restore_sysproxy_async()   # 可能刚接管完代理就挂了，补还原
         dialogs.critical(
             self,
-            "代理启动失败",
-            f"端口 {self.settings.proxy_port} 可能已被占用，或权限不足。\n"
-            "请在工具栏换一个端口后重试。",
+            self.tr("代理启动失败"),
+            self.tr(
+                "端口 {0} 可能已被占用，或权限不足。\n"
+                "请在「设置 → 偏好设置 → 代理」里换一个端口后重试。"
+            ).format(self.settings.proxy_port),
         )
 
     def _on_flow_limit_changed(self) -> None:
@@ -1661,8 +1751,11 @@ class MainWindow(QMainWindow):
         current = self.traffic_table.selectionModel().selectedRows()
         current_row = current[0].row() if current else -1
         next_row = (current_row + delta) % model.rowCount()
-        self.traffic_table.selectRow(next_row)
-        self.traffic_table.scrollTo(model.index(next_row, 0))
+        # 用首个可见列定位：列 0（「#」）可被用户勾掉，隐藏列上 scrollTo
+        # 是空操作，行选中了却不滚动，看着像跳转失灵
+        col = self.traffic_table.first_visible_column()
+        self.traffic_table.setCurrentIndex(model.index(next_row, col))
+        self.traffic_table.scrollTo(model.index(next_row, col))
 
     # ================================================================ 重放
 
@@ -2079,7 +2172,9 @@ class MainWindow(QMainWindow):
         flows = self._selected_flows()
         if not flows:
             return
-        urls = [getattr(f.request, "pretty_url", "") or "" for f in flows]
+        # 复制出来是要粘到浏览器/命令行里用的，IPv6 必须带方括号
+        # （pretty_url 拼出 http://::1:8080/x 这种解析不了的串）
+        urls = [format_request_url(f.request) for f in flows]
         urls = [u for u in urls if u]
         if not urls:
             return
@@ -2642,6 +2737,14 @@ class MainWindow(QMainWindow):
         切回来由 ``_on_tab_changed`` 补一次，数据不会过期。"""
         if self.tabs.currentWidget() is not self.stats_panel:
             return
+        # 先标范围再聚合：过滤生效时统计仍是全量口径（与 MCP get_stats
+        # 同源），不注明的话用户会以为数字和状态栏对不上是算错了
+        try:
+            self.stats_panel.set_scope(
+                len(self.flow_store.rows), self.proxy_model.rowCount()
+            )
+        except Exception:
+            log.exception("更新统计范围说明失败")
         self.stats_panel.refresh()
 
     def _on_tab_changed(self, index) -> None:
@@ -2663,7 +2766,11 @@ class MainWindow(QMainWindow):
         if row is None:
             return
         self.tabs.setCurrentWidget(self.traffic_page)
+        # mapFromSource 只能拿到逻辑列 0，隐藏时它不可见——换成首个可见列，
+        # 否则 scrollTo 无效（行选中了但停在视口外）
         idx = self.proxy_model.mapFromSource(self.flow_store.index(row, 0))
+        if idx.isValid():
+            idx = idx.siblingAtColumn(self.traffic_table.first_visible_column())
         if not idx.isValid():
             self.status_bar.showMessage(
                 self.tr("该会话被当前过滤条件隐藏，已切回流量页"), 3000
@@ -2776,11 +2883,24 @@ class MainWindow(QMainWindow):
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
+        # 关掉就摘引用：每个 CompareDialog 都持有两条完整 flow（含 body），
+        # 只靠下面的 KEEP 截断会一直强引用着最后 N 个已关闭的对话框，
+        # 大响应场景下几百 MB 就这么常驻到进程退出
+        dialog.finished.connect(
+            lambda _r, d=dialog: self._drop_compare_dialog(d)
+        )
         self._compare_dialogs.append(dialog)
         # 只保留最近几个，避免开太多不关慢慢攒内存
         for stale in self._compare_dialogs[:-COMPARE_DIALOG_KEEP]:
             stale.close()
         self._compare_dialogs = self._compare_dialogs[-COMPARE_DIALOG_KEEP:]
+
+    def _drop_compare_dialog(self, dialog) -> None:
+        try:
+            self._compare_dialogs.remove(dialog)
+        except ValueError:
+            pass
+        dialog.deleteLater()
 
     # ================================================================ 状态
 
@@ -2827,21 +2947,30 @@ class MainWindow(QMainWindow):
 
         由 `_update_status` 统一调用——代理启停、主题切换（theme listener 指向
         `_update_status`）都会走到这里，颜色自动跟随主题。
+        前面的圆点是画出来的（不是文案里的 ●/○ 字符——那种写法在不同字体
+        下会变成方块或错位，见 visuals.StatusDotLabel）。
         """
         if self.proxy.running:
             if self._sysproxy_enabled():
                 self.capture_label.setText(
-                    self.tr('● 抓包中（系统代理 127.0.0.1:{0}）').format(self.settings.proxy_port)
+                    self.tr('抓包中（系统代理 127.0.0.1:{0}）').format(self.settings.proxy_port)
                 )
+                self.capture_label.set_dot("ok")
                 self.capture_label.setStyleSheet(
-                    f"color: {theme.css('ok')}; font-weight: bold;"
+                    self.capture_label.dot_style("ok", "font-weight: bold;")
                 )
             else:
-                self.capture_label.setText(self.tr("○ 抓包暂停（未接管系统代理）"))
-                self.capture_label.setStyleSheet(f"color: {theme.css('warn')};")
+                self.capture_label.setText(self.tr("抓包暂停（未接管系统代理）"))
+                self.capture_label.set_dot("warn")
+                self.capture_label.setStyleSheet(
+                    self.capture_label.dot_style("warn")
+                )
         else:
-            self.capture_label.setText(self.tr("○ 未抓包（代理未运行）"))
-            self.capture_label.setStyleSheet(f"color: {theme.css('hint')};")
+            self.capture_label.setText(self.tr("未抓包（代理未运行）"))
+            self.capture_label.set_dot("hint")
+            self.capture_label.setStyleSheet(
+                self.capture_label.dot_style("hint")
+            )
 
     def _on_capture_clicked(self) -> None:
         """点击左下角状态切换抓包（对齐 Fiddler 点 Capturing）。
@@ -2855,8 +2984,17 @@ class MainWindow(QMainWindow):
             self.start_proxy()
 
     def _on_rules_changed(self) -> None:
-        # 规则变更即时生效：mock 引擎每请求都实时读 RuleStore（见 3.3 匹配流程）
-        pass
+        """规则库变了 → 表格跟着变。
+
+        不能是空实现：MCP 的 ``add_mock_rule`` 是从外部往库里加规则的，
+        表格不刷新的话用户看到的还是旧列表，此时点「编辑/删除」会按
+        **旧行号**映射到新列表的另一条规则上，静默改错。
+        规则生效不靠这里（mock 引擎每请求实时读库），这里只管显示。
+
+        走 singleShot(0) 而不是直接 refresh：避免在规则库自己的锁/回调
+        链里重入表格重建，也顺带保证一定跑在主线程。
+        """
+        QTimer.singleShot(0, self.rules_panel.refresh)
 
     def _show_feedback(self) -> None:
         from app.ui.feedback_dialog import FeedbackDialog

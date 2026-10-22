@@ -213,14 +213,36 @@ class StatsPanel(QWidget):
         self.histogram_box, self.histogram = self._build_timeline_box()
         root.addWidget(self.histogram_box)
 
+        # 动态范围说明：过滤/搜索生效时，状态栏说"显示 12 条"而统计页按
+        # 全量聚合，不写清楚用户会以为数字算错了。聚合口径刻意不变
+        # （与 MCP get_stats 同源、不随过滤栏抖动），只把范围写在脸上
+        self.scope_label = QLabel()
+        self.scope_label.setWordWrap(True)
+        self.scope_label.setStyleSheet(f"color: {theme.css('hint')};")
+        root.addWidget(self.scope_label)
+
         hint = QLabel(QCoreApplication.translate("StatsPanel", PANEL_HINT))
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {theme.css('hint')};")
         root.addWidget(hint)
-        self._hint_labels = [hint]
+        self._hint_labels = [self.scope_label, hint]
 
         theme.add_listener(self._retheme)
         self.refresh()
+
+    def set_scope(self, total: int, shown: int) -> None:
+        """更新范围说明（主窗口刷新统计前调用）。"""
+        if shown < total:
+            self.scope_label.setText(
+                self.tr(
+                    "统计范围：流量列表全部 {0} 条"
+                    "（过滤/搜索当前只显示 {1} 条，统计不受其影响）"
+                ).format(total, shown)
+            )
+        else:
+            self.scope_label.setText(
+                self.tr("统计范围：流量列表全部 {0} 条").format(total)
+            )
 
     # ------------------------------------------------------------ 构建
 
