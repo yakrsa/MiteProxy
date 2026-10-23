@@ -64,6 +64,13 @@ _TS_RE = re.compile(
 )
 _TIME_RE = re.compile(r"^(?P<hh>\d{2}):(?P<mm>\d{2}):(?P<ss>\d{2})(?:\.(?P<frac>\d+))?")
 
+#: SOH 的转义形式（日志导出 / JSON / caret notation 常把控制符写成字面量）：
+#: `\u0001`（JSON）、`\U00000001`、`\x01` / `\x1`（repr / 日志）、
+#: `^A`（caret notation，FIX 日志查看器常用）、`<SOH>`、`&#01;` / `&#x01;`。
+#: 长的放前面，避免 `\x01` 被 `\x1` 抢先匹配一半。
+_ESCAPED_SOH_RE = re.compile(
+    r"\\u0001|\\U00000001|\\x01|\\x1|\^A|<SOH>|&#x?0*1;")
+
 
 # ====================================================================== 数据模型
 
@@ -141,18 +148,42 @@ class FixMessage:
 
 # ====================================================================== 检测
 
+def _unescape_separators(text: str) -> str:
+    """把 SOH 的转义形式还原成真 SOH。
+
+    从日志 / JSON / 工单系统复制的 FIX 文本，控制符常被转义成字面量
+    （`\\u0001`、`\\x01`、`^A` 等），粘贴进来就没有任何分隔符可用。
+    本函数在这些形式出现时逐个替换回 SOH——替换是 1:1 的，正好恢复
+    线上字节形态，因此 BodyLength / CheckSum 照常可校验（不像 `|`
+    归一化那样必须标「未校验」）。
+
+    两道保险防止误伤：文本已含真 SOH 时原样返回；只有以 `8=FIX` 开头
+    （容忍 BOM / 前导空白）才替换——普通代码片段里的 `\\x01` 字面量
+    不会被碰。
+    """
+    if not text or SOH in text:
+        return text
+    head = text.lstrip().lstrip("\ufeff").lstrip()
+    if not head.startswith("8=FIX"):
+        return text
+    return _ESCAPED_SOH_RE.sub(SOH, text)
+
+
 def is_fix_text(text: str) -> bool:
     """一段文本像不像 FIX 报文。
 
     判定三条件（缺一不可）：
     1. 以 `8=FIX` 开头（容忍 BOM / 空白）；
-    2. 含 SOH 或 `|` 分隔符；
+    2. 含 SOH 或 `|` 分隔符——SOH 的转义形式（`\\u0001` / `\\x01` /
+       `^A` 等）会先被还原成真 SOH 再判定；
     3. 前若干字段里能同时找到 8 / 9 / 35——这是任意合法 FIX 消息的最小集，
        也足够把 `8=FIX.4.4` 这种日志片段排除掉。
     """
     t = (text or "").strip().lstrip("\ufeff").strip()
     if not t.startswith("8=FIX"):
         return False
+    # 粘贴来的可能是转义形式（\u0001 / \x01 / ^A…），先还原成真 SOH
+    t = _unescape_separators(t)
     if SOH in t:
         parts = t.split(SOH, 12)[:12]
     elif PIPE in t:
@@ -439,6 +470,9 @@ def parse_fix(text: str) -> list[FixMessage]:
     if not text or not text.strip():
         return []
     raw_text = text.strip().lstrip("\ufeff").strip()
+    # 转义形式（\u0001 / \x01 / ^A…）先还原成真 SOH；`|` 归一在其后，
+    # 二者互斥不冲突（还原后已有 SOH，| 分支不会触发）
+    raw_text = _unescape_separators(raw_text)
     truncated = False
     if len(raw_text) > MAX_TOTAL_CHARS:
         raw_text = raw_text[:MAX_TOTAL_CHARS]

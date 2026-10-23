@@ -319,5 +319,78 @@ class TestSeparatorAndRobustness:
         assert m.msg_type == "D"      # 坏字段之后的 56 还能解析出来
 
 
+# ================================================================ 转义分隔符
+
+class TestEscapedSeparators:
+    """SOH 被转义成字面量（\\u0001 / \\x01 / ^A…）的粘贴形式。
+
+    日志导出、JSON、工单系统常把控制符写成转义序列，粘贴进来时没有任何
+    可用分隔符。解析器应还原成真 SOH——替换 1:1 恢复线上字节，因此
+    BodyLength / CheckSum 照常可校验（区别于 `|` 的「未校验」）。
+    """
+
+    FORMS = ("\\u0001", "\\U00000001", "\\x01", "\\x1", "^A", "<SOH>", "&#01;", "&#x01;")
+
+    @pytest.mark.parametrize("form", FORMS)
+    def test_detect_and_parse(self, form):
+        text = make_fix(ORDER_BODY).replace("\x01", form)
+        assert is_fix_text(text) is True
+        m = parse_fix(text)[0]
+        assert m.msg_type == "D"
+        assert m.field_count == len(ORDER_BODY) + 3
+        assert m.body_length_ok is True
+        assert m.checksum_ok is True
+        assert m.errors == []
+
+    def test_user_reported_execution_report(self):
+        # 用户实际报障的报文：\\u0001 字面量形态，自校验必须全过
+        text = (
+            "8=FIX.4.2\\u00019=289\\u000135=8\\u000134=32137\\u000149=VCT\\u000150=SMRTR"
+            "\\u000152=20261022-14:01:25.931\\u000156=USMART\\u000157=1437973\\u0001128=VCUS"
+            "\\u00011=170104\\u00016=0\\u000111=IN-2113269497931288576\\u000114=0"
+            "\\u000117=241970910001\\u000120=0\\u000131=0\\u000132=0\\u000137=24197091"
+            "\\u000138=50\\u000139=0\\u000140=1\\u000147=A\\u000154=2\\u000155=INTC"
+            "\\u000159=0\\u000160=20261022-14:01:25.822\\u000163=0\\u000175=20261022"
+            "\\u000176=VLET\\u0001150=0\\u0001151=50\\u0001167=CS\\u000116015=0\\u000110=077"
+        )
+        assert is_fix_text(text) is True
+        msgs = parse_fix(text)
+        assert len(msgs) == 1
+        m = msgs[0]
+        assert m.begin_string == "FIX.4.2"
+        assert m.msg_type == "8"
+        assert m.declared_body_length == m.actual_body_length == 289
+        assert m.declared_checksum == m.actual_checksum == 77
+        assert m.errors == []
+        assert len(m.fields) == 35
+
+    def test_multiple_escaped_messages(self):
+        text = (make_fix(ORDER_BODY).replace("\x01", "\\u0001") + "\n"
+                + make_fix([(35, "8"), (49, "S"), (56, "T")]).replace("\x01", "\\u0001"))
+        msgs = parse_fix(text)
+        assert len(msgs) == 2
+        assert msgs[1].checksum_ok is True
+
+    def test_mixed_real_soh_untouched(self):
+        # 已含真 SOH 的文本原样返回，不做任何替换
+        text = make_fix(ORDER_BODY)
+        m = parse_fix(text)[0]
+        assert m.checksum_ok is True
+        assert m.field_count == len(ORDER_BODY) + 3
+
+    def test_non_fix_text_with_escapes_untouched(self):
+        # 不以 8=FIX 开头的文本，里面的 \x01 / ^A 字面量不被碰
+        assert is_fix_text('{"pattern": "\\\\x01", "kind": "^A"}') is False
+        assert is_fix_text("print('a\\x01b')") is False
+        assert parse_fix("^A^A^A") == []
+
+    def test_real_soh_value_with_caret_text(self):
+        # 值里含字面 ^A 内容（非分隔符）的真 SOH 报文不受影响
+        text = make_fix([(35, "D"), (58, "a^Ab")])
+        m = parse_fix(text)[0]
+        assert m.checksum_ok is True
+        assert [f.value for f in m.fields if f.tag == 58] == ["a^Ab"]
+
+
 if __name__ == "__main__":     # pragma: no cover
     raise SystemExit(pytest.main([__file__, "-v"]))
