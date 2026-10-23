@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHeaderView,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
@@ -29,13 +30,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app import api_collections as store
 from app import httpclient
 from app.httpclient import ApiResponse
+from app.ui import icons, theme
+from app.ui.collection_dialog import CollectionDialog
 from app.ui.detail_panel import BodyPane
-from app.ui import theme
 from app.textutil import decode_body
 
 METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+
+#: body 模式：普通 JSON/文本；GraphQL（组装 {"query","variables"} 发 POST）
+BODY_KINDS = ("json", "graphql")
 
 #: 请求 body 输入上限（超出直接拦，别等线程里炸）
 MAX_BODY_INPUT = 50 * 1024 * 1024
@@ -78,9 +84,20 @@ class ApiPanel(QWidget):
         )
         self.send_btn = QPushButton(self.tr("发送"))
         self.send_btn.clicked.connect(self._on_send)
+        # 集合入口：保存当前请求 / 管理已存请求（图标按钮省地方）
+        self.save_btn = QPushButton()
+        self.save_btn.setIcon(icons.icon("save"))
+        self.save_btn.setToolTip(self.tr("保存当前请求到集合"))
+        self.save_btn.clicked.connect(self._save_to_collection)
+        self.collection_btn = QPushButton()
+        self.collection_btn.setIcon(icons.icon("collection"))
+        self.collection_btn.setToolTip(self.tr("请求集合（加载 / 重命名 / 删除）"))
+        self.collection_btn.clicked.connect(self._open_collections)
         row.addWidget(self.method_combo)
         row.addWidget(self.url_edit, stretch=1)
         row.addWidget(self.verify_cb)
+        row.addWidget(self.save_btn)
+        row.addWidget(self.collection_btn)
         row.addWidget(self.send_btn)
         layout.addLayout(row)
 
@@ -117,7 +134,22 @@ class ApiPanel(QWidget):
         hbtn_row.addStretch(1)
         req_layout.addLayout(hbtn_row)
 
-        req_layout.addWidget(QLabel(self.tr("请求 Body（GET / HEAD 时忽略）：")))
+        # body 模式：JSON / GraphQL（GraphQL 时多一个 variables 编辑框）
+        body_title_row = QHBoxLayout()
+        body_title_row.addWidget(QLabel(self.tr("请求 Body（GET / HEAD 时忽略）：")))
+        self.body_kind_combo = QComboBox()
+        self.body_kind_combo.addItem(self.tr("普通 JSON"), "json")
+        self.body_kind_combo.addItem("GraphQL", "graphql")
+        self.body_kind_combo.setToolTip(
+            self.tr("GraphQL 模式：上方编辑 query，下方编辑 variables(JSON)，\n"
+            "发送时自动组装为 {\"query\", \"variables\"} 并以 POST 发出。")
+        )
+        self.body_kind_combo.currentIndexChanged.connect(
+            self._on_body_kind_changed
+        )
+        body_title_row.addStretch(1)
+        body_title_row.addWidget(self.body_kind_combo)
+        req_layout.addLayout(body_title_row)
         self.body_edit = QPlainTextEdit()
         self.body_edit.setMaximumHeight(110)
         font = QFont("ui-monospace, SF Mono, Menlo, Consolas, monospace")
@@ -125,6 +157,17 @@ class ApiPanel(QWidget):
         self.body_edit.setFont(font)
         self.body_edit.setPlaceholderText(self.tr('如 {"name": "张三"}，或表单 a=1&b=2'))
         req_layout.addWidget(self.body_edit)
+
+        # GraphQL variables 编辑框（仅 GraphQL 模式可见）
+        self.variables_label = QLabel(self.tr("GraphQL Variables（JSON）："))
+        self.variables_edit = QPlainTextEdit()
+        self.variables_edit.setMaximumHeight(80)
+        self.variables_edit.setFont(font)
+        self.variables_edit.setPlaceholderText(self.tr('如 {"id": 1}，可留空'))
+        self.variables_label.setVisible(False)
+        self.variables_edit.setVisible(False)
+        req_layout.addWidget(self.variables_label)
+        req_layout.addWidget(self.variables_edit)
         splitter.addWidget(req_widget)
 
         # 下半：响应（状态行 + BodyPane 复用详情面板的六模式渲染）
@@ -171,8 +214,14 @@ class ApiPanel(QWidget):
         url: str = "",
         headers: dict | None = None,
         body: str = "",
+        graphql: bool = False,
+        variables: str = "",
     ) -> None:
-        """从流量列表带入一个请求（见 main_window._send_request_to_api）。"""
+        """从流量列表带入一个请求（见 main_window._send_request_to_api），
+        或从请求集合加载（graphql/variables 一并恢复）。"""
+        # GraphQL 固定 POST；普通模式方法可自选
+        kind_idx = self.body_kind_combo.findData("graphql" if graphql else "json")
+        self.body_kind_combo.setCurrentIndex(max(kind_idx, 0))
         idx = self.method_combo.findData((method or "GET").upper())
         self.method_combo.setCurrentIndex(max(idx, 0))
         self.url_edit.setText(url or "")
@@ -185,6 +234,7 @@ class ApiPanel(QWidget):
             self.headers_table.setItem(row, 0, QTableWidgetItem(str(k)))
             self.headers_table.setItem(row, 1, QTableWidgetItem(str(v)))
         self.body_edit.setPlainText(body or "")
+        self.variables_edit.setPlainText(variables or "")
         self.resp_label.setText(self.tr("已带入请求，点击「发送」（或 Ctrl+Return）"))
         self.resp_pane.clear()
         self._fill_resp_headers([])
@@ -196,7 +246,72 @@ class ApiPanel(QWidget):
     def is_sending(self) -> bool:
         return self._sending
 
+    # ------------------------------------------------------------ 集合
+
+    def _save_to_collection(self) -> None:
+        """把当前请求存进集合（先取名；URL 为空时用 URL 兜底命名）。"""
+        url = self.url_edit.text().strip()
+        graphql = self._current_body_kind() == "graphql"
+        name, ok = QInputDialog.getText(
+            self,
+            self.tr("保存到请求集合"),
+            self.tr("名称："),
+            text=url or self.tr("未命名请求"),
+        )
+        if not ok:
+            return
+        headers = self._collect_headers()
+        # headers 表是有序 dict 语义，存成 [[k, v], ...] 保序
+        store.add_collection(
+            name=name or url or self.tr("未命名请求"),
+            method="POST" if graphql else (self.method_combo.currentData() or "GET"),
+            url=url,
+            headers=[[k, v] for k, v in headers.items()],
+            body=self.body_edit.toPlainText(),
+            graphql=graphql,
+            variables=self.variables_edit.toPlainText() if graphql else "",
+        )
+        self.resp_label.setText(self.tr("已保存到请求集合"))
+
+    def _open_collections(self) -> None:
+        dlg = CollectionDialog(self, on_load=self._load_from_collection)
+        dlg.exec()
+
+    def _load_from_collection(self, item: dict) -> None:
+        headers = {}
+        for pair in item.get("headers") or []:
+            if isinstance(pair, (list, tuple)) and len(pair) >= 2 and pair[0]:
+                headers[str(pair[0])] = str(pair[1])
+        self.load_request(
+            method=item.get("method", "GET"),
+            url=item.get("url", ""),
+            headers=headers,
+            body=item.get("body", ""),
+            graphql=bool(item.get("graphql")),
+            variables=item.get("variables", ""),
+        )
+
     # ------------------------------------------------------------ 发送
+
+    def _current_body_kind(self) -> str:
+        return self.body_kind_combo.currentData() or "json"
+
+    def _on_body_kind_changed(self) -> None:
+        is_gql = self._current_body_kind() == "graphql"
+        self.variables_label.setVisible(is_gql)
+        self.variables_edit.setVisible(is_gql)
+        if is_gql:
+            # GraphQL 只能是 POST；切走时不动方法（用户可能自选）
+            idx = self.method_combo.findData("POST")
+            if idx >= 0:
+                self.method_combo.setCurrentIndex(idx)
+            self.body_edit.setPlaceholderText(
+                self.tr("GraphQL Query，如：query { user(id: 1) { name } }")
+            )
+        else:
+            self.body_edit.setPlaceholderText(
+                self.tr('如 {"name": "张三"}，或表单 a=1&b=2')
+            )
 
     def _collect_headers(self) -> dict:
         headers = {}
@@ -215,12 +330,22 @@ class ApiPanel(QWidget):
         if not url:
             self.resp_label.setText(self.tr("请先填 URL"))
             return
-        method = self.method_combo.currentData() or "GET"
-        body_text = self.body_edit.toPlainText()
+        graphql = self._current_body_kind() == "graphql"
+        method = "POST" if graphql else (self.method_combo.currentData() or "GET")
+        headers = self._collect_headers()
+        if graphql:
+            body_text, err = self._build_graphql_body()
+            if err:
+                self.resp_label.setText(err)
+                return
+            # GraphQL 走 application/json（用户显式设了 Content-Type 则尊重）
+            if not any(k.lower() == "content-type" for k in headers):
+                headers["Content-Type"] = "application/json"
+        else:
+            body_text = self.body_edit.toPlainText()
         if len(body_text.encode("utf-8")) > MAX_BODY_INPUT:
             self.resp_label.setText(self.tr("请求 body 超过 50MB 上限"))
             return
-        headers = self._collect_headers()
         body = body_text.encode("utf-8") if body_text else b""
         verify = self.verify_cb.isChecked()
 
@@ -238,6 +363,23 @@ class ApiPanel(QWidget):
             name="api-debug-send",
         )
         thread.start()
+
+    def _build_graphql_body(self) -> tuple[str, str]:
+        """组装 GraphQL 请求体；返回 (body, 错误文案)——出错时 body 为空。"""
+        query = self.body_edit.toPlainText().strip()
+        if not query:
+            return "", self.tr("请先填写 GraphQL Query")
+        variables_text = self.variables_edit.toPlainText().strip()
+        variables = {}
+        if variables_text:
+            try:
+                variables = json.loads(variables_text)
+            except ValueError as e:
+                return "", self.tr("Variables 不是合法 JSON：{0}").format(e)
+            if not isinstance(variables, dict):
+                return "", self.tr("Variables 必须是 JSON 对象（{\"key\": value}）")
+        return json.dumps({"query": query, "variables": variables},
+                          ensure_ascii=False), ""
 
     def _worker(self, seq: int, method: str, url: str,
                 headers: dict, body: bytes, verify: bool) -> None:

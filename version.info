@@ -16,6 +16,18 @@
       "en": "Fixed certificate-service button interaction: clicking now always shows the QR dialog (re-clicking while running re-opens it instead of silently stopping), stopping is an explicit in-dialog button plus status-bar feedback, removing the 'nothing happened' ambiguity"
     },
     {
+      "zh": "新增 API 集合：API 面板可把当前请求（方法/URL/请求头/请求体）保存到本地集合，支持加载、重命名、删除，抓包调试常用请求一键复用",
+      "en": "New API collections: the API panel can save the current request (method/URL/headers/body) to a local collection with load/rename/delete support, so frequently used requests are one click away"
+    },
+    {
+      "zh": "HTTPS 流量详情页新增 TLS 页签：协议版本、加密套件、SNI、ALPN 与证书链（使用者/颁发者/有效期/序列号/SHA-256 指纹）一目了然，仅对 TLS 流量显示",
+      "en": "New TLS tab in the HTTPS flow detail page: protocol version, cipher suite, SNI, ALPN and certificate chain (subject/issuer/validity/serial/SHA-256 fingerprint) at a glance, shown only for TLS flows"
+    },
+    {
+      "zh": "API 面板支持 GraphQL：自动识别 GraphQL 请求体，query 与 variables 分区编辑，可直接修改变量后发送",
+      "en": "GraphQL support in the API panel: GraphQL request bodies are detected automatically, with query and variables in separate editors so you can tweak variables and send"
+    },
+    {
       "zh": "命令面板（Ctrl/Cmd+K）：可搜索的快捷动作启动器，输入关键字实时过滤全部命令，上下键选择、回车执行",
       "en": "Command palette (Ctrl/Cmd+K): a searchable quick-action launcher that filters all commands as you type, with arrow-key navigation and Enter to run"
     },
