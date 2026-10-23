@@ -328,7 +328,14 @@ class TestTablePolish:
         from app.ui.traffic_table import TrafficTable
 
         table = TrafficTable()
-        assert table.verticalHeader().defaultSectionSize() == 22
+        # 行高随密度档位变：comfortable 24 / compact 18。compact 会被 Qt 按
+        # 样式最小行高兜底（offscreen 下 18→19），所以断言"明显更矮"而不是钉死
+        assert table.verticalHeader().defaultSectionSize() == 24
+        table.set_row_density("compact")
+        compact = table.verticalHeader().defaultSectionSize()
+        assert 18 <= compact < 24
+        table.set_row_density("comfortable")
+        assert table.verticalHeader().defaultSectionSize() == 24
 
     def test_theme_has_polish_tokens(self):
         from app.ui import theme

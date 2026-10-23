@@ -108,6 +108,8 @@ from app.textutil import decode_body
 from app.ui import theme
 from app.ui.highlight import JsonHighlighter, is_dark
 from app.ui.json_tree import JsonTreeView
+from app.ui.overview_card import OverviewCard
+from app.ui.tls_pane import TlsPane, has_tls
 
 #: 表单表格里命中的单元格底色（与 body 文本高亮同色系，视觉上是一回事）
 
@@ -1825,6 +1827,10 @@ class DetailPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.wrap_default = wrap_default
+        # 请求概览卡：tab 上方一条紧凑横条，方法/状态码 pill + URL + 耗时/大小/类型/IP
+        self.overview = OverviewCard()
+        self.overview.setVisible(False)
+        layout.addWidget(self.overview)
         # 备注条：用户给会话写的 comment，置顶显示（空时隐藏，不占地方）
         self.comment_label = QLabel()
         self.comment_label.setWordWrap(True)
@@ -1846,6 +1852,10 @@ class DetailPanel(QWidget):
         self.timings_index = self.tabs.addTab(self.timings_pane, self.tr("耗时"))
         self.ws_index = self.tabs.addTab(self.ws_pane, "WebSocket")
         self.tabs.setTabVisible(self.ws_index, False)
+        # TLS 页：仅 HTTPS/WSS 连接出现（明文连接显隐都懒得上场）
+        self.tls_pane = TlsPane()
+        self.tls_index = self.tabs.addTab(self.tls_pane, "TLS")
+        self.tabs.setTabVisible(self.tls_index, False)
         layout.addWidget(self.tabs)
 
         for pane in (self.request_pane, self.response_pane):
@@ -1875,6 +1885,7 @@ class DetailPanel(QWidget):
 
     def show_flow(self, flow) -> None:
         self._flow = flow
+        self.overview.set_flow(flow)
         self._show_comment(getattr(flow, "comment", "") or "")
         req = getattr(flow, "request", None)
         res = getattr(flow, "response", None)
@@ -1918,25 +1929,55 @@ class DetailPanel(QWidget):
             # 而不是 show_message 默认的「未选择会话」（那样像没选中，其实只是没响应）。
             self.response_pane.show_message(self.tr("尚未收到响应…"), {}, None, 0)
 
-        ws = getattr(flow, "websocket", None)
-        self.tabs.setTabVisible(self.ws_index, ws is not None)
-        if ws is not None:
-            self.ws_pane.show_flow(flow)
-            # WS 会话：请求/响应半边对 WS 无意义，始终停在 WebSocket 页，
-            # 不占用粘性选择（粘性只作用于普通 HTTP 会话）。
-            self._set_current(self.ws_index)
-        else:
-            self.ws_pane.clear()
-            # 普通 HTTP 会话：停在用户当次运行内最后选择的页（默认响应页）。
-            # 启动即 response_index，故首屏默认响应；用户切过就记住。
-            self._set_current(self._sticky_tab)
+        # 页签显隐 + 定位必须整体抑制 currentChanged：setTabVisible(False)
+        # 隐藏「当前页」时 Qt 会自动跳到别的页并触发 currentChanged，
+        # 若发生在抑制窗口之外就会把 sticky 污染成自动跳去的页。
+        self._apply_tab_layout(flow)
 
-        # 耗时页：有计时数据才显示（mock / 未选择会话不挂空页签）
-        self.timings_pane.show_flow(flow)
-        has_timings = bool(self.timings_pane._rows) or bool(
-            self.timings_pane.note_label.text()
-        )
-        self.tabs.setTabVisible(self.timings_index, has_timings)
+    def _apply_tab_layout(self, flow) -> None:
+        """按 flow 类型刷新各页签显隐与内容，并定位到目标页。
+
+        WS 会话停 WebSocket 页；普通会话停 sticky 页（sticky 页对本条
+        流量不可见时回落响应页）。全程抑制页签信号，用户的粘性选择
+        不会被程序化布局打扰。
+        """
+        self._suppress_tab_signal = True
+        try:
+            ws = getattr(flow, "websocket", None)
+            self.tabs.setTabVisible(self.ws_index, ws is not None)
+            if ws is not None:
+                self.ws_pane.show_flow(flow)
+            else:
+                self.ws_pane.clear()
+
+            # 耗时页：有计时数据才显示（mock / 未选择会话不挂空页签）
+            self.timings_pane.show_flow(flow)
+            has_timings = bool(self.timings_pane._rows) or bool(
+                self.timings_pane.note_label.text()
+            )
+            self.tabs.setTabVisible(self.timings_index, has_timings)
+
+            # TLS 页：任一连接段是 TLS 才显示（明文连接不挂空页签）
+            self.tls_pane.show_flow(flow)
+            self.tabs.setTabVisible(self.tls_index, has_tls(flow))
+
+            if ws is not None:
+                # WS 会话：请求/响应半边对 WS 无意义，始终停在 WebSocket 页，
+                # 不占用粘性选择（粘性只作用于普通 HTTP 会话）。
+                target = self.ws_index
+            else:
+                # 普通 HTTP 会话：停在用户当次运行内最后选择的页（默认响应页）。
+                # 启动即 response_index，故首屏默认响应；用户切过就记住。
+                # sticky 页恰好对本条流量不可见（明文连接没有 TLS 页）时回落，
+                # 并写回 sticky——保证 sticky 永远指向一个可见页，下次选回
+                # HTTPS 流量时定位一致，不会被「中间的明文流量」搅乱。
+                target = self._sticky_tab
+                if not self.tabs.isTabVisible(target):
+                    target = self.response_index
+                    self._sticky_tab = target
+            self.tabs.setCurrentIndex(target)
+        finally:
+            self._suppress_tab_signal = False
 
     def _on_tab_changed(self, index: int) -> None:
         """用户手动切换页签时，把选择记为粘性选择（程序内 set 已被抑制）。"""
@@ -1965,13 +2006,21 @@ class DetailPanel(QWidget):
 
     def clear(self) -> None:
         self._flow = None
+        self.overview.clear()
         self._show_comment("")
         self.request_pane.clear()
         self.response_pane.clear()
-        self.timings_pane.clear()
-        self.tabs.setTabVisible(self.timings_index, False)
-        self.ws_pane.clear()
-        self.tabs.setTabVisible(self.ws_index, False)
+        # 显隐同样整体抑制：当前页恰是被隐藏的页时 Qt 自动跳页会污染 sticky
+        self._suppress_tab_signal = True
+        try:
+            self.timings_pane.clear()
+            self.tabs.setTabVisible(self.timings_index, False)
+            self.ws_pane.clear()
+            self.tabs.setTabVisible(self.ws_index, False)
+            self.tls_pane.clear()
+            self.tabs.setTabVisible(self.tls_index, False)
+        finally:
+            self._suppress_tab_signal = False
 
     def highlight(self, term: str, case_sensitive: bool) -> int:
         total = self.request_pane.highlight(term, case_sensitive)

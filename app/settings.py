@@ -134,6 +134,9 @@ class Settings:
     auto_system_proxy: bool = True
     #: 流量页布局方向：True = 左右（Fiddler 风格，列表在左）；False = 上下
     traffic_side_by_side: bool = True
+    #: 流量列表行密度：comfortable（舒适，行高 24）/ compact（紧凑，行高 18）。
+    #: 重启保持。和布局/主题一样走 settings 落盘，选择即时生效。
+    density: str = "comfortable"
     #: 主题档位：system（跟随系统）/ light / dark（app/ui/theme.py THEME_MODES）
     theme: str = "system"
     #: 界面语言：zh_CN（源语言，默认）/ en（app/i18n.SUPPORTED）。
@@ -177,6 +180,7 @@ class Settings:
             "body_wrap": self.body_wrap,
             "auto_system_proxy": self.auto_system_proxy,
             "traffic_side_by_side": self.traffic_side_by_side,
+            "density": self.density,
             "theme": self.theme,
             "language": self.language,
             "check_update_on_startup": self.check_update_on_startup,
@@ -230,6 +234,10 @@ class Settings:
             body_wrap=bool(data.get("body_wrap", True)),
             auto_system_proxy=bool(data.get("auto_system_proxy", True)),
             traffic_side_by_side=bool(data.get("traffic_side_by_side", True)),
+            density=(
+                data["density"] if data.get("density") in ("comfortable", "compact")
+                else "comfortable"
+            ),
             theme=(
                 data["theme"] if data.get("theme") in ("system", "light", "dark")
                 else "system"

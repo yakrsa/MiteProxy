@@ -1,9 +1,10 @@
-"""工具页：编码转换 + JSON + JSON 比对 + API 调试四个子页。
+"""工具页：编码转换 + JSON + JSON 比对 + API 调试 + FIX 解析五个子页。
 
 合在一个标签页里是因为它们的使用场景是连着的——抓到一段 base64 先解码、
 解出来是 JSON 再格式化、再用 JSONPath 抠出要看的字段、再把两段 JSON 比一比、
 最后照着抓到的请求改一个自己发出去（API 调试）。分成多个顶层标签页就得
-来回切，还容易忘了另一半功能在哪。
+来回切，还容易忘了另一半功能在哪。FIX 解析同属「把一段文本看懂」的家族，
+且报文常以 JSON/base64 封装传输（解码后正好粘过来），放同一页最顺。
 """
 
 from __future__ import annotations
@@ -12,12 +13,13 @@ from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget
 
 from app.ui.api_panel import ApiPanel
 from app.ui.codec_panel import CodecPanel
+from app.ui.fix_panel import FixPanel
 from app.ui.json_compare_panel import JsonComparePanel
 from app.ui.json_panel import JsonPanel
 
 
 class ToolPanel(QWidget):
-    """内部四个子页：编码转换 / JSON / JSON 比对 / API 调试。"""
+    """内部五个子页：编码转换 / JSON / JSON 比对 / API 调试 / FIX 解析。"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -29,17 +31,19 @@ class ToolPanel(QWidget):
         self.json_panel = JsonPanel()
         self.compare_panel = JsonComparePanel()
         self.api_panel = ApiPanel()
+        self.fix_panel = FixPanel()
         self.tabs.addTab(self.codec_panel, self.tr("编码转换"))
         self.tabs.addTab(self.json_panel, "JSON")
         self.tabs.addTab(self.compare_panel, self.tr("JSON 比对"))
         self.tabs.addTab(self.api_panel, self.tr("API 调试"))
+        self.tabs.addTab(self.fix_panel, "FIX")
         layout.addWidget(self.tabs)
 
     # ------------------------------------------------------------ 对外
 
     @property
     def current_key(self) -> str:
-        """当前子页名：codec / json / compare / api。"""
+        """当前子页名：codec / json / compare / api / fix。"""
         current = self.tabs.currentWidget()
         if current is self.json_panel:
             return "json"
@@ -47,6 +51,8 @@ class ToolPanel(QWidget):
             return "compare"
         if current is self.api_panel:
             return "api"
+        if current is self.fix_panel:
+            return "fix"
         return "codec"
 
     def show_page(self, key: str) -> None:
@@ -54,6 +60,7 @@ class ToolPanel(QWidget):
             "json": self.json_panel,
             "compare": self.compare_panel,
             "api": self.api_panel,
+            "fix": self.fix_panel,
         }.get(key, self.codec_panel)
         self.tabs.setCurrentWidget(page)
 
@@ -67,6 +74,9 @@ class ToolPanel(QWidget):
         elif target == "compare":
             self.compare_panel.set_texts(text)
             self.compare_panel.left_edit.setFocus()
+        elif target == "fix":
+            self.fix_panel.set_text(text)
+            self.fix_panel.input_edit.setFocus()
         elif target == "api":
             self.api_panel.set_body_text(text)
             self.api_panel.url_edit.setFocus()

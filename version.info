@@ -1,19 +1,39 @@
 {
-  "version": "2.5.0",
-  "published_at": "2026-10-22T22:15:00+08:00",
+  "version": "2.7.0",
+  "published_at": "2026-10-23T21:00:00+08:00",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "脚本编辑器支持 **Python 语法高亮**：新建/编辑脚本弹窗里关键字、字符串、注释、数字、`def`/`class` 名、装饰器、常用内置分别着色，三引号多行字符串跨行续染不断层；配色跟随深浅主题自动切换，只染前景不盖背景，不影响搜索高亮",
-      "en": "Python syntax highlighting in the script editor: keywords, strings, comments, numbers, def/class names, decorators and common builtins are colored in the new/edit script dialog; triple-quoted strings keep their color across lines, and the palette follows the light/dark theme automatically — foreground only, so search highlighting still works"
+      "zh": "新增 FIX 协议解析工具页（Ctrl+Shift+F）：直接粘贴 FIX 报文文本（SOH 或 | 分隔均可），自动解析成树形表格——每行一个 tag=value，字段带中英文名称与枚举值释义，重复组可折叠；支持 FIX 4.0–4.4",
+      "en": "New FIX protocol parser tool page (Ctrl+Shift+F): paste raw FIX text (SOH or |-separated) and get a formatted tree — one row per tag=value with bilingual field names and enum explanations, repeat groups collapsible; supports FIX 4.0–4.4"
     },
     {
-      "zh": "JSON **树视图改成 Fiddler 风格**：新增「类型」列，每个节点直接显示 object / array / string / number / boolean / null（与值列同一套类型配色），结构一眼看清、不用悬停看 tooltip；列序为 键 | 类型 | 值，类型紧挨着键，值列吃满剩余宽度",
-      "en": "The JSON tree view now follows Fiddler's style: a new Type column shows object / array / string / number / boolean / null for every node (same type palette as the Value column), so the structure is readable at a glance without hovering for tooltips; columns are Key | Type | Value so the type sits next to the key while the value column takes the remaining width"
+      "zh": "FIX 解析自带协议自校验：BodyLength(9) 与 CheckSum(10) 按 UTF-8 字节精确验证（含中文的报文也不会误报），DataLength 数据对（95/96 等）按长度原样读取不截断，多条消息粘贴自动切分；流量详情页可将 FIX 报文一键发送到解析页",
+      "en": "FIX parsing includes protocol self-validation: BodyLength(9) and CheckSum(10) are verified byte-accurately over UTF-8 (Chinese payloads no longer false-fail), DataLength pairs (95/96 etc.) are read verbatim by length, and multiple pasted messages are split automatically; FIX flows can be sent from the detail page to the parser in one click"
     },
     {
-      "zh": "JSON 树视图新增 **「层级」菜单**：全部展开 / 展开到第 3 层 / 第 2 层 / 第 1 层 / 全部收起，逐层钻取大 JSON 而不用一步 expandAll 卡死；某个节点自身子节点超过 100 个时该分支保持折叠（仍可手动展开，只是不自动展开），避免几千行一次性铺开",
-      "en": "New Level menu in the JSON tree view: expand all / expand to level 3 / 2 / 1 / collapse all, so large JSON can be drilled into layer by layer instead of freezing on a one-shot expandAll; branches with more than 100 children stay folded (still expandable manually, just not auto-expanded) so thousands of rows never pour out at once"
+      "zh": "证书服务按钮交互修复：点击始终弹出二维码（运行中再点为重弹而非静默停止），停止改为弹窗内显式按钮 + 状态栏反馈，消除「点了没反应」的歧义",
+      "en": "Fixed certificate-service button interaction: clicking now always shows the QR dialog (re-clicking while running re-opens it instead of silently stopping), stopping is an explicit in-dialog button plus status-bar feedback, removing the 'nothing happened' ambiguity"
+    },
+    {
+      "zh": "命令面板（Ctrl/Cmd+K）：可搜索的快捷动作启动器，输入关键字实时过滤全部命令，上下键选择、回车执行",
+      "en": "Command palette (Ctrl/Cmd+K): a searchable quick-action launcher that filters all commands as you type, with arrow-key navigation and Enter to run"
+    },
+    {
+      "zh": "流量表右侧新增状态码 minimap：可见流量按 2xx/3xx/4xx/5xx 画成色点窄带，几千条里快速定位异常请求，点击即跳转对应行",
+      "en": "New status-code minimap beside the traffic table: visible flows are drawn as a colored dot strip (2xx/3xx/4xx/5xx) so you can spot errors in thousands of rows instantly, and click to jump to the row"
+    },
+    {
+      "zh": "工具条改用内联 SVG 图标（无外部资源文件），自动跟随深浅主题配色",
+      "en": "Toolbar now uses inline SVG icons (no external resource files) that automatically follow the light/dark theme"
+    },
+    {
+      "zh": "详情面板顶部新增请求概览卡：方法/状态码 pill + URL + 耗时/大小/内容类型/IP 一行看清，数据与流量列表同源",
+      "en": "New overview card atop the detail panel: method/status pills + URL + duration/size/content-type/IP at a glance, using the same data source as the traffic table"
+    },
+    {
+      "zh": "流量列表支持行密度切换（舒适/紧凑，重启保持）；无流量时显示居中引导替代空白",
+      "en": "Traffic table supports row-density switching (comfortable/compact, persisted across restarts); an empty table now shows centered guidance instead of a blank pane"
     }
   ]
 }

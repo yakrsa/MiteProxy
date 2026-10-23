@@ -725,13 +725,14 @@ class TestJsonComparePanel:
 
 
 class TestToolPanel:
-    def test_four_pages(self):
+    def test_five_pages(self):
         panel = ToolPanel()
-        assert panel.tabs.count() == 4
+        assert panel.tabs.count() == 5
         assert panel.tabs.tabText(0) == "编码转换"
         assert panel.tabs.tabText(1) == "JSON"
         assert panel.tabs.tabText(2) == "JSON 比对"
         assert panel.tabs.tabText(3) == "API 调试"
+        assert panel.tabs.tabText(4) == "FIX"
 
     def test_current_key_and_switch(self):
         panel = ToolPanel()
@@ -742,6 +743,8 @@ class TestToolPanel:
         assert panel.current_key == "compare"
         panel.show_page("api")
         assert panel.current_key == "api"
+        panel.show_page("fix")
+        assert panel.current_key == "fix"
 
     def test_set_body_text_to_compare_page(self):
         panel = ToolPanel()

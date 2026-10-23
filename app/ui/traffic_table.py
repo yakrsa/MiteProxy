@@ -253,6 +253,32 @@ class TrafficTable(QTableView):
         # 按列设置的 resize 模式与宽度全部重置回默认（120px），而主窗口是
         # 构造之后才 setModel()。所以真正的配置在 setModel() 里做。
 
+        # 空态引导：没有流量时显示居中提示，替代一片白（鼠标穿透，不挡交互）
+        self.empty_overlay = QLabel(
+            self.tr("还没有抓到请求\n\n点击左下角状态点开始抓包，或检查过滤条件是否把全部流量藏起来了"),
+            self,
+        )
+        self.empty_overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_overlay.setWordWrap(True)
+        self.empty_overlay.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.empty_overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.empty_overlay.setStyleSheet(
+            "QLabel{color: #9aa0a6; font-size: 13px; padding: 24px;}"
+        )
+        self.empty_overlay.setVisible(False)
+        self._density = "comfortable"
+        self.set_row_density(self._density)
+
+    #: 行密度 → 行高（px）。舒适档略高于默认 22，紧凑档更窄，长列表更省眼。
+    DENSITY_ROW_HEIGHT = {"comfortable": 24, "compact": 18}
+
+    def set_row_density(self, mode: str) -> None:
+        """切换流量列表行密度（舒适 / 紧凑），立即生效并记住模式。"""
+        if mode not in self.DENSITY_ROW_HEIGHT:
+            mode = "comfortable"
+        self._density = mode
+        self.verticalHeader().setDefaultSectionSize(self.DENSITY_ROW_HEIGHT[mode])
+
     def _apply_column_layout(self) -> None:
         """列宽策略（v1.15）：全部 Interactive 定宽、支持拖动，不做任何
         自动 Stretch——左右分栏等窄布局下 Stretch 列会被挤压到 0（路径
@@ -316,6 +342,26 @@ class TrafficTable(QTableView):
             self._apply_column_layout()
             self.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
             model.sort(-1)
+            # 空态：行数变化时刷新提示的显隐
+            model.rowsInserted.connect(self._update_empty_state)
+            model.rowsRemoved.connect(self._update_empty_state)
+            model.modelReset.connect(self._update_empty_state)
+            model.dataChanged.connect(self._update_empty_state)
+        self._update_empty_state()
+
+    def _update_empty_state(self) -> None:
+        """没有流量时显示居中引导，替代一片白。"""
+        model = self.model()
+        empty = model is None or model.rowCount() == 0
+        self.empty_overlay.setVisible(empty)
+        if empty:
+            self.empty_overlay.raise_()
+
+    def resizeEvent(self, ev) -> None:  # noqa: N802
+        super().resizeEvent(ev)
+        # overlay 跟随视口尺寸（它贴在视口上，覆盖表体区域）
+        if getattr(self, "empty_overlay", None) is not None:
+            self.empty_overlay.setGeometry(self.viewport().geometry())
 
     def is_sorted(self) -> bool:
         return self.horizontalHeader().sortIndicatorSection() >= 0

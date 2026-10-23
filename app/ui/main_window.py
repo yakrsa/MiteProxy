@@ -19,7 +19,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QTimer, Qt, QCoreApplication
+from PySide6.QtCore import QEvent, QTimer, Qt, QCoreApplication, QSize
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -49,6 +49,7 @@ from addons.mock import MockAddon
 from addons.throttle import ThrottleAddon
 from app.certserver import CA_PEM_PATH, CertServer, _lan_ips
 from app import single_instance
+from app.fix import is_fix_text
 from app.ui.tool_panel import ToolPanel
 from app.network import build_map_remote_specs, map_local_entries
 from app.export import (
@@ -124,8 +125,11 @@ from app.ui.stats_panel import StatsPanel
 from app.ui.scripts_panel import ScriptsPanel
 from app.ui.traffic_table import FilterBar, SearchBar, TrafficTable
 from app.ui.visuals import StatusDotLabel
+from app.ui.minimap import StatusMinimap
+from app.ui.command_palette import CommandPalette
 from app.ui import dialogs
 from app.ui import theme
+from app.ui import icons
 from app.scripts import ScriptsManager
 
 log = logging.getLogger(__name__)
@@ -233,6 +237,7 @@ class MainWindow(QMainWindow):
         self._compare_timer.timeout.connect(self._expire_pending_compare)
 
         # ---- 界面
+        self._command_palette = None
         self._build_ui()
         self._build_menu()
         self._wire()
@@ -319,6 +324,7 @@ class MainWindow(QMainWindow):
             return
         sizes = self.traffic_splitter.sizes()   # [列表, 详情]，与方向无关
         self.traffic_splitter.setOrientation(new)
+        self.minimap.setVisible(side)   # 上下布局时极小地图没意义，隐藏
         total = sum(sizes)
         length = (self.traffic_splitter.width() if side
                   else self.traffic_splitter.height())
@@ -328,6 +334,267 @@ class MainWindow(QMainWindow):
         self.settings.traffic_side_by_side = side
         save_settings(self.settings)
 
+    # ===================================================== 命令面板 / 密度
+
+    def _on_density_changed(self, _index: int) -> None:
+        self._set_density(self.density_combo.currentData())
+
+    def _set_density(self, mode: str) -> None:
+        """切换流量列表行密度（舒适 / 紧凑），立即生效并落盘；同步工具栏下拉。"""
+        if mode not in ("comfortable", "compact"):
+            mode = "comfortable"
+        self.traffic_table.set_row_density(mode)
+        if self.settings.density != mode:
+            self.settings.density = mode
+            save_settings(self.settings)
+        idx = self.density_combo.findData(mode)
+        if idx >= 0 and self.density_combo.currentIndex() != idx:
+            self.density_combo.setCurrentIndex(idx)
+
+    def _set_layout(self, mode: str) -> None:
+        """命令面板里切换流量页布局方向（左右 / 上下）。"""
+        idx = self.layout_combo.findData(mode)
+        if idx >= 0:
+            self.layout_combo.setCurrentIndex(idx)  # 触发 _on_layout_changed
+
+    def _open_command_palette(self) -> None:
+        """唤起命令面板（Ctrl+K），构建随状态变化的命令列表。"""
+        if self._command_palette is None:
+            self._command_palette = CommandPalette(self)
+        self._command_palette.set_commands(self._build_commands())
+        self._command_palette.show()
+
+    def _build_commands(self) -> list[dict]:
+        """组装命令面板条目。标题用 self.tr(...) 在构建期翻译，运行期直接执行。"""
+        proxy_on = bool(getattr(self.proxy, "running", False))
+        cmds: list[dict] = [
+            {
+                "id": "proxy",
+                "title": self.tr("停止代理") if proxy_on else self.tr("启动代理"),
+                "keywords": "proxy start stop",
+                "run": self._on_toggle_proxy,
+            },
+            {
+                "id": "capture",
+                "title": self.tr("开始 / 停止抓包"),
+                "keywords": "capture",
+                "run": self._on_capture_clicked,
+            },
+            {
+                "id": "clear",
+                "title": self.tr("清空流量列表"),
+                "keywords": "clear",
+                "run": self._on_clear,
+            },
+            {
+                "id": "search",
+                "title": self.tr("搜索会话"),
+                "keywords": "search find",
+                "run": lambda: self.search_btn.toggle(),
+            },
+            {
+                "id": "replay",
+                "title": self.tr("重放选中请求"),
+                "keywords": "replay",
+                "run": lambda: self._replay_selected(edit=False),
+            },
+            {
+                "id": "edit_replay",
+                "title": self.tr("编辑并重放选中请求"),
+                "keywords": "edit replay",
+                "run": lambda: self._replay_selected(edit=True),
+            },
+            {
+                "id": "export",
+                "title": self.tr("导出选中会话"),
+                "keywords": "export",
+                "run": self._export_selected,
+            },
+            {
+                "id": "copy_curl",
+                "title": self.tr("复制为 cURL"),
+                "keywords": "curl copy",
+                "run": lambda: self._copy_curl("posix"),
+            },
+            {
+                "id": "copy_url",
+                "title": self.tr("复制 URL"),
+                "keywords": "url copy",
+                "run": self._copy_url,
+            },
+            {
+                "id": "breakpoint",
+                "title": self.tr("切换断点调试"),
+                "keywords": "breakpoint",
+                "run": lambda: self._on_breakpoint_toggled(
+                    not self.settings.breakpoint.enabled),
+            },
+            {
+                "id": "mcp",
+                "title": self.tr("切换 MCP 接口"),
+                "keywords": "mcp",
+                "run": lambda: self._on_mcp_toggled(not self.settings.mcp_enabled),
+            },
+            {
+                "id": "sysproxy",
+                "title": self.tr("切换系统代理接管"),
+                "keywords": "system proxy",
+                "run": lambda: self._on_sysproxy_toggled(
+                    not self.settings.auto_system_proxy),
+            },
+            {
+                "id": "cert",
+                "title": self.tr("证书服务"),
+                "keywords": "cert",
+                "run": self._on_toggle_cert_server,
+            },
+            {
+                "id": "settings",
+                "title": self.tr("打开偏好设置"),
+                "keywords": "settings",
+                "run": self._open_settings,
+            },
+            {
+                "id": "save_session",
+                "title": self.tr("保存会话"),
+                "keywords": "save session",
+                "run": self._save_session_dialog,
+            },
+            {
+                "id": "open_session",
+                "title": self.tr("打开会话"),
+                "keywords": "open session",
+                "run": self._open_session_dialog,
+            },
+            {
+                "id": "codec",
+                "title": self.tr("编码转换"),
+                "keywords": "codec",
+                "run": lambda: self._goto_tool("codec"),
+            },
+            {
+                "id": "json",
+                "title": self.tr("JSON 格式化 / 提取"),
+                "keywords": "json",
+                "run": lambda: self._goto_tool("json"),
+            },
+            {
+                "id": "compare",
+                "title": self.tr("JSON 比对"),
+                "keywords": "compare json",
+                "run": lambda: self._goto_tool("compare"),
+            },
+            {
+                "id": "fix",
+                "title": self.tr("FIX 报文解析"),
+                "keywords": "fix protocol",
+                "run": lambda: self._goto_tool("fix"),
+            },
+            {
+                "id": "update",
+                "title": self.tr("检查更新"),
+                "keywords": "update",
+                "run": self._check_for_updates_manual,
+            },
+            {
+                "id": "theme_light",
+                "title": self.tr("主题：浅色"),
+                "keywords": "theme light",
+                "run": lambda: self._on_theme_selected("light"),
+            },
+            {
+                "id": "theme_dark",
+                "title": self.tr("主题：深色"),
+                "keywords": "theme dark",
+                "run": lambda: self._on_theme_selected("dark"),
+            },
+            {
+                "id": "theme_system",
+                "title": self.tr("主题：跟随系统"),
+                "keywords": "theme system",
+                "run": lambda: self._on_theme_selected("system"),
+            },
+            {
+                "id": "lang_zh",
+                "title": self.tr("语言：中文"),
+                "keywords": "language zh",
+                "run": lambda: self._on_language_selected("zh_CN"),
+            },
+            {
+                "id": "lang_en",
+                "title": self.tr("语言：English"),
+                "keywords": "language en english",
+                "run": lambda: self._on_language_selected("en"),
+            },
+            {
+                "id": "tab_traffic",
+                "title": self.tr("跳到 流量页"),
+                "keywords": "tab traffic",
+                "run": lambda: self.tabs.setCurrentWidget(self.traffic_page),
+            },
+            {
+                "id": "tab_mock",
+                "title": self.tr("跳到 Mock 规则页"),
+                "keywords": "tab mock",
+                "run": lambda: self.tabs.setCurrentWidget(self.rules_panel),
+            },
+            {
+                "id": "tab_network",
+                "title": self.tr("跳到 网络模拟页"),
+                "keywords": "tab network",
+                "run": lambda: self.tabs.setCurrentWidget(self.network_panel),
+            },
+            {
+                "id": "tab_tools",
+                "title": self.tr("跳到 工具页"),
+                "keywords": "tab tools",
+                "run": lambda: self.tabs.setCurrentWidget(self.tool_panel),
+            },
+            {
+                "id": "tab_scripts",
+                "title": self.tr("跳到 脚本页"),
+                "keywords": "tab scripts",
+                "run": lambda: self.tabs.setCurrentWidget(self.scripts_panel),
+            },
+            {
+                "id": "tab_log",
+                "title": self.tr("跳到 日志页"),
+                "keywords": "tab log",
+                "run": lambda: self.tabs.setCurrentWidget(self.log_panel),
+            },
+            {
+                "id": "tab_stats",
+                "title": self.tr("跳到 统计页"),
+                "keywords": "tab stats",
+                "run": lambda: self.tabs.setCurrentWidget(self.stats_panel),
+            },
+            {
+                "id": "layout_h",
+                "title": self.tr("布局：左右"),
+                "keywords": "layout",
+                "run": lambda: self._set_layout("h"),
+            },
+            {
+                "id": "layout_v",
+                "title": self.tr("布局：上下"),
+                "keywords": "layout",
+                "run": lambda: self._set_layout("v"),
+            },
+            {
+                "id": "density_comfortable",
+                "title": self.tr("行密度：舒适"),
+                "keywords": "density comfortable",
+                "run": lambda: self._set_density("comfortable"),
+            },
+            {
+                "id": "density_compact",
+                "title": self.tr("行密度：紧凑"),
+                "keywords": "density compact",
+                "run": lambda: self._set_density("compact"),
+            },
+        ]
+        return cmds
+
     def _save_geometry(self) -> None:
         try:
             self.settings.window_geometry = bytes(self.saveGeometry())
@@ -335,6 +602,38 @@ class MainWindow(QMainWindow):
             save_settings(self.settings)
         except Exception:
             log.warning("窗口几何保存失败", exc_info=True)
+
+    # ============================================================ 导航与图标
+
+    def _add_tab(self, widget: QWidget, label: str, icon_name: str) -> None:
+        """往 tabs 加一页，并登记图标名（切主题时统一重取色）。"""
+        self.tabs.addTab(widget, icons.icon(icon_name), label)
+        self._tab_icon_names.append(icon_name)
+
+    def _refresh_icons(self) -> None:
+        """主题切换后重取所有图标颜色（图标是内联 SVG，按前景色渲染）。
+
+        本方法挂在 _update_status（每条流量到达都会调）上，所以必须按
+        「前景色是否真的变了」短路——否则每次状态刷新都清缓存重渲染 12 个 SVG。
+        """
+        if not hasattr(self, "tabs") or self.tabs is None:
+            return
+        color = theme.css("fg")
+        if color == getattr(self, "_icons_color", None):
+            return
+        self._icons_color = color
+        icons.invalidate()
+        for i, name in enumerate(self._tab_icon_names):
+            self.tabs.setTabIcon(i, icons.icon(name))
+        for btn, name in (
+            (self.clear_btn, "trash"),
+            (self.search_btn, "search"),
+            (self.proxy_btn, "power"),
+            (self.breakpoint_btn, "breakpoint"),
+            (self.mcp_btn, "mcp"),
+        ):
+            if btn is not None:
+                btn.setIcon(icons.icon(name))
 
     # ================================================================ UI 构建
 
@@ -435,10 +734,27 @@ class MainWindow(QMainWindow):
         self.layout_combo.currentIndexChanged.connect(self._on_layout_changed)
         toolbar_row.addWidget(self.layout_combo)
 
+        # 行密度：舒适 / 紧凑（高频视觉偏好，给个常驻入口）
+        toolbar_row.addSpacing(12)
+        toolbar_row.addWidget(QLabel(self.tr("密度:")))
+        self.density_combo = QComboBox()
+        self.density_combo.addItem(self.tr("舒适"), "comfortable")
+        self.density_combo.addItem(self.tr("紧凑"), "compact")
+        self.density_combo.setToolTip(
+            self.tr("流量列表行密度：舒适更宽松，紧凑一屏容纳更多行（重启保持）")
+        )
+        idx = self.density_combo.findData(self.settings.density)
+        self.density_combo.setCurrentIndex(max(idx, 0))
+        self.density_combo.currentIndexChanged.connect(self._on_density_changed)
+        toolbar_row.addWidget(self.density_combo)
+
         # 证书功能不常用，放到工具栏最后面（DESIGN：低频操作靠右）
         # （证书端口同代理端口，只在「设置 → 偏好设置 → 代理」里配置）
         toolbar_row.addSpacing(12)
+        # 勾态仅表示「服务运行中」（不是启停开关）：点击始终打开二维码弹窗，
+        # 停止服务走弹窗里的显式按钮——避免「点了没反应其实是静默停止」
         self.cert_btn = QPushButton(self.tr("证书服务"))
+        self.cert_btn.setCheckable(True)
         self.cert_btn.setToolTip(self.tr("启动局域网证书下载服务（手机装 CA 用）"))
         toolbar_row.addWidget(self.cert_btn)
 
@@ -467,6 +783,14 @@ class MainWindow(QMainWindow):
         self.mcp_btn.toggled.connect(self._on_mcp_toggled)
         toolbar_row.addWidget(self.mcp_btn)
 
+        # 高频动作加图标（低频动作保持纯文字，避免工具栏过宽）；
+        # 图标跟随深浅主题色，切主题时由 _refresh_icons 重取色
+        self.clear_btn.setIcon(icons.icon("trash"))
+        self.search_btn.setIcon(icons.icon("search"))
+        self.proxy_btn.setIcon(icons.icon("power"))
+        self.breakpoint_btn.setIcon(icons.icon("breakpoint"))
+        self.mcp_btn.setIcon(icons.icon("mcp"))
+
         toolbar_row.addStretch(1)
         root.addLayout(toolbar_row)
 
@@ -478,8 +802,11 @@ class MainWindow(QMainWindow):
         self.search_bar.hide()
         root.addWidget(self.search_bar)
 
-        # -- 标签页：流量 / Mock 规则
+        # -- 标签页：流量 / Mock 规则（左侧 rail 导航：图标 + 文字，West 位置）
         self.tabs = QTabWidget()
+        self.tabs.setTabPosition(QTabWidget.TabPosition.West)
+        self.tabs.setIconSize(QSize(18, 18))
+        self._tab_icon_names: list[str] = []
         root.addWidget(self.tabs, stretch=1)
 
         # 流量页
@@ -496,6 +823,7 @@ class MainWindow(QMainWindow):
         self.traffic_splitter.setHandleWidth(6)   # 分隔条加宽：看得见、好抓
         self.flow_store = FlowStore()
         self.traffic_table = TrafficTable()
+        self.traffic_table.set_row_density(self.settings.density)
         self.proxy_model = FlowFilterProxyModel()
         self.proxy_model.setSourceModel(self.flow_store)
         self.proxy_model.flow_lookup = self.capture.get_flow
@@ -511,40 +839,58 @@ class MainWindow(QMainWindow):
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
         )
         self.detail_panel.setMinimumWidth(200)
-        self.traffic_splitter.addWidget(self.traffic_table)
+        # 状态码 minimap：和表格包在同一个左栏容器里、紧贴表格右侧。
+        # 不能塞进 splitter（_on_layout_changed 的 sizes 逻辑只认两项），
+        # 也不能放 splitter 外面（会被挤到详情面板右边）。
+        self.minimap = StatusMinimap(self.traffic_table, self.proxy_model, traffic_page)
+        if not side_by_side:
+            self.minimap.setVisible(False)
+        self.proxy_model.rowsInserted.connect(self.minimap.update)
+        self.proxy_model.rowsRemoved.connect(self.minimap.update)
+        self.proxy_model.modelReset.connect(self.minimap.update)
+        self.proxy_model.dataChanged.connect(self.minimap.update)
+        self.traffic_table.verticalScrollBar().valueChanged.connect(self.minimap.update)
+
+        table_pane = QWidget()
+        table_lay = QHBoxLayout(table_pane)
+        table_lay.setContentsMargins(0, 0, 0, 0)
+        table_lay.setSpacing(0)
+        table_lay.addWidget(self.traffic_table, stretch=1)
+        table_lay.addWidget(self.minimap)
+        self.traffic_splitter.addWidget(table_pane)
         self.traffic_splitter.addWidget(self.detail_panel)
         self.traffic_splitter.setSizes([420, 300])
         self.traffic_splitter.setChildrenCollapsible(False)
         traffic_layout.addWidget(self.traffic_splitter)
-        self.tabs.addTab(traffic_page, self.tr("流量"))
+        self._add_tab(traffic_page, self.tr("流量"), "traffic")
 
         # Mock 规则页
         self.rules_panel = RulesPanel(self.rule_store)
-        self.tabs.addTab(self.rules_panel, self.tr("Mock 规则"))
+        self._add_tab(self.rules_panel, self.tr("Mock 规则"), "mock")
 
         # 网络模拟页（弱网限速 + 域名映射）
         self.network_panel = NetworkPanel()
         self.network_panel.load_config(self.settings.throttle, self.settings.map_rules)
-        self.tabs.addTab(self.network_panel, self.tr("网络模拟"))
+        self._add_tab(self.network_panel, self.tr("网络模拟"), "network")
 
         # 工具页（编码转换 + JSON 格式化/JSONPath，对齐 Fiddler TextWizard + json.cn）
         self.tool_panel = ToolPanel()
-        self.tabs.addTab(self.tool_panel, self.tr("工具"))
+        self._add_tab(self.tool_panel, self.tr("工具"), "tools")
 
         # 脚本页（用户 Python 插件，挂 mitmproxy flow 钩子）
         self.scripts_panel = ScriptsPanel(
             self.scripts_mgr, enabled=self.settings.scripts
         )
-        self.tabs.addTab(self.scripts_panel, self.tr("脚本"))
+        self._add_tab(self.scripts_panel, self.tr("脚本"), "scripts")
 
         # 日志页：实时显示运行日志（级别筛选 / 清空 / 打开磁盘日志文件）
         self.log_panel = LogPanel()
-        self.tabs.addTab(self.log_panel, self.tr("日志"))
+        self._add_tab(self.log_panel, self.tr("日志"), "log")
 
         # 统计页（对齐 Fiddler Statistics）：总览 + 域名/状态码/方法 + 慢请求
         # + 时间直方图。聚合逻辑在 app/stats.py，与 MCP 的 get_stats 共用
         self.stats_panel = StatsPanel(flow_provider=self._stats_flows)
-        self.tabs.addTab(self.stats_panel, self.tr("统计"))
+        self._add_tab(self.stats_panel, self.tr("统计"), "stats")
         self.tabs.currentChanged.connect(self._on_tab_changed)
         # 统计防抖：新流量可能成批到达（页面加载时一串请求），没必要每条都
         # 全量聚合；500ms 内的多条变化合并成一次重算
@@ -589,6 +935,8 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+X"), self.traffic_table, self._on_clear)
         # Del 删除选中会话（同样只在列表有焦点时生效）
         QShortcut(QKeySequence("Del"), self.traffic_table, self._delete_selected_flows)
+        # Ctrl+K 命令面板（VS Code 风格的可搜索快捷动作启动器）
+        QShortcut(QKeySequence("Ctrl+K"), self, self._open_command_palette)
 
         # 流量表格右键菜单
         self.traffic_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -656,6 +1004,11 @@ class MainWindow(QMainWindow):
         compare_action.setShortcut(QKeySequence("Ctrl+Shift+D"))
         compare_action.triggered.connect(lambda: self._goto_tool("compare"))
         tool_menu.addAction(compare_action)
+
+        fix_action = QAction(self.tr("FIX 报文解析…"), self)
+        fix_action.setShortcut(QKeySequence("Ctrl+Shift+F"))
+        fix_action.triggered.connect(lambda: self._goto_tool("fix"))
+        tool_menu.addAction(fix_action)
 
         # -- 设置：偏好设置对话框（收拢工具栏/菜单里散落的可配置项）
         settings_menu = self.menuBar().addMenu(self.tr("设置"))
@@ -813,6 +1166,8 @@ class MainWindow(QMainWindow):
             editor = self.tool_panel.json_panel.input_edit
         elif page == "compare":
             editor = self.tool_panel.compare_panel.left_edit
+        elif page == "fix":
+            editor = self.tool_panel.fix_panel.input_edit
         else:
             editor = self.tool_panel.codec_panel.input_edit
         editor.setFocus()
@@ -1308,8 +1663,17 @@ class MainWindow(QMainWindow):
         ).start()
 
     def _on_toggle_cert_server(self) -> None:
+        """点击证书按钮：未运行则启动，已运行则直接重开二维码弹窗。
+
+        刻意不做成「再点一次停止」：停止是静默的，用户点了没感知，
+        会以为按钮失效（真实反馈：要点两次才弹二维码）。停止服务改到
+        弹窗里用显式按钮完成，按钮勾态只表示「服务运行中」。
+        """
         if self.cert_server is not None and self.cert_server.running:
-            self._stop_cert_server()
+            # checkable 按钮被点时会自动翻勾态，先同步回「运行中」再弹窗，
+            # 否则整个二维码对话期间按钮都显示成未运行的丑态
+            self._sync_cert_button()
+            self._show_cert_dialog(self.cert_server)
             return
         try:
             server = CertServer(
@@ -1323,6 +1687,7 @@ class MainWindow(QMainWindow):
                     self.tr('端口 {0} 被占用，证书服务已自动改用 {1}').format(self.settings.cert_port, server.port),
                     6000,
                 )
+            self._sync_cert_button()
             self._show_cert_dialog(server)
         except FileNotFoundError:
             dialogs.critical(
@@ -1342,6 +1707,18 @@ class MainWindow(QMainWindow):
                 f"从端口 {self.settings.cert_port} 起没有找到可用端口:\n{e}",
             )
         self._update_status()
+
+    def _sync_cert_button(self) -> None:
+        """证书按钮勾态 / tooltip 跟随服务运行状态（stop 是唯一收敛点）。"""
+        running = self.cert_server is not None and self.cert_server.running
+        self.cert_btn.blockSignals(True)
+        self.cert_btn.setChecked(running)
+        self.cert_btn.blockSignals(False)
+        self.cert_btn.setToolTip(
+            self.tr("证书服务运行中：{0}（点击查看二维码）").format(self.cert_server.url)
+            if running
+            else self.tr("启动局域网证书下载服务（手机装 CA 用）")
+        )
 
     def _apply_cert_port(self, port: int) -> None:
         """证书端口变更（设置对话框确认）：保存设置；运行中立即用新端口重启。"""
@@ -1376,6 +1753,7 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(
                 self.tr('端口 {0} 被占用，证书服务已自动改用 {1}').format(port, server.port), 6000
             )
+        self._sync_cert_button()
         self._show_cert_dialog(server)
 
     @staticmethod
@@ -1398,7 +1776,11 @@ class MainWindow(QMainWindow):
 
     def _show_cert_dialog(self, server: CertServer) -> None:
         """证书服务弹窗：直接显示各局域网地址的二维码（v1.12 只有网页里有，
-        弹窗只给纯链接——手机还得先抄地址，体验对齐「打开就扫」）。"""
+        弹窗只给纯链接——手机还得先抄地址，体验对齐「打开就扫」）。
+
+        「好」只关窗、服务保持运行（手机还要下载证书）；停止服务是显式按钮，
+        关窗不等于停服，避免用户以为关掉弹窗服务就停了。
+        """
         dlg = QDialog(self)
         dlg.setWindowTitle(self.tr("证书服务已启动"))
         lay = QVBoxLayout(dlg)
@@ -1435,16 +1817,32 @@ class MainWindow(QMainWindow):
         )
         tip.setWordWrap(True)
         lay.addWidget(tip)
+
+        def stop_and_close() -> None:
+            self._stop_cert_server()
+            self.status_bar.showMessage(self.tr("证书服务已停止"), 3000)
+            dlg.accept()
+
+        btn_row = QHBoxLayout()
+        stop_btn = QPushButton(self.tr("停止服务"))
+        stop_btn.setObjectName("cert_stop_btn")
+        stop_btn.setToolTip(self.tr("停止局域网证书下载服务（手机已装好证书再停）"))
+        stop_btn.clicked.connect(stop_and_close)
+        btn_row.addWidget(stop_btn)
+        btn_row.addStretch(1)
         btn = QPushButton(self.tr("好"))
+        btn.setObjectName("cert_ok_btn")
         btn.setDefault(True)
         btn.clicked.connect(dlg.accept)
-        lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        btn_row.addWidget(btn)
+        lay.addLayout(btn_row)
         dlg.exec()
 
     def _stop_cert_server(self) -> None:
         if self.cert_server is not None:
             self.cert_server.stop()
             self.cert_server = None
+        self._sync_cert_button()
         self._update_status()
 
     def _on_export_ca(self) -> None:
@@ -2053,15 +2451,21 @@ class MainWindow(QMainWindow):
         else:
             note = self.tr("（已截断到前 512KB）") if truncated else ""
         page = self.tool_panel.current_key
-        # API 调试页：body 输入框是「要发送的请求体」，不是看抓包 body 的地方，
-        # 改投 JSON（像 JSON）或编码转换，避免「点了没反应」的错觉。
-        if page == "api":
+        # FIX 报文优先：8=FIX 开头的 body 没有歧义，直接进 FIX 页
+        # （API 调试页的 body 框是「要发送的请求体」，不是看抓包 body 的地方，
+        # 所以像 FIX 也不投 api）
+        if is_fix_text(text):
+            page = "fix"
+        elif page == "api":
             page = "json" if self._body_looks_json(text, content_type) else "codec"
         self.tabs.setCurrentWidget(self.tool_panel)
         self.tool_panel.set_body_text(text, page)
-        label = {"json": self.tr("JSON 工具"), "compare": self.tr("JSON 比对"), "api": self.tr("API 调试")}.get(
-            page, self.tr("编码转换")
-        )
+        label = {
+            "json": self.tr("JSON 工具"),
+            "compare": self.tr("JSON 比对"),
+            "api": self.tr("API 调试"),
+            "fix": self.tr("FIX 解析"),
+        }.get(page, self.tr("编码转换"))
         self.status_bar.showMessage(
             self.tr('已把该会话的 body 送入工具页 · {0}{1}').format(label, note), 5000
         )
@@ -2940,6 +3344,7 @@ class MainWindow(QMainWindow):
         else:
             self.cert_state_label.setText("")
 
+        self._refresh_icons()
         self._update_capture_status()
 
     def _update_capture_status(self) -> None:
