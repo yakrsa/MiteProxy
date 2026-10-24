@@ -4,8 +4,12 @@
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "新增 FIX 协议解析工具页（Ctrl+Shift+F）：粘贴报文自动解析成树形表格，带字段名与枚举释义、重复组可折叠；BodyLength/CheckSum 按字节校验，DataLength 原样读取；转义写法与日志前缀自动还原；多条消息各占一个 tab，校验失败标红并可一键跳转",
-      "en": "New FIX parser tool page (Ctrl+Shift+F): paste raw FIX and get a tree table with field names, enum explanations and collapsible repeat groups; byte-accurate BodyLength/CheckSum validation, verbatim DataLength fields; escaped SOH and log prefixes are recovered automatically; one tab per message, with failures flagged in red and a one-click jump"
+      "zh": "新增 FIX 协议解析工具页（Ctrl+Shift+F）：粘贴报文自动解析成树形表格，字段名与枚举释义、重复组可折叠，自带 BodyLength/CheckSum 校验，多条消息按 tab 分列、错误标红",
+      "en": "New FIX parser tool page (Ctrl+Shift+F): paste raw FIX and get a tree table with field names, enum explanations and collapsible repeat groups, built-in BodyLength/CheckSum validation, and one tab per message with failures flagged in red"
+    },
+    {
+      "zh": "新增域名过滤页：黑名单与白名单两个独立列表 + 启用开关（三态），流量列表右键即可把域名加入名单，写 example.com 同时覆盖其子域",
+      "en": "New domain filter page: separate blacklist and whitelist with a three-state switch, add a host from the traffic table's context menu, and example.com also covers its subdomains"
     },
     {
       "zh": "新增 API 集合：把当前请求保存到本地，支持加载、重命名、删除，常用请求一键复用",
@@ -20,28 +24,16 @@
       "en": "GraphQL support in the API panel: request bodies are detected automatically, with query and variables edited separately"
     },
     {
-      "zh": "界面增强：命令面板（Ctrl/Cmd+K）、流量表状态码 minimap、内联 SVG 图标、详情页请求概览卡、行密度切换与空态引导",
-      "en": "UI additions: command palette (Ctrl/Cmd+K), status-code minimap beside the traffic table, inline SVG icons, a request overview card in the detail panel, row-density switching and empty-state guidance"
+      "zh": "新增命令面板（Ctrl/Cmd+K）与流量表状态码 minimap：命令即输即搜、回车执行，色点窄带快速定位异常请求",
+      "en": "New command palette (Ctrl/Cmd+K) and status-code minimap: type to filter commands and press Enter to run, and spot failing requests from a colored dot strip"
     },
     {
-      "zh": "脚本编辑器新增 Python 语法高亮：关键字、字符串、注释、数字、装饰器等七类着色，三引号跨行续染，跟随深浅主题",
-      "en": "Python syntax highlighting in the script editor: seven token classes (keywords, strings, comments, numbers, decorators and more), multi-line triple-quoted strings, theme-aware colors"
+      "zh": "修复已知 Bug：证书服务按钮点击无响应、代理线程异常退出后界面未复位、隧道连接流量缓存泄漏、MCP 写操作跨线程、启动端口被占用未提示、关闭应用误报「意外退出」、IPv6 地址显示错误等",
+      "en": "Fixed known bugs: unresponsive certificate-service button, UI not resetting after the proxy thread died, flow-cache leaks on tunnel connections, cross-thread MCP writes, silent port fallback on startup, false 'proxy exited' warning on quit, wrong IPv6 URLs and more"
     },
     {
-      "zh": "JSON 树改为键 / 类型 / 值三列，详情页新增「层级」菜单按层展开",
-      "en": "JSON tree now shows key / type / value in three columns, plus a Layer menu in the detail panel to expand by depth"
-    },
-    {
-      "zh": "全局控件质感打磨：滚动条细条化、菜单与 Tooltip 圆角、分隔条悬停强调、状态栏分隔线；流量表数值列右对齐并改用等宽字体",
-      "en": "Overall control polish: slimmer scrollbars, rounded menus and tooltips, hover-highlighted splitters, a status-bar divider; numeric columns in the traffic table are right-aligned with a monospaced font"
-    },
-    {
-      "zh": "稳定性修复 11 项：代理线程意外退出自动复位并还原系统代理、隧道与失败连接不再泄漏流量缓存、MCP 写操作跨线程安全、设置落盘失败上报、系统代理切换原子化并在失败时回滚、IPv6 地址正确格式化",
-      "en": "Eleven stability fixes: auto-reset and system-proxy restore when the proxy thread dies, no more flow-cache leaks on tunnels or failed connections, thread-safe MCP writes, settings write failures are reported, atomic system-proxy switching with rollback, and correct IPv6 URL formatting"
-    },
-    {
-      "zh": "修复证书服务按钮：点击始终弹出二维码，停止改为弹窗内显式按钮加状态栏反馈",
-      "en": "Fixed the certificate-service button: clicking always opens the QR dialog, and stopping is now an explicit in-dialog button with status-bar feedback"
+      "zh": "体验优化：全局控件质感、流量表数值列等宽右对齐、脚本编辑器 Python 语法高亮、JSON 树三列并按层展开、左侧图标导航栏（可钉住、Ctrl+1–9）、请求概览卡、行密度切换与空态引导",
+      "en": "Experience polish: overall control styling, right-aligned monospaced numeric columns, Python syntax highlighting in the script editor, a three-column JSON tree with expand-by-depth, an icon nav rail (pinnable, Ctrl+1–9), a request overview card, row-density switching and empty-state guidance"
     }
   ]
 }
