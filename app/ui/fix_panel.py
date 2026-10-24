@@ -12,35 +12,52 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QCoreApplication, QT_TRANSLATE_NOOP, QTimer
-from PySide6.QtGui import QFont
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QCoreApplication, QT_TRANSLATE_NOOP, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSplitter,
     QStackedWidget,
     QTabWidget,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from app import fixprofile
 from app.fix import FixField, FixGroup, human_time, is_fix_text, parse_fix
-from app.ui import theme
+from app.ui import dialogs, theme
 
 VIEW_TREE = "tree"
 VIEW_RAW = "raw"
 
 #: 值列展示上限（超长 RawData 之类）：单元格截断，完整值进 tooltip
 VALUE_CELL_LIMIT = 300
+
+#: 标签列：先给个保守宽度，填充后按实际 tag 自适应。5 位私有 tag（如
+#: 16015）在 52px 里会被省略成 `1…`，看不出是哪个 tag——列宽必须让位给它，
+#: 但也不该被异常长的内容撑爆，所以夹在 [MIN, MAX] 之间。
+TAG_COLUMN_MIN = 52
+TAG_COLUMN_MAX = 120
+
+#: FIX 规范把 5000 起划给用户自定义字段；这类 tag 未收录时要说明是私有扩展，
+#: 而不是笼统地说「字典没收录」（否则用户会以为解析漏了）
+PRIVATE_TAG_FROM = 5000
 
 #: 结果区同时展示的消息 tab 数上限：解析不设限（可读原文始终含全部），
 #: 但 tab 建太多既无意义又拖慢首屏，超量部分在状态区提示
@@ -104,6 +121,30 @@ def _cell_text(value: str) -> str:
     return text
 
 
+def _read_text(path: str) -> str:
+    """读字典文件：先 UTF-8（含 BOM），失败再按 GB18030（Excel 导出常见）。"""
+    data = Path(path).read_bytes()
+    for enc in ("utf-8-sig", "gb18030"):
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", "replace")
+
+
+def _unique_slug(prof: fixprofile.Profile) -> str:
+    """同一合作方的同名字典视为更新（覆盖）；名字不同但文件名撞了就加后缀。"""
+    base = prof.slug or fixprofile.slugify(prof.name) or "profile"
+    existing = {p.slug: p for p in fixprofile.list_profiles()}
+    old = existing.get(base)
+    if old is None or old.name == prof.name:
+        return base
+    i = 2
+    while "{0}-{1}".format(base, i) in existing:
+        i += 1
+    return "{0}-{1}".format(base, i)
+
+
 class FixPanel(QWidget):
     """工具页子页：FIX 报文解析。"""
 
@@ -112,12 +153,15 @@ class FixPanel(QWidget):
         self._font = _mono_font()
         self._messages = []
         self._raw_text = ""
+        #: (slug, Dictionary) 缓存：每次按键都读一遍字典文件太浪费
+        self._dict_cache: tuple[str, object] | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
 
         root.addLayout(self._build_toolbar())
+        self._refresh_dicts()
         root.addWidget(self._build_splitter(), stretch=1)
         root.addLayout(self._build_status())
 
@@ -145,6 +189,30 @@ class FixPanel(QWidget):
         self.view_combo.addItem(self.tr("可读原文"), VIEW_RAW)
         self.view_combo.currentIndexChanged.connect(self._on_view_changed)
         row.addWidget(self.view_combo)
+
+        # 字典：内置通用字段 / 某个合作方的私有字段（app/fixprofile）
+        row.addSpacing(10)
+        row.addWidget(QLabel(self.tr("字典:")))
+        self.dict_combo = QComboBox()
+        self.dict_combo.currentIndexChanged.connect(self._on_dict_changed)
+        row.addWidget(self.dict_combo)
+
+        self.dict_menu_btn = QToolButton()
+        self.dict_menu_btn.setText("⋯")
+        self.dict_menu_btn.setToolTip(self.tr("导入 / 删除合作方 FIX 字典"))
+        self.dict_menu_btn.setPopupMode(
+            QToolButton.ToolButtonPopupMode.InstantPopup)
+        menu = QMenu(self.dict_menu_btn)
+        menu.addAction(self.tr("导入字典文件…"), self._import_dict)
+        menu.addAction(self.tr("打开字典文件夹"), self._open_dict_folder)
+        menu.addAction(self.tr("删除当前字典"), self._remove_dict)
+        menu.addSeparator()
+        menu.addAction(self.tr("复制 JSON 模板"),
+                       lambda: self._copy_template("json"))
+        menu.addAction(self.tr("复制 CSV 模板"),
+                       lambda: self._copy_template("csv"))
+        self.dict_menu_btn.setMenu(menu)
+        row.addWidget(self.dict_menu_btn)
 
         self.copy_btn = QPushButton(self.tr("复制可读原文"))
         self.copy_btn.setToolTip(
@@ -230,6 +298,142 @@ class FixPanel(QWidget):
         self.input_edit.setPlainText(text)
         self._parse()
 
+    # ------------------------------------------------------------ 字典（合作方私有字段）
+
+    def _dictionary(self):
+        """当前生效的字典（内置 ⊕ 选中的合作方字典），按 slug 缓存。"""
+        slug = self.dict_combo.currentData() or ""
+        if self._dict_cache is not None and self._dict_cache[0] == slug:
+            return self._dict_cache[1]
+        if not slug:
+            dictionary = fixprofile.BUILTIN
+        else:
+            path = fixprofile.profile_dir() / "{0}.json".format(slug)
+            prof = fixprofile.load_profile(path) if path.exists() else None
+            dictionary = fixprofile.merge(prof)
+        self._dict_cache = (slug, dictionary)
+        return dictionary
+
+    def _refresh_dicts(self) -> None:
+        """重填字典下拉：内置 + 已导入的合作方字典（尽量保持当前选择）。"""
+        want = (self.dict_combo.currentData()
+                if self.dict_combo.count() else fixprofile.get_active_slug())
+        self.dict_combo.blockSignals(True)
+        self.dict_combo.clear()
+        self.dict_combo.addItem(self.tr("内置（通用字段）"), "")
+        for prof in fixprofile.list_profiles():
+            self.dict_combo.addItem(prof.label(), prof.slug)
+            idx = self.dict_combo.count() - 1
+            self.dict_combo.setItemData(
+                idx,
+                self.tr("{0} 个字段 · {1}").format(len(prof.fields), prof.slug),
+                Qt.ItemDataRole.ToolTipRole)
+        pos = self.dict_combo.findData(want) if want else 0
+        self.dict_combo.setCurrentIndex(pos if pos >= 0 else 0)
+        self.dict_combo.blockSignals(False)
+        self._update_dict_tip()
+
+    def _update_dict_tip(self) -> None:
+        slug = self.dict_combo.currentData() or ""
+        if slug:
+            self.dict_combo.setToolTip(self.tr(
+                "当前用「{0}」字典解析：内置字段照常可用，同名 tag 以该字典为准").format(
+                    self.dict_combo.currentText()))
+        else:
+            self.dict_combo.setToolTip(self.tr(
+                "内置字典只含通用字段；导入合作方字典后，对方的私有 tag 才有名字与枚举释义"))
+
+    def _on_dict_changed(self, _index: int) -> None:
+        slug = self.dict_combo.currentData() or ""
+        fixprofile.set_active_slug(slug)
+        self._dict_cache = None
+        self._update_dict_tip()
+        if self.input_edit.toPlainText().strip():
+            self._parse()
+
+    def _import_dict(self) -> None:
+        path, _selected = QFileDialog.getOpenFileName(
+            self, self.tr("导入合作方 FIX 字典"), "",
+            self.tr("FIX 字典 (*.json *.csv *.tsv *.txt);;所有文件 (*)"))
+        if path:
+            self.import_profile(path)
+
+    def import_profile(self, path: str) -> bool:
+        """导入一份字典文件（JSON / CSV / TSV），成功后自动切到它。
+
+        解析问题不阻断导入（对方文档常有空行 / 合并单元格），只把问题条数
+        写在状态区，用户自己决定要不要回去改文件。
+        """
+        try:
+            text = _read_text(path)
+        except OSError as exc:
+            self._set_status(self.tr("读取字典失败：{0}").format(exc), "error")
+            return False
+        stem = Path(path).stem
+        prof, warnings = fixprofile.parse_profile_text(
+            text, slug=fixprofile.slugify(stem) or "profile", source=path)
+        if prof is None:
+            # 具体原因（哪一行、JSON 哪儿错）只进 tooltip：这些是数据层诊断，
+            # 不随界面语言翻译，别让它变成中英混排的状态区文案
+            reason = warnings[0] if warnings else self.tr("格式无法识别")
+            self._set_status(
+                self.tr("导入失败：无法识别字典格式（支持 JSON / CSV / TSV）"),
+                "error")
+            self.status_label.setToolTip(reason)
+            return False
+        if not prof.name or prof.name == prof.slug:
+            prof.name = stem
+        prof.slug = _unique_slug(prof)
+        fixprofile.save_profile(prof)
+        self._dict_cache = None
+        self._refresh_dicts()
+        idx = self.dict_combo.findData(prof.slug)
+        if idx >= 0:
+            self.dict_combo.setCurrentIndex(idx)   # 触发落盘 + 重新解析
+        note = (self.tr("，{0} 行无法识别已跳过").format(len(warnings))
+                if warnings else "")
+        self._set_status(self.tr("已导入字典「{0}」：{1} 个字段{2}").format(
+            prof.name, len(prof.fields), note), "ok")
+        return True
+
+    def remove_current_profile(self) -> bool:
+        """删除当前选中的合作方字典并回落到内置（UI 里先确认再调）。"""
+        slug = self.dict_combo.currentData() or ""
+        if not slug:
+            return False
+        ok = fixprofile.delete_profile(slug)
+        self._dict_cache = None
+        self._refresh_dicts()
+        if self.input_edit.toPlainText().strip():
+            self._parse()
+        self._set_status(
+            self.tr("已删除字典「{0}」，回到内置字典").format(slug) if ok
+            else self.tr("删除失败：{0}").format(slug),
+            "ok" if ok else "error")
+        return ok
+
+    def _remove_dict(self) -> None:
+        slug = self.dict_combo.currentData() or ""
+        if not slug:
+            self._set_status(self.tr("当前用的是内置字典，没有可删除的字典"), "hint")
+            return
+        answer = dialogs.question(
+            self, self.tr("删除字典"),
+            self.tr("删除字典「{0}」？字典文件会从磁盘上移除。").format(
+                self.dict_combo.currentText()))
+        if answer == QMessageBox.StandardButton.Yes:
+            self.remove_current_profile()
+
+    def _open_dict_folder(self) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(fixprofile.profile_dir())))
+
+    def _copy_template(self, kind: str) -> None:
+        text = fixprofile.TEMPLATE_JSON if kind == "json" else fixprofile.TEMPLATE_CSV
+        QApplication.clipboard().setText(text)
+        self._set_status(self.tr(
+            "模板已复制到剪贴板：按对方文档填好字段，另存为 .json / .csv 后用「导入字典文件…」导入"),
+            "ok")
+
     # ------------------------------------------------------------ 解析
 
     def _schedule(self) -> None:
@@ -257,7 +461,7 @@ class FixPanel(QWidget):
             self._clear_result()
             self._set_status("", "hint")
             return
-        messages = parse_fix(text)
+        messages = parse_fix(text, self._dictionary())
         self._messages = messages
         if not messages:
             self._clear_result()
@@ -320,12 +524,23 @@ class FixPanel(QWidget):
         tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         header = tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        header.resizeSection(0, 52)
+        header.resizeSection(0, TAG_COLUMN_MIN)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         tree.setColumnWidth(2, 180)
         return tree
+
+    def _fit_tag_column(self, tree: QTreeWidget) -> None:
+        """标签列按实际 tag 宽度重排（Fixed 模式下 resizeColumnToContents 同样生效）。
+
+        私有 tag 常是 4–5 位（`16015`），固定 52px 减去树缩进只剩 ~28px，
+        会被省略成 `1…`——tag 号看不全等于没法对字段。这里按内容撑开，
+        再夹到 [TAG_COLUMN_MIN, TAG_COLUMN_MAX]，避免异常内容把列撑飞。
+        """
+        tree.resizeColumnToContents(0)
+        width = max(TAG_COLUMN_MIN, min(tree.columnWidth(0), TAG_COLUMN_MAX))
+        tree.setColumnWidth(0, width)
 
     def _message_summary(self, m) -> str:
         """单条消息的摘要行（tab 顶部 / 单条时的状态区共用）。"""
@@ -372,6 +587,7 @@ class FixPanel(QWidget):
             tree = self._make_tree()
             self._fill_items(tree.invisibleRootItem(), m.items)
             tree.expandToDepth(1)
+            self._fit_tag_column(tree)
             layout.addWidget(tree)
             title = "#{0} 35={1}".format(i + 1, m.msg_type or "?")
             if m.errors:
@@ -393,12 +609,16 @@ class FixPanel(QWidget):
     def _fill_items(self, parent: QTreeWidgetItem, items) -> None:
         for item in items:
             if isinstance(item, FixGroup):
+                group_comment = self.tr("重复组 · 解析出 {0} 个实例").format(
+                    len(item.instances))
                 node = QTreeWidgetItem(parent, [
                     str(item.tag),
                     "{0} {1}".format(item.name_cn, item.name_en),
                     self.tr("{0} 个实例").format(item.count),
-                    self.tr("重复组 · 解析出 {0} 个实例").format(len(item.instances)),
+                    group_comment,
                 ])
+                node.setToolTip(0, self.tr("tag {0}").format(item.tag))
+                node.setToolTip(3, group_comment)
                 for inst in item.instances:
                     child = QTreeWidgetItem(node, [
                         "",
@@ -428,13 +648,21 @@ class FixPanel(QWidget):
                     comment = self.tr("前三段字节累加 mod 256")
         else:
             name = self.tr("未收录字段")
-            comment = self.tr("字典未收录该 tag")
+            # 5000 起是 FIX 留给用户自定义的区间：这类 tag 本来就查不到名，
+            # 说明成「私有扩展」比「字典没收录」更准确，也不会让人以为解析漏了
+            if f.tag >= PRIVATE_TAG_FROM:
+                comment = self.tr(
+                    "私有扩展 tag（FIX 规范 5000 起为用户自定义），字典未收录")
+            else:
+                comment = self.tr("字典未收录该 tag")
         row = QTreeWidgetItem(parent, [
             str(f.tag), name, _cell_text(f.value), comment,
         ])
-        full = f.value.replace("\x01", "|")
-        if len(full) > VALUE_CELL_LIMIT:
-            row.setToolTip(2, full)
+        # 列宽有限，长字段名 / 长值 / 长注释都会被省略——悬停给出完整内容
+        row.setToolTip(0, self.tr("tag {0}").format(f.tag))
+        row.setToolTip(1, name)
+        row.setToolTip(2, f.value.replace("\x01", "|"))
+        row.setToolTip(3, comment)
 
     # ------------------------------------------------------------ 可读原文
 
@@ -476,6 +704,7 @@ class FixPanel(QWidget):
 
     def _set_status(self, text: str, kind: str) -> None:
         self.status_label.setText(text)
+        self.status_label.setToolTip("")     # 上一次导入失败的详细原因不要残留
         self._status_kind = kind
         self.status_label.setStyleSheet(f"color: {theme.css(kind)};")
 

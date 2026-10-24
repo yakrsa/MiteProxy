@@ -127,8 +127,11 @@ class TestTranslationCoverage:
     #: - scripts.py SCRIPT_TEMPLATE：给用户看的脚本模板，i18n 不适用
     #: - rules.py 默认规则名：会落盘的数据，不该随语言变
     #: - fixdict.py：FIX 字段字典，中文注释是数据不是界面文案（同 rules.py）
+    #: - fixprofile.py：FIX 字典导入的解析诊断（哪行不是数字 / JSON 哪儿错），
+    #:   属于数据层文本：界面只显示条数 + 通用提示，原文放 tooltip
     #: - feedback.py issue 正文 / theme.py QSS：分别面向开发者、是代码
-    _EXEMPT_FILES = {"app/ui/dialogs.py", "app/certserver.py", "app/fixdict.py"}
+    _EXEMPT_FILES = {"app/ui/dialogs.py", "app/certserver.py", "app/fixdict.py",
+                     "app/fixprofile.py"}
     _EXEMPT_LINES = {
         # flow_store COLUMNS：中文列头走 column_labels() 懒翻译；#6 新增 3 个
         # 可选列（内容类型/开始时刻/备注）追加在末尾，整段都豁免

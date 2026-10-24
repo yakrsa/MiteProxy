@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QApplication, QTreeWidgetItem
 
+from app import fixprofile
 from app.fix import FixGroup
 from app.ui.fix_panel import MAX_TAB_MESSAGES, FixPanel
 from app.ui.tool_panel import ToolPanel
@@ -98,6 +99,37 @@ class TestFixPanelTree:
         assert "|" in text
         assert "\x01" not in text
         assert "35=D" in text
+
+    def test_tag_column_fits_private_tag(self, panel):
+        # 52px 固定列宽 - 20px 缩进装不下 5 位私有 tag，会被省略成 `1…`
+        # → tag 号看不全就没法对字段。列宽必须按内容撑开。
+        panel.set_text(make_fix(ORDER + [(16015, "0")]))
+        tree = _cur_tree(panel)
+        need = (tree.indentation()
+                + tree.fontMetrics().horizontalAdvance("16015"))
+        assert tree.columnWidth(0) >= need
+
+    def test_private_tag_explained_as_extension(self, panel):
+        panel.set_text(make_fix(ORDER + [(16015, "0"), (4999, "x")]))
+        root = _cur_tree(panel).invisibleRootItem()
+        tags = [root.child(i).text(0) for i in range(root.childCount())]
+        private_row = root.child(tags.index("16015"))
+        assert "未收录" in private_row.text(1)
+        assert "私有扩展" in private_row.text(3)
+        # 5000 以下是标准区间，未知就该说「字典未收录」，不冒充私有扩展
+        normal_row = root.child(tags.index("4999"))
+        assert "私有扩展" not in normal_row.text(3)
+        assert "字典未收录" in normal_row.text(3)
+
+    def test_cells_expose_full_text_in_tooltip(self, panel):
+        # 列宽有限，长值 / 长注释会被省略；悬停要能看到完整内容
+        panel.set_text(make_fix(ORDER + [(16015, "0")]))
+        root = _cur_tree(panel).invisibleRootItem()
+        tags = [root.child(i).text(0) for i in range(root.childCount())]
+        row = root.child(tags.index("16015"))
+        assert row.toolTip(0) == "tag 16015"
+        assert "私有扩展" in row.toolTip(3)
+        assert root.child(0).toolTip(0) == "tag 8"
 
 
 class TestFixPanelTabs:
@@ -218,6 +250,102 @@ class TestFixPanelStatus:
     def test_garbage_input_does_not_crash(self, panel):
         panel.set_text("8=FIX.4.4\x01abc=1\x0135=D")
         assert panel.tab_widget.count() >= 0   # 不抛即通过
+
+
+class TestFixPanelDictionary:
+    """合作方字典：导入 → 下拉切换 → 私有 tag 有名字（app/fixprofile）。"""
+
+    @pytest.fixture()
+    def home(self, qapp, tmp_path, monkeypatch):
+        # 面板通过 fixprofile 读写字典目录，指到 tmp 才是真隔离
+        monkeypatch.setattr(fixprofile, "CONFIG_DIR", tmp_path)
+        return tmp_path
+
+    @staticmethod
+    def _csv(tmp_path) -> str:
+        path = tmp_path / "xx期货.csv"
+        path.write_text(
+            "tag,英文名,中文名,类型,枚举,组成员\n"
+            "10001,LocalOrderID,本地订单号,String,,\n"
+            "10002,LegSide,腿方向,char,1=买;2=卖,\n"
+            "10010,NoSubOrders,子订单数,NumInGroup,,10011\n"
+            "10011,SubOrderID,子订单号,String,,\n",
+            encoding="utf-8")
+        return str(path)
+
+    def test_import_adds_profile_and_switches(self, home):
+        panel = FixPanel()
+        assert panel.dict_combo.count() == 1          # 初始只有内置
+        assert panel.import_profile(self._csv(home)) is True
+        assert panel.dict_combo.count() == 2
+        assert panel.dict_combo.currentData() == "xx期货"
+        assert "已导入字典" in panel.status_label.text()
+        # 选择会落盘（下次启动仍是这家）
+        assert fixprofile.get_active_slug() == "xx期货"
+        panel.deleteLater()
+
+    def test_private_field_named_after_import(self, home):
+        panel = FixPanel()
+        panel.import_profile(self._csv(home))
+        panel.set_text(make_fix(ORDER + [(10001, "LOC-9"), (10002, "2")]))
+        root = _cur_tree(panel).invisibleRootItem()
+        tags = [root.child(i).text(0) for i in range(root.childCount())]
+        assert "本地订单号" in root.child(tags.index("10001")).text(1)
+        assert "卖" in root.child(tags.index("10002")).text(3)
+        panel.deleteLater()
+
+    def test_switch_back_to_builtin(self, home):
+        panel = FixPanel()
+        panel.import_profile(self._csv(home))
+        panel.set_text(make_fix(ORDER + [(10001, "LOC-9")]))
+        panel.dict_combo.setCurrentIndex(0)           # 内置
+        root = _cur_tree(panel).invisibleRootItem()
+        tags = [root.child(i).text(0) for i in range(root.childCount())]
+        assert "未收录" in root.child(tags.index("10001")).text(1)
+        assert fixprofile.get_active_slug() == ""
+        panel.deleteLater()
+
+    def test_custom_group_expands(self, home):
+        panel = FixPanel()
+        panel.import_profile(self._csv(home))
+        panel.set_text(make_fix(ORDER + [
+            (10010, "2"), (10011, "A"), (10011, "B")]))
+        root = _cur_tree(panel).invisibleRootItem()
+        node = None
+        for i in range(root.childCount()):
+            if root.child(i).text(0) == "10010":
+                node = root.child(i)
+        assert node is not None and node.childCount() == 2
+        panel.deleteLater()
+
+    def test_remove_current_profile(self, home, monkeypatch):
+        panel = FixPanel()
+        panel.import_profile(self._csv(home))
+        # 删除走确认框：offscreen 下真模态会挂死，必须拦掉
+        from PySide6.QtWidgets import QMessageBox
+        monkeypatch.setattr("app.ui.fix_panel.dialogs.question",
+                            lambda *a, **k: QMessageBox.StandardButton.Yes)
+        assert panel.remove_current_profile() is True
+        assert panel.dict_combo.count() == 1
+        assert fixprofile.list_profiles() == []
+        panel.deleteLater()
+
+    def test_failed_import_keeps_current_dict(self, home):
+        panel = FixPanel()
+        panel.import_profile(self._csv(home))
+        bad = home / "bad.csv"
+        bad.write_text("这不是字段表\n", encoding="utf-8")
+        assert panel.import_profile(str(bad)) is False
+        assert panel.dict_combo.currentData() == "xx期货"
+        assert "导入失败" in panel.status_label.text()
+        panel.deleteLater()
+
+    def test_template_copied_to_clipboard(self, home):
+        from PySide6.QtWidgets import QApplication
+        panel = FixPanel()
+        panel._copy_template("csv")
+        assert "tag" in QApplication.clipboard().text()
+        panel.deleteLater()
 
 
 class TestToolPanelWiring:

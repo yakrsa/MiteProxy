@@ -565,5 +565,26 @@ class TestMissingTrailingSoh:
             "see 8=FIX.4.2 doc"]
 
 
+class TestFieldDictionary:
+    """字典覆盖：成交回报里高频出现的 tag 不该被标成「未收录」。"""
+
+    def test_execution_report_fields_known(self):
+        body = [(35, "8"), (47, "A"), (75, "20261022"), (76, "VLET"),
+                (150, "0"), (151, "50"), (167, "CS")]
+        msg = parse_fix(make_fix(body))[0]
+        known = {f.tag: f.name_en for f in msg.fields if f.known}
+        assert known[47] == "RelatdSym"
+        assert known[75] == "TradeDate"
+        assert known[76] == "ExecBroker"
+        assert known[150] == "ExecType"
+        # TradeDate 是 LocalMktDate，界面会附带人话日期
+        assert {f.tag for f in msg.fields if f.known} >= {47, 75, 76}
+
+    def test_private_tag_stays_unknown(self):
+        # 5000 起是私有区间：不知道就老实标 unknown（界面另作「私有扩展」说明）
+        msg = parse_fix(make_fix([(35, "8"), (16015, "0")]))[0]
+        assert [f.known for f in msg.fields if f.tag == 16015] == [False]
+
+
 if __name__ == "__main__":     # pragma: no cover
     raise SystemExit(pytest.main([__file__, "-v"]))

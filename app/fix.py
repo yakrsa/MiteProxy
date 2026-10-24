@@ -260,13 +260,17 @@ def human_time(value: str) -> str | None:
 
 # ====================================================================== 扫描
 
-def _scan(text: str) -> tuple[list[tuple], list[str]]:
+def _scan(text: str, dictionary=None) -> tuple[list[tuple], list[str]]:
     """把文本切成 [(tag, value, 字段起始位, SOH 位)]，并处理 DataLength 对。
 
     返回的位置是**全文绝对偏移**：多消息文本里第 2 条的 CheckSum 也要按
     全文字节算，所以不能按消息重置坐标系。畸形段不抛异常，记错误码后尽量
     恢复到下一个分隔符继续。
+
+    `dictionary` 决定 DataLength 配对（合作方字典可以有自己的一对）；
+    不传则用内置 fixdict。
     """
+    d = dictionary or fixdict
     out: list[tuple] = []
     errors: list[str] = []
     n = len(text)
@@ -320,7 +324,7 @@ def _scan(text: str) -> tuple[list[tuple], list[str]]:
 
         # DataLength 特例：当前字段是长度字段、值是数字、且下一字段正是
         # 配对的数据 tag → 按长度原样取数据值（里面可能含 SOH）
-        partner = fixdict.data_partner(tag)
+        partner = d.data_partner(tag)
         if partner is not None and end >= 0:
             value = text[eq + 1:end]
             prefix = "{0}=".format(partner)
@@ -394,7 +398,7 @@ def _split_messages(raw: list[tuple]) -> list[list[tuple]]:
 
 # ====================================================================== 结构
 
-def _structure(fields: list[FixField]) -> tuple[list, list[str]]:
+def _structure(fields: list[FixField], dictionary=None) -> tuple[list, list[str]]:
     """把平铺字段组织成展示序列（顶层字段 + 重复组节点）。
 
     重复组切实例的启发式：成员 tag 在单个实例内不重复——实例 2 的同一 tag
@@ -403,11 +407,12 @@ def _structure(fields: list[FixField]) -> tuple[list, list[str]]:
     """
     items: list = []
     errors: list[str] = []
+    d = dictionary or fixdict
     i = 0
     n = len(fields)
     while i < n:
         f = fields[i]
-        gdef = fixdict.group_of(f.tag) if f.ftype == "NumInGroup" else None
+        gdef = d.group_of(f.tag) if f.ftype == "NumInGroup" else None
         if gdef is None:
             items.append(f)
             i += 1
@@ -453,16 +458,21 @@ def _structure(fields: list[FixField]) -> tuple[list, list[str]]:
 # ====================================================================== 解析
 
 def _build_message(raw: list[tuple], text: str,
-                   pipe_normalized: bool, msg_start: int) -> FixMessage:
+                   pipe_normalized: bool, msg_start: int,
+                   dictionary=None) -> FixMessage:
     """把一个消息的原始字段列表构造成 FixMessage（含头信息与校验）。
 
     `msg_start` 是本消息在全文里的起始偏移：CheckSum 只从消息开头累加，
     多消息文本里第 2 条不能把第 1 条的字节算进去。
+
+    `dictionary` 是字段字典（内置 fixdict 或叠加了合作方字段的
+    fixprofile.Dictionary）；私有 tag 有字典才会显示名字与枚举释义。
     """
+    d = dictionary or fixdict
     msg = FixMessage()
     fields: list[FixField] = []
     for tag, value, _fstart, _soh in raw:
-        entry = fixdict.lookup(tag)
+        entry = d.lookup(tag)
         if entry is not None:
             name_en, name_cn, ftype, enums = entry
             f = FixField(tag=tag, value=value, name_en=name_en,
@@ -533,13 +543,16 @@ def _build_message(raw: list[tuple], text: str,
             if not msg.checksum_ok:
                 msg.errors.append("checksum_mismatch")
 
-    msg.items, struct_errors = _structure(fields)
+    msg.items, struct_errors = _structure(fields, d)
     msg.errors.extend(struct_errors)
     return msg
 
 
-def parse_fix(text: str) -> list[FixMessage]:
+def parse_fix(text: str, dictionary=None) -> list[FixMessage]:
     """解析一段文本 → 消息列表（一段里可能有多条消息）。
+
+    `dictionary` 可选：传合作方字典（fixprofile.Dictionary）时，其私有 tag
+    会显示名字 / 枚举 / 重复组；不传则只用内置通用字典。
 
     空输入 / 完全不像 FIX 的输入返回空列表——调用方应先用 is_fix_text
     判定，或对空结果走「原文 + 说明」的回落。任何畸形输入都不抛异常。
@@ -563,14 +576,14 @@ def parse_fix(text: str) -> list[FixMessage]:
         raw_text = raw_text.replace(PIPE, SOH)
         pipe_normalized = True
 
-    raw, scan_errors = _scan(raw_text)
+    raw, scan_errors = _scan(raw_text, dictionary)
     if not raw:
         return []
 
     messages: list[FixMessage] = []
     for chunk in _split_messages(raw):
         msg = _build_message(chunk, raw_text, pipe_normalized,
-                             chunk[0][2] if chunk else 0)
+                             chunk[0][2] if chunk else 0, dictionary)
         if truncated:
             msg.truncated = True
         messages.append(msg)
