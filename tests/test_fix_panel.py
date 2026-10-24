@@ -121,6 +121,21 @@ class TestFixPanelTabs:
         # 多条时 tab 栏可见（单条时隐藏，见下单测）
         assert panel.tab_widget.tabBar().isHidden() is False
 
+    def test_log_lines_one_per_line_become_tabs(self, panel):
+        # 真实日志形态：每条各自占一行、行首带时间戳前缀。
+        # 旧的垃圾正则不跨行（`.` 不含 `\n`），三条会被并成一条 → 没有 tab
+        lines = [
+            "[09:30:0{0}.123] {1}".format(
+                i, make_fix([(35, t), (49, "S"), (56, "T"), (34, str(i))]))
+            for i, t in enumerate(["0", "8", "D"], start=1)
+        ]
+        panel.set_text("\n".join(lines))
+        assert panel.tab_widget.count() == 3
+        assert [panel.tab_widget.tabText(i) for i in range(3)] == [
+            "#1 35=0", "#2 35=8", "#3 35=D"]
+        assert panel.tab_widget.tabBar().isHidden() is False
+        assert "共 3 条消息" in panel.status_label.text()
+
     def test_bad_message_tab_has_badge_and_color(self, panel):
         panel.set_text(self._batch(3, bad_at=(2,)))
         assert panel.tab_widget.tabText(1) == "#2 35=8 ✗"

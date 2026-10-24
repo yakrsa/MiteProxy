@@ -73,7 +73,9 @@ _ESCAPED_SOH_RE = re.compile(
 
 #: 消息头前的日志垃圾（tag 段形如 `[09:30:01.123] 8`）：末尾数字是被污染的
 #: BeginString tag，前面是时间戳 / 行号 / 日志级别。见 _scan 的恢复分支。
-_JUNK_HEAD_RE = re.compile(r"^.*?(?P<tag>\d+)$")
+#: 必须 DOTALL——日志里每条报文各自占一行，残段形如 `\n[09:30:02.456] 8`，
+#: 默认模式下 `.` 不匹配 `\n`，整条判据会静默失效（多条被并成一条）。
+_JUNK_HEAD_RE = re.compile(r"^.*?(?P<tag>\d+)$", re.DOTALL)
 
 
 # ====================================================================== 数据模型
@@ -155,15 +157,21 @@ class FixMessage:
 def _strip_stream_junk(text: str) -> str:
     """剥离流开头的非字段垃圾（日志复制常带时间戳 / 行号 / 日志级别）。
 
-    仅当文本不以 `8=FIX` 开头、且第一个 `8=FIX` 之前的内容不含 `=` 时
-    才剥离——不含 `=` 保证前面没有真实字段会被误切，保守优先。本来就在
-    字段边界的干净输入原样返回。
+    判据是「`8=FIX` 之前没有真实字段」：正常字段一定以分隔符结尾，所以
+    前缀里既没有 `=`、也没有 SOH / `|` 时即可剥离。两种形态都要吃：
+
+    - `[09:30:01.123] 8=FIX.4.2…`（纯时间戳，不含 `=`）
+    - `level=INFO 8=FIX.4.2…`（日志级别自带 `=`，但整段无分隔符）
+
+    含分隔符就不动——那说明前面确实有字段，误切代价更大。干净输入原样返回。
     """
     if text.startswith("8=FIX"):
         return text
     pos = text.find("8=FIX")
-    if pos > 0 and "=" not in text[:pos]:
-        return text[pos:]
+    if pos > 0:
+        head = text[:pos]
+        if "=" not in head or (SOH not in head and PIPE not in head):
+            return text[pos:]
     return text
 
 
@@ -291,6 +299,16 @@ def _scan(text: str) -> tuple[list[tuple], list[str]]:
                     tag_str = "8"
                     i = eq - 1
                 else:
+                    # 兜底：残段里若还藏着一个完整消息头，直接跳过去重扫。
+                    # 上面那条判据要求 junk 段不含 `=`，而真实日志前缀常带
+                    # `level=INFO` / `tid=12`，此时 eq 落在前缀的 `=` 上，判据
+                    # 直接失效 → 整条消息头被当残字段吃掉。这里只认「下一个
+                    # 分隔符之前出现的 8=FIX」，不会误伤正常字段值。
+                    nxt_fix = text.find("8=FIX", i)
+                    soh = text.find(SOH, i)
+                    if 0 <= nxt_fix and (soh < 0 or nxt_fix < soh):
+                        i = nxt_fix
+                        continue
                     errors.append("bad_field")
                     nxt = text.find(SOH, i)
                     if nxt < 0:
@@ -320,9 +338,35 @@ def _scan(text: str) -> tuple[list[tuple], list[str]]:
                     break
                 continue
 
+        fstart = i
         value = text[eq + 1:end] if end >= 0 else text[eq + 1:]
-        out.append((tag, value, i, end if end >= 0 else n))
-        i = (end + 1) if end >= 0 else n
+        soh_pos = end if end >= 0 else n
+        # 上一条末尾的 SOH 丢失时（`…10=123\n8=FIX.4.2\x01…`），本字段的值会
+        # 把下一条的消息头一起吞掉，8 就不在字段边界上，_split_messages
+        # 切不开 → 多条并成一条。值里出现「空白 + 8=FIX」且前半是纯数字
+        # （典型就是 CheckSum）时在此截断，让 8 回到边界重新参与切分。
+        cut = value.find("8=FIX")
+        if cut > 0 and value[cut - 1] in " \t\r\n":
+            head_part = value[:cut]
+            first = head_part.strip().split()[0] if head_part.strip() else ""
+            # 前半是纯数字（CheckSum / 长度）且不含 `=` → 是上一条的尾巴，
+            # 结尾那段 8=FIX 属于下一条；前半只是普通文本（Text 字段里提到
+            # 「see 8=FIX.4.2 doc」）则不动
+            if first.isdigit() and "=" not in head_part:
+                value = first
+                soh_pos = eq + 1 + cut - 1
+                i = eq + 1 + cut
+            else:
+                i = (end + 1) if end >= 0 else n
+        elif tag == 10 and len(value) > 3 and value[:3].isdigit() \
+                and value[3:8] == "8=FIX":
+            # 连空白都没有（`10=1238=FIX.4.2`）：CheckSum 固定 3 位，其余是下一条
+            value = value[:3]
+            soh_pos = eq + 4 - 1
+            i = eq + 4
+        else:
+            i = (end + 1) if end >= 0 else n
+        out.append((tag, value, fstart, soh_pos))
         if len(out) >= MAX_FIELDS:
             errors.append("too_many_fields")
             break

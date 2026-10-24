@@ -447,9 +447,57 @@ class TestLogPrefixJunk:
         assert len(msgs) == 1
         assert [f.tag for f in msgs[0].fields] == [8, 9, 35, 34, 10]
 
-    def test_prefix_with_equals_not_stripped(self):
-        # 前缀里含 = 说明前面可能是真实字段——保守不剥
-        assert is_fix_text("a=b foo 8=FIX.4.4|9=1|35=D") is False
+    def test_prefix_with_equals_and_separator_not_stripped(self):
+        # 前缀含 = 且含分隔符 → 前面确实有完整字段，保守不剥
+        assert is_fix_text("a=b|foo 8=FIX.4.4|9=1|35=D") is False
+
+    def test_prefix_with_equals_without_separator_stripped(self):
+        # 日志级别自带 =（level=INFO）但整段无分隔符：仍是前缀，剥掉
+        text = "level=INFO tid=12 8=FIX.4.4|9=20|35=8|34=1|10=100|"
+        assert is_fix_text(text) is True
+        msgs = parse_fix(text)
+        assert len(msgs) == 1
+        assert [f.tag for f in msgs[0].fields] == [8, 9, 35, 34, 10]
+
+    def test_multi_message_each_on_own_line(self):
+        # 真实日志：每条各占一行、行首带时间戳。旧实现里 `.` 不跨行，
+        # 恢复分支永久失效 → 三条被并成一条（用户报的「不支持多条」）
+        text = ("[09:30:01.123] " + self._log_msg("8", 1) + "\n"
+                "[09:30:02.456] " + self._log_msg("D", 2) + "\n"
+                "[09:30:03.789] " + self._log_msg("8", 3, checksum_ok=False))
+        msgs = parse_fix(text)
+        assert len(msgs) == 3
+        assert [m.msg_type for m in msgs] == ["8", "D", "8"]
+        assert [m.seq_num for m in msgs] == ["1", "2", "3"]
+        assert [m.checksum_ok for m in msgs] == [True, True, False]
+        assert msgs[2].errors == ["checksum_mismatch"]
+
+    def test_multi_message_crlf_prefix(self):
+        text = ("[09:30:01.123] " + self._log_msg("8", 1) + "\r\n"
+                "[09:30:02.456] " + self._log_msg("D", 2))
+        msgs = parse_fix(text)
+        assert [m.msg_type for m in msgs] == ["8", "D"]
+        assert all(m.errors == [] for m in msgs)
+
+    def test_multi_message_full_log_line_prefix(self):
+        text = ("2026-10-24 09:30:01,123 INFO [main] " + self._log_msg("8", 1) + "\n"
+                "2026-10-24 09:30:02,456 INFO [main] " + self._log_msg("D", 2))
+        msgs = parse_fix(text)
+        assert [m.msg_type for m in msgs] == ["8", "D"]
+        assert all(m.errors == [] for m in msgs)
+        assert all(m.checksum_ok is True for m in msgs)
+
+    def test_separator_line_between_messages(self):
+        text = self._log_msg("8", 1) + "\n----------\n" + self._log_msg("D", 2)
+        assert [m.msg_type for m in parse_fix(text)] == ["8", "D"]
+
+    def test_multi_message_log_prefix_with_equals(self):
+        # 前缀自带 =（tid=12）时「junk 段不含 =」判据失效：走 8=FIX 重扫兜底
+        text = ("level=INFO tid=12 8=FIX.4.4|9=20|35=8|34=1|10=100|\n"
+                "level=INFO tid=12 8=FIX.4.4|9=20|35=D|34=2|10=100|")
+        assert is_fix_text(text) is True
+        msgs = parse_fix(text)
+        assert [m.msg_type for m in msgs] == ["8", "D"]
 
     def test_non_fix_snippet_untouched(self):
         # 普通代码片段里的 8=FIX 字样不会触发剥离/误判
@@ -465,6 +513,56 @@ class TestLogPrefixJunk:
         assert len(msgs) == 1
         assert [f.value for f in msgs[0].fields if f.tag == 58] == [
             "prefix 8=FIX.4.4 suffix"]
+
+
+class TestMissingTrailingSoh:
+    """上一条末尾 SOH 丢失：日志拼接常把 `10=123` 和下一条 `8=FIX` 粘一起。
+
+    这种情况下 CheckSum 字段会吞掉下一条的消息头，8 不在字段边界上，
+    多消息切分会失败（多条并成一条）。修复靠 _scan 里的值内截断。
+    """
+
+    @staticmethod
+    def _msg(msg_type, seq):
+        return make_fix([(35, msg_type), (49, "VCT"), (56, "USMART"),
+                         (34, str(seq)), (52, "20261024-09:30:0{0}".format(seq))])
+
+    def test_two_messages_missing_trailing_soh(self):
+        text = self._msg("8", 1)[:-1] + "\n" + self._msg("D", 2)
+        msgs = parse_fix(text)
+        assert [m.msg_type for m in msgs] == ["8", "D"]
+        assert [m.seq_num for m in msgs] == ["1", "2"]
+        assert all(m.errors == [] for m in msgs)
+        assert all(m.checksum_ok is True for m in msgs)
+
+    def test_missing_soh_with_log_prefix(self):
+        text = self._msg("8", 1)[:-1] + "\n[09:30:02.456] " + self._msg("8", 2)
+        msgs = parse_fix(text)
+        assert [m.msg_type for m in msgs] == ["8", "8"]
+        assert all(m.errors == [] for m in msgs)
+
+    def test_missing_soh_without_any_separator(self):
+        # `10=1238=FIX.4.2`：CheckSum 固定 3 位，后面直接是下一条
+        text = self._msg("8", 1)[:-1] + self._msg("D", 2)
+        msgs = parse_fix(text)
+        assert [m.msg_type for m in msgs] == ["8", "D"]
+        assert msgs[0].declared_checksum is not None
+        assert all(m.errors == [] for m in msgs)
+
+    def test_mixed_intact_and_missing_soh(self):
+        text = (self._msg("8", 1) + "\n" + self._msg("0", 2)[:-1]
+                + "\n" + self._msg("D", 3))
+        msgs = parse_fix(text)
+        assert [m.msg_type for m in msgs] == ["8", "0", "D"]
+        assert all(m.errors == [] for m in msgs)
+
+    def test_text_field_mentioning_fix_not_truncated(self):
+        # 普通文本字段里提到 8=FIX.4.2 时不能被当成下一条消息头截断
+        text = make_fix([(35, "D"), (58, "see 8=FIX.4.2 doc")])
+        msgs = parse_fix(text)
+        assert len(msgs) == 1
+        assert [f.value for f in msgs[0].fields if f.tag == 58] == [
+            "see 8=FIX.4.2 doc"]
 
 
 if __name__ == "__main__":     # pragma: no cover

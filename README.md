@@ -175,8 +175,8 @@ python -m app.main
 # macOS
 ./packaging/build_mac.sh          # 产物 dist/MiteProxy.app
 
-# Windows（PowerShell，可加 -Version 1.14 指定版本号）
-.\packaging\build_windows.ps1     # 产物 dist\MiteProxy-v1.14-windows-x64.zip
+# Windows（PowerShell，-Version 必填，且必须与 app/version.py 一致）
+.\packaging\build_windows.ps1 -Version 2.7.1   # 产物 dist\MiteProxy-v2.7.1-windows-x64.zip
 ```
 
 > PyInstaller 不能交叉打包：Windows 包必须在 Windows 机器上构建。  

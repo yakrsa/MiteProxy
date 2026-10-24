@@ -887,8 +887,18 @@ FIX 子页，解析成**树形四列（标签 / 字段 / 值 / 注释）**——
 - **日志前缀容忍**：从日志文件复制的报文常带行首垃圾（时间戳 / 行号 / 日志
   级别，如 `[09:30:01.123] 8=FIX.4.2…`）。三层处理：`is_fix_text` 虚拟剥离
   （只影响判定）、`parse_fix` 剥离流开头垃圾、`_scan` 在消息边界剥离并恢复
-  `8=FIX` 干净边界（多消息切分依赖它）。判据保守：垃圾段不含 `=` 才剥，
-  数据字段值里的 `8=FIX` 字样不会误切。
+  `8=FIX` 干净边界（多消息切分依赖它）。判据是「前缀里没有真实字段」——
+  不含 `=`，或含 `=` 但整段没有任何分隔符（`level=INFO 8=FIX…`）；有分隔符
+  就说明前面确有字段，不动。边界恢复用的正则是 `re.DOTALL` 的——日志里每条
+  各占一行，残段形如 `\n[09:30:02.456] 8`，`.` 不跨行会让判据静默失效、
+  多条被并成一条（v2.7.1 修的正是这个）。前缀自带 `=` 时另有兜底：残段里
+  若藏着一个完整 `8=FIX`（且在下一个分隔符之前），跳过去重扫。
+- **末尾分隔符丢失也切得开**：日志拼接常出现 `…10=123` 后直接跟下一行
+  `8=FIX.4.2`（上一条最后那个 SOH 丢了）。此时 CheckSum 字段的值会吞掉下
+  一条的消息头，`8` 不在字段边界上，切分同样失败。`_scan` 取值时若发现
+  「空白 + `8=FIX`」且前半是纯数字（CheckSum / 长度这类），就在该处截断，
+  把 `8` 还给字段边界；连空白都没有（`10=1238=FIX.4.2`）则按 CheckSum 固定
+  3 位截断。普通文本字段里提到「see 8=FIX.4.2 doc」不会被误切。
 - **字典** `app/fixdict.py`（纯数据）：FIX 4.0–4.4 头尾 + 报单/成交/行情/报价
   约 130 个高频字段，字段名中英对照、类型标注、常用枚举释义；`35` 消息类型
   全量收录（D 新单 / 8 成交回报 / W 全量行情…）。**未收录的 tag 照常显示**
@@ -900,8 +910,8 @@ FIX 子页，解析成**树形四列（标签 / 字段 / 值 / 注释）**——
   视图与「复制」按钮统一按 `|` 分隔渲染。
 - 入口三处：工具页「FIX」子页（Ctrl+Shift+F / 命令面板）、流量列表右键
   「在工具页中打开 body」（body 像 FIX 时固定进此页）、输入框 220ms 防抖
-  自动解析。测试：`test_fix.py`（55 例纯逻辑，含日志前缀 8 例）+
-  `test_fix_panel.py`（18 例 UI 与接线，含 tab 化 7 例）。
+  自动解析。测试：`test_fix.py`（66 例纯逻辑，含日志前缀 13 例、末尾分隔符
+  丢失 5 例）+ `test_fix_panel.py`（19 例 UI 与接线，含 tab 化 8 例）。
 
 ### 3.11 主题：深浅色（v1.14，`app/ui/theme.py`）
 
@@ -1171,7 +1181,7 @@ miteproxy/
 |---|---|---|---|---|
 | T6.1 | 编写 `packaging/miteproxy.spec`：macOS/Windows 分支（bundle、图标格式）、hidden imports、剔除无用大包 | spec 文件 | 构建无模块缺失警告 | ✅ 已完成 |
 | T6.2 | `packaging/build_mac.sh`：venv → 装依赖 → pyinstaller → 产出 `.app` | macOS 构建脚本 | 双击启动，功能回归通过 | ✅ 脚本就绪 |
-| T6.3 | `packaging/build_windows.ps1`：venv → 装依赖 → pyinstaller（onedir）→ `Compress-Archive` 整体压成 `dist\MiteProxy-v<版本>-windows-x64.zip`（`-Version` 可指定版本号；脚本带 UTF-8 BOM，兼容 Windows PowerShell 5.1） | Windows 构建脚本 | 用户在 Windows 上执行，解压 zip 后双击 `MiteProxy.exe` 直接使用 | ✅ 脚本就绪，待 Windows 上执行 |
+| T6.3 | `packaging/build_windows.ps1`：venv → 装依赖 → pyinstaller（onedir）→ `Compress-Archive` 整体压成 `dist\MiteProxy-v<版本>-windows-x64.zip`（**`-Version` 必填，无默认值，且必须与 `app/version.py` 一致**，否则脚本报错退出；脚本带 UTF-8 BOM，兼容 Windows PowerShell 5.1） | Windows 构建脚本 | 用户在 Windows 上执行，解压 zip 后双击 `MiteProxy.exe` 直接使用 | ✅ 脚本就绪，待 Windows 上执行 |
 | T6.4 | 图标适配（`.icns` / `.ico`）+ Info.plist 元信息 | 成品感 | Dock/任务栏显示自定义图标 | ✅ 已完成 |
 | T6.5 | 冻结产物验收：启动、自动开代理、mock、FARX、HTTPS | 验收记录 | 与源码版行为一致 | ✅ macOS 已通过 |
 
@@ -1183,8 +1193,9 @@ miteproxy/
 ```
 
 ```powershell
-# Windows（PowerShell，若执行策略受限：powershell -ExecutionPolicy Bypass -File .\packaging\build_windows.ps1）
-.\packaging\build_windows.ps1
+# Windows（PowerShell，若执行策略受限：powershell -ExecutionPolicy Bypass -File .\packaging\build_windows.ps1 -Version 2.7.1）
+# -Version 必填（不设默认值），且必须等于 app/version.py 的 __version__，否则脚本直接报错退出
+.\packaging\build_windows.ps1 -Version 2.7.1
 ```
 
 **Windows 平台注意事项**（写入手册）：

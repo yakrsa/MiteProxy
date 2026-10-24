@@ -1,6 +1,6 @@
 {
-  "version": "2.7.0",
-  "published_at": "2026-10-24T11:45:00+08:00",
+  "version": "2.7.1",
+  "published_at": "2026-10-24T12:00:00+08:00",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
@@ -28,8 +28,8 @@
       "en": "New command palette (Ctrl/Cmd+K) and status-code minimap: type to filter commands and press Enter to run, and spot failing requests from a colored dot strip"
     },
     {
-      "zh": "修复已知 Bug：证书服务按钮点击无响应、代理线程异常退出后界面未复位、隧道连接流量缓存泄漏、MCP 写操作跨线程、启动端口被占用未提示、关闭应用误报「意外退出」、IPv6 地址显示错误等",
-      "en": "Fixed known bugs: unresponsive certificate-service button, UI not resetting after the proxy thread died, flow-cache leaks on tunnel connections, cross-thread MCP writes, silent port fallback on startup, false 'proxy exited' warning on quit, wrong IPv6 URLs and more"
+      "zh": "修复已知 Bug：FIX 多条消息被并成一条（逐行复制带时间戳前缀、上一条末尾分隔符丢失时切不开）、证书服务按钮点击无响应、代理线程异常退出后界面未复位、隧道连接流量缓存泄漏、MCP 写操作跨线程、启动端口被占用未提示、关闭应用误报「意外退出」、IPv6 地址显示错误等",
+      "en": "Fixed known bugs: multiple FIX messages collapsing into one (per-line logs with timestamp prefixes, or a missing trailing separator) plus unresponsive certificate-service button, UI not resetting after the proxy thread died, flow-cache leaks on tunnel connections, cross-thread MCP writes, silent port fallback on startup, false 'proxy exited' warning on quit, wrong IPv6 URLs and more"
     },
     {
       "zh": "体验优化：全局控件质感、流量表数值列等宽右对齐、脚本编辑器 Python 语法高亮、JSON 树三列并按层展开、左侧图标导航栏（可钉住、Ctrl+1–9）、请求概览卡、行密度切换与空态引导",
