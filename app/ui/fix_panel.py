@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStackedWidget,
+    QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -40,6 +41,10 @@ VIEW_RAW = "raw"
 
 #: 值列展示上限（超长 RawData 之类）：单元格截断，完整值进 tooltip
 VALUE_CELL_LIMIT = 300
+
+#: 结果区同时展示的消息 tab 数上限：解析不设限（可读原文始终含全部），
+#: 但 tab 建太多既无意义又拖慢首屏，超量部分在状态区提示
+MAX_TAB_MESSAGES = 10
 
 #: 错误码 → 提示文案。**NOOP 打标、运行时才 translate**（模块级 translate 会在
 #: 翻译器装载前求值，英文模式下永久烤成中文——bodyview 踩过的坑）
@@ -180,22 +185,17 @@ class FixPanel(QWidget):
         out_layout = QVBoxLayout(out_box)
         self.out_stack = QStackedWidget()
 
-        self.tree = QTreeWidget()
-        self.tree.setColumnCount(4)
-        self.tree.setHeaderLabels([
-            self.tr("标签"), self.tr("字段"), self.tr("值"), self.tr("注释"),
-        ])
-        self.tree.setAlternatingRowColors(True)
-        self.tree.setRootIsDecorated(True)
-        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        header = self.tree.header()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        header.resizeSection(0, 52)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.tree.setColumnWidth(2, 180)
-        self.out_stack.addWidget(self.tree)
+        # 多条消息时每条一个 tab（#N 35=X 标题 + ✗ 徽标），tab 内是摘要行 +
+        # 一棵字段树；单条消息隐藏 tab 栏，体验与单树一致
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setDocumentMode(True)
+        self.jump_bad_btn = QPushButton()
+        self.jump_bad_btn.setToolTip(self.tr("跳到第一个有校验问题的消息"))
+        self.jump_bad_btn.setVisible(False)
+        self.jump_bad_btn.clicked.connect(self._jump_to_first_bad)
+        self.tab_widget.setCornerWidget(
+            self.jump_bad_btn, Qt.Corner.TopRightCorner)
+        self.out_stack.addWidget(self.tab_widget)
 
         self.raw_view = QPlainTextEdit()
         self.raw_view.setReadOnly(True)
@@ -263,49 +263,37 @@ class FixPanel(QWidget):
             self._clear_result()
             self._set_status(self.tr("未解析出任何字段——请检查输入是否以 8=FIX 开头"), "error")
             return
-        self._render_tree()
+        self._render_tabs()
         self._render_raw()
         self._set_status(self._summary_text(messages), self._status_kind_of(messages))
+        # tab 栏右侧的「✗ N」跳转按钮（仅多条且存在问题时出现）
+        bad = [i for i, m in enumerate(messages[:MAX_TAB_MESSAGES]) if m.errors]
+        self.jump_bad_btn.setText(self.tr("✗ {0}").format(len(bad)))
+        self.jump_bad_btn.setVisible(len(messages) > 1 and bool(bad))
 
     def _clear_result(self) -> None:
         self._messages = []
-        self.tree.clear()
+        self.tab_widget.clear()
         self.raw_view.clear()
+        self.jump_bad_btn.setVisible(False)
 
     def _status_kind_of(self, messages) -> str:
         return "error" if any(m.errors for m in messages) else "ok"
 
     def _summary_text(self, messages) -> str:
-        parts = []
-        if len(messages) > 1:
-            parts.append(self.tr("共 {0} 条消息").format(len(messages)))
-        for i, m in enumerate(messages):
-            seg = []
-            if len(messages) > 1:
-                seg.append(self.tr("第 {0} 条").format(i + 1))
-            if m.begin_string:
-                seg.append(m.begin_string)
-            if m.msg_type:
-                seg.append("35={0}".format(m.msg_type))
-            if m.msg_type_note:
-                seg.append(m.msg_type_note)
-            if m.body_length_ok is True:
-                seg.append(self.tr("BodyLength ✓"))
-            elif m.body_length_ok is False:
-                seg.append(self.tr(
-                    "BodyLength ✗（声明 {0} / 实际 {1}）").format(
-                    m.declared_body_length, m.actual_body_length))
-            if m.checksum_skipped:
-                seg.append(self.tr("CheckSum 未校验（| 分隔输入）"))
-            elif m.checksum_ok is True:
-                seg.append(self.tr("CheckSum ✓"))
-            elif m.checksum_ok is False:
-                seg.append(self.tr(
-                    "CheckSum ✗（声明 {0} / 实际 {1}）").format(
-                    m.declared_checksum, m.actual_checksum))
-            seg.append(self.tr("{0} 个字段").format(m.field_count))
-            parts.append(" · ".join(seg))
-        text = " ┃ ".join(parts)
+        # 单条消息：完整摘要（与 tab 内摘要行一致）
+        if len(messages) == 1:
+            return self._message_summary(messages[0])
+        # 多条消息：总览式——不再逐条复读（20 条时旧版状态区 2300+ 字符）
+        parts = [self.tr("共 {0} 条消息").format(len(messages))]
+        if len(messages) > MAX_TAB_MESSAGES:
+            parts.append(self.tr("显示前 {0} 条").format(MAX_TAB_MESSAGES))
+        bad = [i + 1 for i, m in enumerate(messages) if m.errors]
+        if bad:
+            listed = ", ".join("#{0}".format(n) for n in bad[:10])
+            more = self.tr(" 等 {0} 条").format(len(bad)) if len(bad) > 10 else ""
+            parts.append(self.tr("{0} 条有问题（{1}{2}）").format(
+                len(bad), listed, more))
         notes = []
         for m in messages:
             for code in m.errors:
@@ -313,40 +301,94 @@ class FixPanel(QWidget):
                 if note not in notes:
                     notes.append(note)
         if notes:
-            text += self.tr(" ┃ 问题：{0}").format("；".join(notes))
+            parts.append(self.tr("问题：{0}").format("；".join(notes)))
         if any(m.truncated for m in messages):
-            text += self.tr(" ┃ 内容超限已截断")
-        return text
+            parts.append(self.tr("内容超限已截断"))
+        return " ┃ ".join(parts)
 
     # ------------------------------------------------------------ 树
 
-    def _render_tree(self) -> None:
-        self.tree.clear()
-        multi = len(self._messages) > 1
-        for i, m in enumerate(self._messages):
-            if multi:
-                label = self.tr("消息 {0}").format(i + 1)
-                type_text = "35={0}".format(m.msg_type) if m.msg_type else ""
-                note = " · ".join(p for p in (
-                    m.begin_string, m.msg_type_note,
-                    self.tr("SeqNum {0}").format(m.seq_num) if m.seq_num else "",
-                    "{0} → {1}".format(m.sender, m.target) if m.sender and m.target else "",
-                    self.tr("{0} 个字段").format(m.field_count),
-                ) if p)
-            else:
-                label = self.tr("消息")
-                type_text = "35={0} {1}".format(m.msg_type, m.msg_type_note) \
-                    if m.msg_type else ""
-                note = " · ".join(p for p in (
-                    m.begin_string,
-                    self.tr("SeqNum {0}").format(m.seq_num) if m.seq_num else "",
-                    "{0} → {1}".format(m.sender, m.target) if m.sender and m.target else "",
-                    self.tr("{0} 个字段").format(m.field_count),
-                ) if p)
-            root = QTreeWidgetItem(self.tree, ["", label, type_text, note])
-            root.setFirstColumnSpanned(True)
-            self._fill_items(root, m.items)
-            self.tree.expandToDepth(1)
+    def _make_tree(self) -> QTreeWidget:
+        """建一棵字段树（每个消息 tab 一棵；列头 / 列宽 / 样式保持一致）。"""
+        tree = QTreeWidget()
+        tree.setColumnCount(4)
+        tree.setHeaderLabels([
+            self.tr("标签"), self.tr("字段"), self.tr("值"), self.tr("注释"),
+        ])
+        tree.setAlternatingRowColors(True)
+        tree.setRootIsDecorated(True)
+        tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        header = tree.header()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(0, 52)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        tree.setColumnWidth(2, 180)
+        return tree
+
+    def _message_summary(self, m) -> str:
+        """单条消息的摘要行（tab 顶部 / 单条时的状态区共用）。"""
+        seg = []
+        if m.begin_string:
+            seg.append(m.begin_string)
+        if m.msg_type:
+            seg.append("35={0} {1}".format(m.msg_type, m.msg_type_note)
+                       if m.msg_type_note else "35={0}".format(m.msg_type))
+        if m.seq_num:
+            seg.append(self.tr("SeqNum {0}").format(m.seq_num))
+        if m.sender and m.target:
+            seg.append("{0} → {1}".format(m.sender, m.target))
+        seg.append(self.tr("{0} 个字段").format(m.field_count))
+        if m.body_length_ok is True:
+            seg.append(self.tr("BodyLength ✓"))
+        elif m.body_length_ok is False:
+            seg.append(self.tr("BodyLength ✗（声明 {0} / 实际 {1}）").format(
+                m.declared_body_length, m.actual_body_length))
+        if m.checksum_skipped:
+            seg.append(self.tr("CheckSum 未校验（| 分隔输入）"))
+        elif m.checksum_ok is True:
+            seg.append(self.tr("CheckSum ✓"))
+        elif m.checksum_ok is False:
+            seg.append(self.tr("CheckSum ✗（声明 {0} / 实际 {1}）").format(
+                m.declared_checksum, m.actual_checksum))
+        return " · ".join(seg)
+
+    def _render_tabs(self) -> None:
+        self.tab_widget.clear()
+        shown = self._messages[:MAX_TAB_MESSAGES]
+        for i, m in enumerate(shown):
+            page = QWidget()
+            layout = QVBoxLayout(page)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(4)
+            summary = QLabel(self._message_summary(m))
+            summary.setWordWrap(True)
+            summary.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse)
+            summary.setStyleSheet("color: {0};".format(
+                theme.css("error" if m.errors else "hint")))
+            layout.addWidget(summary)
+            tree = self._make_tree()
+            self._fill_items(tree.invisibleRootItem(), m.items)
+            tree.expandToDepth(1)
+            layout.addWidget(tree)
+            title = "#{0} 35={1}".format(i + 1, m.msg_type or "?")
+            if m.errors:
+                title += " ✗"
+            idx = self.tab_widget.addTab(page, title)
+            if m.errors:
+                self.tab_widget.tabBar().setTabTextColor(
+                    idx, theme.dynamic("error"))
+        # 单条消息没有 tab 导航需求，隐藏 tab 栏（内容与单树体验一致）
+        self.tab_widget.tabBar().setVisible(len(shown) > 1)
+
+    def _jump_to_first_bad(self) -> None:
+        shown = self._messages[:MAX_TAB_MESSAGES]
+        for i, m in enumerate(shown):
+            if m.errors:
+                self.tab_widget.setCurrentIndex(i)
+                return
 
     def _fill_items(self, parent: QTreeWidgetItem, items) -> None:
         for item in items:
@@ -423,7 +465,7 @@ class FixPanel(QWidget):
     def _on_view_changed(self, *_args) -> None:
         view = self.view_combo.currentData()
         self.out_stack.setCurrentWidget(
-            self.raw_view if view == VIEW_RAW else self.tree)
+            self.raw_view if view == VIEW_RAW else self.tab_widget)
 
     def _on_clear(self) -> None:
         self._timer.stop()
@@ -440,6 +482,12 @@ class FixPanel(QWidget):
     def _retheme(self) -> None:
         self.input_count.setStyleSheet(f"color: {theme.css('hint')};")
         self.status_label.setStyleSheet(f"color: {theme.css(self._status_kind)};")
+        if self._messages:
+            # tab 内摘要行 / 错误 tab 色取的是当前主题变体，切主题后重渲染
+            cur = self.tab_widget.currentIndex()
+            self._render_tabs()
+            if 0 <= cur < self.tab_widget.count():
+                self.tab_widget.setCurrentIndex(cur)
 
     def _update_counts(self) -> None:
         text = self.input_edit.toPlainText()

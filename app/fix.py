@@ -71,6 +71,10 @@ _TIME_RE = re.compile(r"^(?P<hh>\d{2}):(?P<mm>\d{2}):(?P<ss>\d{2})(?:\.(?P<frac>
 _ESCAPED_SOH_RE = re.compile(
     r"\\u0001|\\U00000001|\\x01|\\x1|\^A|<SOH>|&#x?0*1;")
 
+#: 消息头前的日志垃圾（tag 段形如 `[09:30:01.123] 8`）：末尾数字是被污染的
+#: BeginString tag，前面是时间戳 / 行号 / 日志级别。见 _scan 的恢复分支。
+_JUNK_HEAD_RE = re.compile(r"^.*?(?P<tag>\d+)$")
+
 
 # ====================================================================== 数据模型
 
@@ -148,6 +152,21 @@ class FixMessage:
 
 # ====================================================================== 检测
 
+def _strip_stream_junk(text: str) -> str:
+    """剥离流开头的非字段垃圾（日志复制常带时间戳 / 行号 / 日志级别）。
+
+    仅当文本不以 `8=FIX` 开头、且第一个 `8=FIX` 之前的内容不含 `=` 时
+    才剥离——不含 `=` 保证前面没有真实字段会被误切，保守优先。本来就在
+    字段边界的干净输入原样返回。
+    """
+    if text.startswith("8=FIX"):
+        return text
+    pos = text.find("8=FIX")
+    if pos > 0 and "=" not in text[:pos]:
+        return text[pos:]
+    return text
+
+
 def _unescape_separators(text: str) -> str:
     """把 SOH 的转义形式还原成真 SOH。
 
@@ -158,12 +177,12 @@ def _unescape_separators(text: str) -> str:
     归一化那样必须标「未校验」）。
 
     两道保险防止误伤：文本已含真 SOH 时原样返回；只有以 `8=FIX` 开头
-    （容忍 BOM / 前导空白）才替换——普通代码片段里的 `\\x01` 字面量
-    不会被碰。
+    （容忍 BOM / 前导空白 / 日志垃圾前缀）才替换——普通代码片段里的
+    `\\x01` 字面量不会被碰。
     """
     if not text or SOH in text:
         return text
-    head = text.lstrip().lstrip("\ufeff").lstrip()
+    head = _strip_stream_junk(text.lstrip().lstrip("\ufeff").lstrip())
     if not head.startswith("8=FIX"):
         return text
     return _ESCAPED_SOH_RE.sub(SOH, text)
@@ -173,17 +192,20 @@ def is_fix_text(text: str) -> bool:
     """一段文本像不像 FIX 报文。
 
     判定三条件（缺一不可）：
-    1. 以 `8=FIX` 开头（容忍 BOM / 空白）；
+    1. 以 `8=FIX` 开头（容忍 BOM / 空白 / 日志垃圾前缀）；
     2. 含 SOH 或 `|` 分隔符——SOH 的转义形式（`\\u0001` / `\\x01` /
        `^A` 等）会先被还原成真 SOH 再判定；
     3. 前若干字段里能同时找到 8 / 9 / 35——这是任意合法 FIX 消息的最小集，
        也足够把 `8=FIX.4.4` 这种日志片段排除掉。
     """
     t = (text or "").strip().lstrip("\ufeff").strip()
-    if not t.startswith("8=FIX"):
-        return False
     # 粘贴来的可能是转义形式（\u0001 / \x01 / ^A…），先还原成真 SOH
     t = _unescape_separators(t)
+    # 日志复制常带行首垃圾（时间戳 / 行号 / 日志级别）：虚拟剥离后再判定，
+    # 真正剥离发生在 parse_fix（这里只影响「像不像」的结论）
+    t = _strip_stream_junk(t)
+    if not t.startswith("8=FIX"):
+        return False
     if SOH in t:
         parts = t.split(SOH, 12)[:12]
     elif PIPE in t:
@@ -258,12 +280,23 @@ def _scan(text: str) -> tuple[list[tuple], list[str]]:
                 i = j
                 tag_str = text[i:eq]
             else:
-                errors.append("bad_field")
-                nxt = text.find(SOH, i)
-                if nxt < 0:
-                    break
-                i = nxt + 1
-                continue
+                # 消息边界前的日志垃圾（`...10=100\x01[09:30:02.456] 8=FIX.4.2`）：
+                # tag_str 形如 `[09:30:02.456] 8`。末尾 tag 是 8、值以 FIX 开头、
+                # junk 段不含 = → 被污染的消息头，剥离 junk 恢复干净边界
+                # （_split_messages 依赖 8=FIX 边界切分多消息）。
+                m = _JUNK_HEAD_RE.match(tag_str)
+                if (m and m.group("tag") == "8"
+                        and text.startswith("FIX", eq + 1)
+                        and "=" not in tag_str[:m.start("tag")]):
+                    tag_str = "8"
+                    i = eq - 1
+                else:
+                    errors.append("bad_field")
+                    nxt = text.find(SOH, i)
+                    if nxt < 0:
+                        break
+                    i = nxt + 1
+                    continue
         tag = int(tag_str)
         end = text.find(SOH, eq + 1)          # 本字段值的结束 SOH（或 -1）
 
@@ -471,8 +504,10 @@ def parse_fix(text: str) -> list[FixMessage]:
         return []
     raw_text = text.strip().lstrip("\ufeff").strip()
     # 转义形式（\u0001 / \x01 / ^A…）先还原成真 SOH；`|` 归一在其后，
-    # 二者互斥不冲突（还原后已有 SOH，| 分支不会触发）
-    raw_text = _unescape_separators(raw_text)
+    # 二者互斥不冲突（还原后已有 SOH，| 分支不会触发）。
+    # 日志复制的行首垃圾（时间戳 / 行号 / 日志级别）在还原后剥离——
+    # is_fix_text 只做虚拟剥离判定，真正剥离在这里发生一次。
+    raw_text = _strip_stream_junk(_unescape_separators(raw_text))
     truncated = False
     if len(raw_text) > MAX_TOTAL_CHARS:
         raw_text = raw_text[:MAX_TOTAL_CHARS]

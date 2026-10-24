@@ -392,5 +392,80 @@ class TestEscapedSeparators:
         assert [f.value for f in m.fields if f.tag == 58] == ["a^Ab"]
 
 
+class TestLogPrefixJunk:
+    """日志复制场景：消息边界前带时间戳 / 行号 / 日志级别等垃圾。"""
+
+    @staticmethod
+    def _log_msg(msg_type, seq, checksum_ok=True):
+        fields = [(35, msg_type), (49, "VCT"), (56, "USMART"),
+                  (34, str(seq)), (52, "20260824-09:30:0{0}.000".format(seq))]
+        text = make_fix(fields)
+        if not checksum_ok:
+            head, _, rest = text.partition("10=")
+            text = head + "10={0:03d}\x01".format((int(rest[:3]) + 1) % 256)
+        return text
+
+    def test_single_message_with_timestamp_prefix(self):
+        text = "[09:30:01.123] " + self._log_msg("8", 1)
+        assert is_fix_text(text) is True
+        m = parse_fix(text)[0]
+        assert m.begin_string == "FIX.4.4"
+        assert m.msg_type == "8"
+        assert m.body_length_ok is True
+        assert m.checksum_ok is True
+        assert m.errors == []
+
+    def test_multi_message_each_with_prefix(self):
+        # 每条各自带前缀：边界垃圾剥掉后 8=FIX 边界干净，正确切分
+        text = ("[09:30:01.123] " + self._log_msg("8", 1)
+                + "[09:30:02.456] " + self._log_msg("D", 2)
+                + "[09:30:03.789] " + self._log_msg("8", 3, checksum_ok=False))
+        msgs = parse_fix(text)
+        assert len(msgs) == 3
+        assert [m.msg_type for m in msgs] == ["8", "D", "8"]
+        assert [m.seq_num for m in msgs] == ["1", "2", "3"]
+        # 每条独立校验：前两条过，第三条精确检出
+        assert [m.checksum_ok for m in msgs] == [True, True, False]
+        assert msgs[2].errors == ["checksum_mismatch"]
+
+    def test_log_level_prefix_without_brackets(self):
+        text = "2026-10-24 09:30:01,123 [INFO] fix-engine " + self._log_msg("8", 1)
+        msgs = parse_fix(text)
+        assert len(msgs) == 1
+        assert msgs[0].body_length_ok is True and msgs[0].checksum_ok is True
+
+    def test_pipe_separated_with_prefix(self):
+        text = "[09:30:01] 8=FIX.4.4|9=20|35=8|34=1|10=100|"
+        msgs = parse_fix(text)
+        assert len(msgs) == 1
+        assert [f.tag for f in msgs[0].fields] == [8, 9, 35, 34, 10]
+
+    def test_escaped_separators_with_prefix(self):
+        text = ("[09:30:01] 8=FIX.4.4\\u00019=20\\u000135=8\\u0001"
+                "34=1\\u000110=100\\u0001")
+        msgs = parse_fix(text)
+        assert len(msgs) == 1
+        assert [f.tag for f in msgs[0].fields] == [8, 9, 35, 34, 10]
+
+    def test_prefix_with_equals_not_stripped(self):
+        # 前缀里含 = 说明前面可能是真实字段——保守不剥
+        assert is_fix_text("a=b foo 8=FIX.4.4|9=1|35=D") is False
+
+    def test_non_fix_snippet_untouched(self):
+        # 普通代码片段里的 8=FIX 字样不会触发剥离/误判
+        assert is_fix_text("if x == 8: return FIX.version") is False
+        assert parse_fix("if x == 8: return FIX.version") == []
+
+    def test_data_value_containing_eight_eq_fix_not_split(self):
+        # 数据字段值里恰好出现 8=FIX 字样：不能误切消息（垃圾恢复只在
+        # tag 段被污染且值以 FIX 开头时触发）
+        fields = [(35, "D"), (58, "prefix 8=FIX.4.4 suffix")]
+        text = make_fix(fields)
+        msgs = parse_fix(text)
+        assert len(msgs) == 1
+        assert [f.value for f in msgs[0].fields if f.tag == 58] == [
+            "prefix 8=FIX.4.4 suffix"]
+
+
 if __name__ == "__main__":     # pragma: no cover
     raise SystemExit(pytest.main([__file__, "-v"]))

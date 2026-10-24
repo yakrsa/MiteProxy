@@ -1586,11 +1586,6 @@ Use | or SOH as separator; pasting multiple messages parses each one</translatio
         <translation>{0} messages</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="285"/>
-        <source>第 {0} 条</source>
-        <translation>Message {0}</translation>
-    </message>
-    <message>
         <location filename="../ui/fix_panel.py" line="293"/>
         <source>BodyLength ✓</source>
         <translation>BodyLength OK</translation>
@@ -1624,30 +1619,10 @@ Use | or SOH as separator; pasting multiple messages parses each one</translatio
         <translation>{0} fields</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="316"/>
-        <source> ┃ 问题：{0}</source>
-        <translation> | Issue: {0}</translation>
-    </message>
-    <message>
-        <location filename="../ui/fix_panel.py" line="318"/>
-        <source> ┃ 内容超限已截断</source>
-        <translation> | Content truncated (over limit)</translation>
-    </message>
-    <message>
-        <location filename="../ui/fix_panel.py" line="328"/>
-        <source>消息 {0}</source>
-        <translation>Message {0}</translation>
-    </message>
-    <message>
         <location filename="../ui/fix_panel.py" line="332"/>
         <location filename="../ui/fix_panel.py" line="342"/>
         <source>SeqNum {0}</source>
         <translation>SeqNum {0}</translation>
-    </message>
-    <message>
-        <location filename="../ui/fix_panel.py" line="337"/>
-        <source>消息</source>
-        <translation>Message</translation>
     </message>
     <message>
         <location filename="../ui/fix_panel.py" line="357"/>
@@ -1703,6 +1678,41 @@ Use | or SOH as separator; pasting multiple messages parses each one</translatio
         <location filename="../ui/fix_panel.py" line="449"/>
         <source>{0} 字符 / {1} 字节</source>
         <translation>{0} chars / {1} bytes</translation>
+    </message>
+    <message>
+        <location filename="../ui/fix_panel.py" line="193"/>
+        <source>跳到第一个有校验问题的消息</source>
+        <translation>Jump to the first message with a validation error</translation>
+    </message>
+    <message>
+        <location filename="../ui/fix_panel.py" line="271"/>
+        <source>✗ {0}</source>
+        <translation>✗ {0}</translation>
+    </message>
+    <message>
+        <location filename="../ui/fix_panel.py" line="290"/>
+        <source>显示前 {0} 条</source>
+        <translation>Showing first {0}</translation>
+    </message>
+    <message>
+        <location filename="../ui/fix_panel.py" line="294"/>
+        <source> 等 {0} 条</source>
+        <translation> and {0} more</translation>
+    </message>
+    <message>
+        <location filename="../ui/fix_panel.py" line="295"/>
+        <source>{0} 条有问题（{1}{2}）</source>
+        <translation>{0} message(s) with issues ({1}{2})</translation>
+    </message>
+    <message>
+        <location filename="../ui/fix_panel.py" line="304"/>
+        <source>问题：{0}</source>
+        <translation>Issues: {0}</translation>
+    </message>
+    <message>
+        <location filename="../ui/fix_panel.py" line="306"/>
+        <source>内容超限已截断</source>
+        <translation>Input exceeded limits and was truncated</translation>
     </message>
 </context>
 <context>

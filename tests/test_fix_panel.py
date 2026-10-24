@@ -1,7 +1,7 @@
 """FIX 工具页 UI 测试（offscreen Qt，不需要真显示）。
 
-覆盖：树渲染（单/多消息、组折叠）、状态区文案（校验 ✓/✗、| 分隔标注）、
-tool_panel 接线（第五子页与路由）。
+覆盖：tab 渲染（单/多消息、组折叠、错误徽标、条数上限）、状态区文案
+（校验 ✓/✗、| 分隔标注、多消息总览）、跳转按钮、tool_panel 接线。
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import pytest
 from PySide6.QtWidgets import QApplication, QTreeWidgetItem
 
 from app.fix import FixGroup
-from app.ui.fix_panel import FixPanel
+from app.ui.fix_panel import MAX_TAB_MESSAGES, FixPanel
 from app.ui.tool_panel import ToolPanel
 
 
@@ -39,31 +39,34 @@ def panel(qapp):
     p.deleteLater()
 
 
-def _rows(tree) -> list[QTreeWidgetItem]:
-    return [tree.topLevelItem(i) for i in range(tree.topLevelItemCount())]
+def _cur_tree(panel) -> QTreeWidgetItem:
+    """当前 tab 里的字段树（tab 页 = 摘要 QLabel + 树）。"""
+    page = panel.tab_widget.currentWidget()
+    return page.layout().itemAt(1).widget()
+
+
+def _summary_of(panel, index: int) -> str:
+    page = panel.tab_widget.widget(index)
+    return page.layout().itemAt(0).widget().text()
 
 
 class TestFixPanelTree:
     def test_single_message_tree(self, panel):
         panel.set_text(make_fix(ORDER))
-        roots = _rows(panel.tree)
-        assert len(roots) == 1
-        # 根 = 消息；子节点 = 全部字段（8/9/35/…/10）
-        assert roots[0].childCount() == len(ORDER) + 3
-        assert "D" in roots[0].text(2)
-        assert "新单" in roots[0].text(2)
-        # 第一行子节点是 8 字段，注释列有字典内容
-        first = roots[0].child(0)
-        assert first.text(0) == "8"
-        assert "开始字符串" in first.text(1)
+        assert panel.tab_widget.count() == 1
+        root = _cur_tree(panel).invisibleRootItem()
+        # 子节点 = 全部字段（8/9/35/…/10）
+        assert root.childCount() == len(ORDER) + 3
+        assert root.child(0).text(0) == "8"
+        assert "开始字符串" in root.child(0).text(1)
         # 54=1 → 注释列有枚举释义
-        side = roots[0].child(
-            [roots[0].child(i).text(0) for i in range(roots[0].childCount())].index("54"))
+        tags = [root.child(i).text(0) for i in range(root.childCount())]
+        side = root.child(tags.index("54"))
         assert "买入" in side.text(3)
 
     def test_unknown_tag_shown_as_uncollected(self, panel):
         panel.set_text(make_fix(ORDER + [(9001, "zz")]))
-        root = _rows(panel.tree)[0]
+        root = _cur_tree(panel).invisibleRootItem()
         tags = [root.child(i).text(0) for i in range(root.childCount())]
         row = root.child(tags.index("9001"))
         assert "未收录" in row.text(1)
@@ -75,24 +78,18 @@ class TestFixPanelTree:
             body += [(279, "0"), (269, str(i)), (278, "E{0}".format(i)),
                      (270, "10.5"), (271, "100")]
         panel.set_text(make_fix(body))
-        root = _rows(panel.tree)[0]
+        root = _cur_tree(panel).invisibleRootItem()
         group_node = None
         for i in range(root.childCount()):
-            if isinstance(root.child(i), QTreeWidgetItem) and root.child(i).text(0) == "268":
-                group_node = root.child(i)
+            child = root.child(i)
+            if isinstance(child, QTreeWidgetItem) and child.text(0) == "268":
+                group_node = child
                 break
         assert group_node is not None
         assert "行情条目" in group_node.text(1)
         assert "2" in group_node.text(2)
         assert group_node.childCount() == 2          # 两个实例
         assert group_node.child(0).childCount() == 5  # 每实例 5 个字段
-
-    def test_multiple_messages(self, panel):
-        text = make_fix(ORDER) + make_fix([(35, "8"), (49, "S"), (56, "T")])
-        panel.set_text(text)
-        assert len(_rows(panel.tree)) == 2
-        assert "消息 1" in _rows(panel.tree)[0].text(1)
-        assert "消息 2" in _rows(panel.tree)[1].text(1)
 
     def test_readable_view_uses_pipe(self, panel):
         panel.set_text(make_fix(ORDER))
@@ -101,6 +98,77 @@ class TestFixPanelTree:
         assert "|" in text
         assert "\x01" not in text
         assert "35=D" in text
+
+
+class TestFixPanelTabs:
+    """多消息 tab 化：标题 / 徽标 / 上限 / 跳转 / 单条退化。"""
+
+    @staticmethod
+    def _batch(count: int, bad_at=()) -> str:
+        parts = []
+        for i in range(count):
+            text = make_fix([(35, "8"), (49, "S"), (56, "T"), (34, str(i))])
+            if (i + 1) in bad_at:
+                text = text.rsplit("\x0110=", 1)[0] + "\x0110=001\x01"
+            parts.append(text)
+        return "".join(parts)
+
+    def test_multiple_messages_become_tabs(self, panel):
+        panel.set_text(self._batch(3))
+        assert panel.tab_widget.count() == 3
+        assert panel.tab_widget.tabText(0) == "#1 35=8"
+        assert panel.tab_widget.tabText(2) == "#3 35=8"
+        # 多条时 tab 栏可见（单条时隐藏，见下单测）
+        assert panel.tab_widget.tabBar().isHidden() is False
+
+    def test_bad_message_tab_has_badge_and_color(self, panel):
+        panel.set_text(self._batch(3, bad_at=(2,)))
+        assert panel.tab_widget.tabText(1) == "#2 35=8 ✗"
+        # 错误 tab 用错误色（theme error token 浅色 #cf222e）
+        assert panel.tab_widget.tabBar().tabTextColor(1).name() == "#cf222e"
+        assert panel.tab_widget.tabBar().tabTextColor(0).name() != "#cf222e"
+        # 摘要行也带 ✗ 信息
+        assert "CheckSum ✗" in _summary_of(panel, 1)
+        assert "CheckSum ✓" in _summary_of(panel, 0)
+
+    def test_tab_count_capped_and_status_hints(self, panel):
+        panel.set_text(self._batch(15))
+        assert panel.tab_widget.count() == MAX_TAB_MESSAGES
+        assert "共 15 条消息" in panel.status_label.text()
+        assert "显示前 10 条" in panel.status_label.text()
+        # 可读原文始终含全部（tab 截断不影响原文视图）
+        panel.view_combo.setCurrentIndex(panel.view_combo.findData("raw"))
+        assert panel.raw_view.toPlainText().count("\n\n") == 14
+
+    def test_jump_button_visible_and_jumps(self, panel):
+        panel.set_text(self._batch(5, bad_at=(3,)))
+        btn = panel.jump_bad_btn
+        # isVisible() 受父部件显示状态影响（offscreen 下 panel 未 show），
+        # 这里断言的是「显式隐藏」状态
+        assert btn.isHidden() is False
+        assert "1" in btn.text()
+        panel.tab_widget.setCurrentIndex(0)
+        panel._jump_to_first_bad()
+        assert panel.tab_widget.currentIndex() == 2
+
+    def test_jump_button_hidden_without_problems(self, panel):
+        panel.set_text(self._batch(2))
+        assert panel.jump_bad_btn.isHidden() is True
+
+    def test_single_message_hides_tab_bar(self, panel):
+        panel.set_text(make_fix(ORDER))
+        assert panel.tab_widget.count() == 1
+        assert panel.tab_widget.tabBar().isHidden() is True
+
+    def test_log_prefix_multi_message(self, panel):
+        # 日志复制形态：每条带时间戳前缀，仍能逐条 tab 化
+        text = ("[09:30:01.123] " + make_fix([(35, "8"), (34, "1")])
+                + "[09:30:02.456] " + make_fix([(35, "D"), (34, "2")]))
+        panel.set_text(text)
+        assert panel.tab_widget.count() == 2
+        assert panel.tab_widget.tabText(0) == "#1 35=8"
+        assert panel.tab_widget.tabText(1) == "#2 35=D"
+        assert "BodyLength ✓" in _summary_of(panel, 0)
 
 
 class TestFixPanelStatus:
@@ -118,14 +186,23 @@ class TestFixPanelStatus:
         panel.set_text(make_fix(ORDER).replace("\x01", "|"))
         assert "未校验" in panel.status_label.text()
 
+    def test_multi_message_summary_lists_bad_ones(self, panel):
+        text = (make_fix([(35, "8"), (34, "1")])
+                + make_fix([(35, "D"), (34, "2")]).rsplit("\x0110=", 1)[0]
+                + "\x0110=001\x01")
+        panel.set_text(text)
+        status = panel.status_label.text()
+        assert "共 2 条消息" in status
+        assert "#2" in status           # 坏消息序号进总览
+
     def test_non_fix_text_hint(self, panel):
         panel.input_edit.setPlainText("hello world")
         assert "未识别为 FIX" in panel.status_label.text()
-        assert panel.tree.topLevelItemCount() == 0
+        assert panel.tab_widget.count() == 0
 
     def test_garbage_input_does_not_crash(self, panel):
         panel.set_text("8=FIX.4.4\x01abc=1\x0135=D")
-        assert panel.tree.topLevelItemCount() >= 0   # 不抛即通过
+        assert panel.tab_widget.count() >= 0   # 不抛即通过
 
 
 class TestToolPanelWiring:
