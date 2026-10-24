@@ -1,11 +1,11 @@
 {
-  "version": "2.7.1",
-  "published_at": "2026-10-24T12:00:00+08:00",
+  "version": "2.7.2",
+  "published_at": "2026-10-24T16:00:00+08:00",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "新增 FIX 协议解析工具页（Ctrl+Shift+F）：粘贴报文自动解析成树形表格，字段名与枚举释义、重复组可折叠，自带 BodyLength/CheckSum 校验，多条消息按 tab 分列、错误标红",
-      "en": "New FIX parser tool page (Ctrl+Shift+F): paste raw FIX and get a tree table with field names, enum explanations and collapsible repeat groups, built-in BodyLength/CheckSum validation, and one tab per message with failures flagged in red"
+      "zh": "新增 FIX 协议解析工具页（Ctrl+Shift+F）：粘贴报文自动解析成树形表格，字段名与枚举释义、重复组可折叠，自带 BodyLength/CheckSum 校验，多条消息按 tab 分列、错误标红；支持导入各合作方的私有字段字典（协议说明整理成 CSV/JSON，PDF/Word 表格贴进 Excel 另存 CSV 也认），私有 tag 自动显示成业务字段名与枚举释义",
+      "en": "New FIX parser tool page (Ctrl+Shift+F): paste raw FIX and get a tree table with field names, enum explanations and collapsible repeat groups, built-in BodyLength/CheckSum validation, and one tab per message with failures flagged in red. Partner dictionaries are supported too: import a private-field spec as CSV/JSON (a table copied from PDF/Word into Excel and saved as CSV works), and private tags are decoded into business field names and enum meanings"
     },
     {
       "zh": "新增域名过滤页：黑名单与白名单两个独立列表 + 启用开关（三态），流量列表右键即可把域名加入名单，写 example.com 同时覆盖其子域",
@@ -28,12 +28,12 @@
       "en": "New command palette (Ctrl/Cmd+K) and status-code minimap: type to filter commands and press Enter to run, and spot failing requests from a colored dot strip"
     },
     {
-      "zh": "修复已知 Bug：FIX 多条消息被并成一条（逐行复制带时间戳前缀、上一条末尾分隔符丢失时切不开）、证书服务按钮点击无响应、代理线程异常退出后界面未复位、隧道连接流量缓存泄漏、MCP 写操作跨线程、启动端口被占用未提示、关闭应用误报「意外退出」、IPv6 地址显示错误等",
-      "en": "Fixed known bugs: multiple FIX messages collapsing into one (per-line logs with timestamp prefixes, or a missing trailing separator) plus unresponsive certificate-service button, UI not resetting after the proxy thread died, flow-cache leaks on tunnel connections, cross-thread MCP writes, silent port fallback on startup, false 'proxy exited' warning on quit, wrong IPv6 URLs and more"
+      "zh": "修复已知 Bug：FIX 多条消息被并成一条（逐行复制带时间戳前缀、上一条末尾分隔符丢失时切不开）、字典导入对文档里复制出来的表格识别不全、证书服务按钮点击无响应、代理线程异常退出后界面未复位、隧道连接流量缓存泄漏、MCP 写操作跨线程、启动端口被占用未提示、关闭应用误报「意外退出」、IPv6 地址显示错误等",
+      "en": "Fixed known bugs: multiple FIX messages collapsing into one (per-line logs with timestamp prefixes, or a missing trailing separator), tables copied out of documents not being fully recognized on dictionary import, plus unresponsive certificate-service button, UI not resetting after the proxy thread died, flow-cache leaks on tunnel connections, cross-thread MCP writes, silent port fallback on startup, false 'proxy exited' warning on quit, wrong IPv6 URLs and more"
     },
     {
-      "zh": "体验优化：全局控件质感、流量表数值列等宽右对齐、脚本编辑器 Python 语法高亮、JSON 树三列并按层展开、左侧图标导航栏（可钉住、Ctrl+1–9）、请求概览卡、行密度切换与空态引导",
-      "en": "Experience polish: overall control styling, right-aligned monospaced numeric columns, Python syntax highlighting in the script editor, a three-column JSON tree with expand-by-depth, an icon nav rail (pinnable, Ctrl+1–9), a request overview card, row-density switching and empty-state guidance"
+      "zh": "体验优化：全局控件质感、流量表数值列等宽右对齐、脚本编辑器 Python 语法高亮、JSON 树三列并按层展开、左侧图标导航栏（可钉住、Ctrl+1–9）、请求概览卡、行密度切换与空态引导；FIX 字段树标签列按内容自适应并补全悬浮提示（5 位私有 tag 不再截断），同名字典重复导入直接覆盖更新",
+      "en": "Experience polish: overall control styling, right-aligned monospaced numeric columns, Python syntax highlighting in the script editor, a three-column JSON tree with expand-by-depth, an icon nav rail (pinnable, Ctrl+1–9), a request overview card, row-density switching and empty-state guidance; the FIX tag column now sizes to its content with full tooltips (5-digit private tags are no longer truncated), and re-importing a dictionary with the same name overwrites it instead of creating a duplicate"
     }
   ]
 }
