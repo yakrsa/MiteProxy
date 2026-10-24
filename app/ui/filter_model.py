@@ -22,45 +22,126 @@ SCOPE_BODY = "body"
 BODY_INDEX_LIMIT = 512 * 1024  # 与 CaptureAddon 的大 body 策略一致
 
 
+#: 域名过滤的「启用哪个列表」取值
+LIST_BLACK = "blacklist"
+LIST_WHITE = "whitelist"
+
+
+def normalize_domain(text: str) -> str:
+    """归一化用户输入的域名条目（去空白 / 去末尾点 / 小写）。"""
+    return (text or "").strip().rstrip(".").lower()
+
+
+def add_domains(entries: list[str], domains) -> list[str]:
+    """增量追加域名并去重（大小写不敏感），保留原有顺序与写法。
+
+    黑/白名单都是「追加」语义：右键加入、过滤页添加都不会覆盖已有内容。
+    """
+    result = list(entries or [])
+    seen = {normalize_domain(e) for e in result}
+    for d in domains:
+        raw = (d or "").strip().rstrip(".")
+        if not raw:
+            continue
+        key = raw.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(raw)
+    return result
+
+
+def host_matches(host: str, entry: str) -> bool:
+    """判断 ``host`` 是否命中名单条目 ``entry``。
+
+    两条语义，按条目是否带点自动分流：
+
+    - 带点（``example.com``）：域名语义，命中自身或其子域
+      （``example.com`` → ``api.example.com``），但不命中
+      ``notexample.com`` / ``example.com.evil.net``——域名黑名单按子串
+      匹配会把同后缀的无关域名一起埋了。
+    - 不带点（``google``）：关键字语义，退化为子串匹配，兼容老版本
+      手输片段词的行为。
+    """
+    h = (host or "").strip().rstrip(".").lower()
+    e = (entry or "").strip().rstrip(".").lower()
+    if not h or not e:
+        return False
+    if "." in e:
+        return h == e or h.endswith("." + e)
+    return e in h
+
+
 class FilterConfig:
-    """过滤配置（持久化进 settings.json 的部分）。"""
+    """过滤配置（持久化进 settings.json 的部分）。
+
+    黑白名单是两个独立列表 + 一个启用开关，且只能启用其中一个：
+    ``enabled`` 关掉整个域名过滤，``active_list`` 决定启用的是黑名单
+    还是白名单。两个列表各自增量维护，切换开关不丢内容。
+    """
 
     def __init__(
         self,
-        host_mode: str = "blacklist",  # blacklist | whitelist
-        host_keywords: list[str] | None = None,
+        blacklist: list[str] | None = None,
+        whitelist: list[str] | None = None,
+        enabled: bool = False,
+        active_list: str = LIST_BLACK,
         hide_connect: bool = False,
         hide_image: bool = False,
     ):
-        self.host_mode = host_mode
-        self.host_keywords = list(host_keywords or [])
+        self.blacklist = list(blacklist or [])
+        self.whitelist = list(whitelist or [])
+        self.enabled = enabled
+        self.active_list = (
+            active_list if active_list in (LIST_BLACK, LIST_WHITE) else LIST_BLACK
+        )
         self.hide_connect = hide_connect
         self.hide_image = hide_image
 
+    @property
+    def active_entries(self) -> list[str]:
+        """当前启用列表的内容（未启用时也返回内容，供编辑用）。"""
+        return self.blacklist if self.active_list == LIST_BLACK else self.whitelist
+
     def to_dict(self) -> dict:
         return {
-            "host_mode": self.host_mode,
-            "host_keywords": list(self.host_keywords),
+            "blacklist": list(self.blacklist),
+            "whitelist": list(self.whitelist),
+            "enabled": self.enabled,
+            "active_list": self.active_list,
             "hide_connect": self.hide_connect,
             "hide_image": self.hide_image,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "FilterConfig":
-        mode = data.get("host_mode", "blacklist")
-        if mode not in ("blacklist", "whitelist"):
-            mode = "blacklist"
+        data = data or {}
+        if "blacklist" in data or "whitelist" in data:
+            return cls(
+                blacklist=[str(k) for k in data.get("blacklist", [])],
+                whitelist=[str(k) for k in data.get("whitelist", [])],
+                enabled=bool(data.get("enabled", False)),
+                active_list=str(data.get("active_list", LIST_BLACK)),
+                hide_connect=bool(data.get("hide_connect", False)),
+                hide_image=bool(data.get("hide_image", False)),
+            )
+        # 旧版配置迁移：单列表 + host_mode 改写 → 落到对应新列表
+        mode = data.get("host_mode", LIST_BLACK)
+        if mode not in (LIST_BLACK, LIST_WHITE):
+            mode = LIST_BLACK
+        keywords = [str(k) for k in data.get("host_keywords", [])]
         return cls(
-            host_mode=mode,
-            host_keywords=[str(k) for k in data.get("host_keywords", [])],
+            blacklist=keywords if mode == LIST_BLACK else [],
+            whitelist=keywords if mode == LIST_WHITE else [],
+            enabled=bool(keywords),  # 老配置有词即视为启用
+            active_list=mode,
             hide_connect=bool(data.get("hide_connect", False)),
             hide_image=bool(data.get("hide_image", False)),
         )
 
     def is_active(self) -> bool:
-        return bool(
-            self.host_keywords or self.hide_connect or self.hide_image
-        )
+        """域名过滤是否真的在生效（空白名单 = 不过滤，防止误把流量全藏了）。"""
+        return bool(self.enabled and self.active_entries)
 
 
 class SearchConfig:
@@ -128,17 +209,18 @@ class FlowFilterProxyModel(QSortFilterProxyModel):
             return False
         return self._accept_domain(row) and self._accept_type(row) and self._accept_search(row)
 
-    # ---- 域名过滤（黑名单/白名单，空白名单不过滤）
+    # ---- 域名过滤（黑/白名单两个列表 + 启用开关，只能启用一个）
 
     def _accept_domain(self, row: dict) -> bool:
-        keywords = self.filter_config.host_keywords
-        if not keywords:
+        cfg = self.filter_config
+        if not cfg.is_active():
             return True
         host = (row.get("host") or "").lower()
-        hit = any(k.lower() in host for k in keywords if k)
-        if self.filter_config.host_mode == "whitelist":
+        entries = cfg.active_entries
+        hit = any(host_matches(host, k) for k in entries if k)
+        if cfg.active_list == LIST_WHITE:
             return hit
-        return not hit  # blacklist：含关键词的隐藏
+        return not hit  # blacklist：命中的隐藏
 
     # ---- 类型隐藏
 

@@ -44,28 +44,43 @@ from app.ui.visuals import MethodBadgeDelegate, StatusBadgeDelegate
 
 
 class FilterBar(QWidget):
-    """域名过滤（黑/白名单）+ 类型隐藏。变更即发信号，由主窗口持久化。"""
+    """域名过滤（黑/白名单 + 启用开关）+ 类型隐藏。变更即发信号，由主窗口持久化。
+
+    与详情面板的「过滤」页（``app.ui.filter_panel.FilterPanel``）共用同一份
+    ``FilterConfig``：这里只显示并编辑**当前启用**的那个列表，另一个列表在
+    过滤页里维护；两处内容永远一致（都由主窗口回灌）。
+    """
 
     changed = Signal()
     #: 「预设」菜单即将弹出：主窗口借此机会重建菜单内容（动态数据）
     preset_menu_about_to_show = Signal()
+    #: 用户请求打开「过滤」页（顶部栏 → 详情面板页签）
+    filter_page_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        # 最近一次 load_config 灌进来的**完整**配置。顶部栏只展示一个列表，
+        # 切列表 / 提交时得知道另一份是什么——否则会把另一份抹掉（真踩过）。
+        self._config = FilterConfig()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 2, 4, 2)
         layout.setSpacing(6)
 
-        layout.addWidget(QLabel(self.tr("域名:")))
+        layout.addWidget(QLabel(self.tr("域名过滤:")))
         self.mode_combo = QComboBox()
-        self.mode_combo.addItem(self.tr("隐藏(黑名单)"), "blacklist")
-        self.mode_combo.addItem(self.tr("只显示(白名单)"), "whitelist")
-        self.mode_combo.setToolTip(self.tr("黑名单：隐藏含关键词的域名；白名单：只显示含关键词的域名"))
+        self.mode_combo.addItem(self.tr("关闭"), "off")
+        self.mode_combo.addItem(self.tr("黑名单(隐藏)"), "blacklist")
+        self.mode_combo.addItem(self.tr("白名单(只显示)"), "whitelist")
+        self.mode_combo.setToolTip(
+            self.tr("三态互斥：一次只启用黑名单或白名单，关掉则两个列表都不生效")
+        )
         layout.addWidget(self.mode_combo)
 
         self.keywords_edit = QLineEdit()
-        self.keywords_edit.setPlaceholderText(self.tr("关键词，逗号分隔；留空 = 不过滤"))
         self.keywords_edit.setClearButtonEnabled(True)
+        self.keywords_edit.setToolTip(
+            self.tr("编辑当前启用的列表（逗号分隔）；另一份列表在「过滤」页维护")
+        )
         layout.addWidget(self.keywords_edit, stretch=1)
 
         self.hide_connect_cb = QCheckBox(self.tr("隐藏 CONNECT"))
@@ -86,7 +101,16 @@ class FilterBar(QWidget):
         self.preset_btn.setMenu(self.preset_menu)
         layout.addWidget(self.preset_btn)
 
-        self.mode_combo.currentIndexChanged.connect(self.changed)
+        # 跳转到「过滤」页：域名过滤的完整编辑界面（两个列表 + 命中数）
+        self.page_btn = QPushButton(self.tr("过滤页"))
+        self.page_btn.setToolTip(
+            self.tr("打开详情面板的「过滤」页：黑白名单两个列表一起看，"
+                    "带每个域名的实时命中数")
+        )
+        self.page_btn.clicked.connect(self.filter_page_requested)
+        layout.addWidget(self.page_btn)
+
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         self.keywords_edit.textChanged.connect(self.changed)
         self.hide_connect_cb.toggled.connect(self.changed)
         self.hide_image_cb.toggled.connect(self.changed)
@@ -94,23 +118,48 @@ class FilterBar(QWidget):
     # ------------------------------------------------------------ 配置同步
 
     def load_config(self, config: FilterConfig) -> None:
+        self._config = config
         self._block_signals(True)
-        idx = self.mode_combo.findData(config.host_mode)
+        if config.enabled:
+            idx = self.mode_combo.findData(config.active_list)
+        else:
+            idx = self.mode_combo.findData("off")
         self.mode_combo.setCurrentIndex(max(idx, 0))
-        self.keywords_edit.setText(", ".join(config.host_keywords))
+        self.keywords_edit.setText(", ".join(config.active_entries))
         self.hide_connect_cb.setChecked(config.hide_connect)
         self.hide_image_cb.setChecked(config.hide_image)
+        self._update_edit_state()
         self._block_signals(False)
 
     def to_config(self) -> FilterConfig:
+        data = self.mode_combo.currentData()
         keywords = [
             k.strip() for k in self.keywords_edit.text().split(",") if k.strip()
         ]
+        cur = self._config or FilterConfig()
+        hide_connect = self.hide_connect_cb.isChecked()
+        hide_image = self.hide_image_cb.isChecked()
+        if data == "whitelist":
+            return FilterConfig(
+                blacklist=list(cur.blacklist), whitelist=keywords,
+                enabled=True, active_list="whitelist",
+                hide_connect=hide_connect, hide_image=hide_image,
+            )
+        if data == "off":
+            # 关掉不清列表：按「关之前正在看的那份」把内容放回它自己的坑位
+            if cur.active_list == "whitelist":
+                black, white = list(cur.blacklist), keywords
+            else:
+                black, white = keywords, list(cur.whitelist)
+            return FilterConfig(
+                blacklist=black, whitelist=white,
+                enabled=False, active_list=cur.active_list,
+                hide_connect=hide_connect, hide_image=hide_image,
+            )
         return FilterConfig(
-            host_mode=self.mode_combo.currentData(),
-            host_keywords=keywords,
-            hide_connect=self.hide_connect_cb.isChecked(),
-            hide_image=self.hide_image_cb.isChecked(),
+            blacklist=keywords, whitelist=list(cur.whitelist),
+            enabled=True, active_list="blacklist",
+            hide_connect=hide_connect, hide_image=hide_image,
         )
 
     def _block_signals(self, block: bool) -> None:
@@ -121,6 +170,42 @@ class FilterBar(QWidget):
             self.hide_image_cb,
         ):
             w.blockSignals(block)
+
+    def _on_mode_changed(self) -> None:
+        """切换列表：输入框内容必须先换成新列表的，再发 changed。
+
+        顺序很重要——如果直接发 changed，箱子里的还是**上一个列表**的内容，
+        会被当成新列表的内容提交：白名单 a.test 时切到黑名单，原来存着的
+        黑名单 b.test 当场被抹掉（真实踩过）。所以这里先把文本换源再发。
+        """
+        data = self.mode_combo.currentData()
+        cur = self._config or FilterConfig()
+        if data == "whitelist":
+            entries = cur.whitelist
+        elif data == "off":
+            entries = cur.active_entries      # 关掉时保持「关之前看的那份」
+        else:
+            entries = cur.blacklist
+        self._block_signals(True)
+        self.keywords_edit.setText(", ".join(entries))
+        self._block_signals(False)
+        self._update_edit_state()
+        self.changed.emit()
+
+    def _update_edit_state(self) -> None:
+        data = self.mode_combo.currentData()
+        off = data == "off"
+        self.keywords_edit.setEnabled(not off)
+        if off:
+            self.keywords_edit.setPlaceholderText(self.tr("域名过滤已关闭"))
+        elif data == "whitelist":
+            self.keywords_edit.setPlaceholderText(
+                self.tr("白名单域名，逗号分隔；留空 = 不过滤")
+            )
+        else:
+            self.keywords_edit.setPlaceholderText(
+                self.tr("黑名单域名，逗号分隔；留空 = 不过滤")
+            )
 
 
 class SearchBar(QWidget):

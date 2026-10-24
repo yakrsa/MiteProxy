@@ -157,6 +157,9 @@ class Settings:
     hidden_columns: list[str] = field(
         default_factory=lambda: list(DEFAULT_HIDDEN_COLUMNS)
     )
+    #: 左侧导航栏是否被钉住（钉住 = 常驻展开，不随鼠标移开收起）。
+    #: 默认 False：默认收起给内容区让版面，想常驻的自己钉一下。
+    nav_rail_pinned: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -181,6 +184,7 @@ class Settings:
             "auto_system_proxy": self.auto_system_proxy,
             "traffic_side_by_side": self.traffic_side_by_side,
             "density": self.density,
+            "nav_rail_pinned": self.nav_rail_pinned,
             "theme": self.theme,
             "language": self.language,
             "check_update_on_startup": self.check_update_on_startup,
@@ -248,6 +252,7 @@ class Settings:
             window_geometry=cls._decode_geometry(data.get("window_geometry")),
             hidden_columns=cls._sanitize_columns(data.get("hidden_columns")),
             scripts=cls._sanitize_scripts(data.get("scripts")),
+            nav_rail_pinned=bool(data.get("nav_rail_pinned", False)),
         )
 
     @staticmethod

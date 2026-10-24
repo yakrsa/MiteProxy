@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtGui import QIcon
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app import single_instance
@@ -108,6 +109,11 @@ def main() -> int:
     window = MainWindow()
     window.show()
     window.start_proxy(verify=True)      # 启动即开代理（对齐 Fiddler 打开即抓包）
+    # 「恢复上次会话」弹窗排在端口变更弹窗之后：start_proxy 里的端口弹窗是
+    # 同步模态（在 app.exec() 之前就弹并等用户关掉），这里再排程会话弹窗，
+    # 事件循环启动后才会处理，保证端口弹窗第一个弹出、会话弹窗在其后。
+    if window.restore_prompt:
+        QTimer.singleShot(0, window._maybe_restore_autosave)
     app.aboutToQuit.connect(window.stop_proxy)
 
     # 主窗口就绪后再接收后续实例的唤醒请求（把它带到前台）

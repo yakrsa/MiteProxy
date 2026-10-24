@@ -106,7 +106,13 @@ from app.ui.breakpoint_dialog import BreakpointDialog
 from app.ui.compare_dialog import CompareDialog
 from app.ui.flow_diff_dialog import FlowDiffDialog
 from app.ui.detail_panel import DetailPanel
-from app.ui.filter_model import FilterConfig, FlowFilterProxyModel
+from app.ui.filter_model import (
+    LIST_BLACK,
+    LIST_WHITE,
+    FilterConfig,
+    FlowFilterProxyModel,
+    add_domains,
+)
 from app.ui.flow_store import (
     COLUMN_KEYS,
     COL_ID,
@@ -127,12 +133,34 @@ from app.ui.traffic_table import FilterBar, SearchBar, TrafficTable
 from app.ui.visuals import StatusDotLabel
 from app.ui.minimap import StatusMinimap
 from app.ui.command_palette import CommandPalette
+from app.ui.nav_rail import NavRail
 from app.ui import dialogs
 from app.ui import theme
 from app.ui import icons
 from app.scripts import ScriptsManager
 
 log = logging.getLogger(__name__)
+
+def _unique_domains(flows) -> list[str]:
+    """从选中会话里取去重后的域名列表（保持出现顺序，忽略空 host）。
+
+    用 ``pretty_host``——流量表 Host 列与过滤判定比对的都是这个值
+    （``addons/capture.py`` 存进 row["host"] 的就是它），用别的字段
+    （比如 ``request.host`` 带端口）会加出一条永远匹配不上的条目。
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for flow in flows or []:
+        req = getattr(flow, "request", None)
+        host = (getattr(req, "pretty_host", "") or "").strip().rstrip(".")
+        if not host:
+            continue
+        key = host.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(host)
+    return out
 
 def _ca_export_hint(path) -> str:
     """CA 证书去向说明（懒翻译：翻译器在 QApplication 创建后才装载）。"""
@@ -220,6 +248,9 @@ class MainWindow(QMainWindow):
         # 整应用重启标记：置位后退出路径跳过系统代理还原（快照留给新实例，
         # 新实例启动时 recover_if_needed 先还原再接管，顺序才不会互相覆盖）
         self._restarting = False
+        # 整应用退出标记：closeEvent 里停代理时，代理线程收尾会 emit
+        # proxy_state_changed(False)，那是正常退出不是"意外退出"，不能弹窗
+        self._exiting = False
 
         # ---- 重放并对比（DESIGN 3.6）：pending 等重放响应到达后关联弹框
         self._pending_compare: list[dict] = []
@@ -254,6 +285,9 @@ class MainWindow(QMainWindow):
         # 不一致——用户一改动就会从错误的基础改起。load_config 内部
         # blockSignals，不会触发 changed 引起重复落盘。
         self.filter_bar.load_config(self.settings.filter)
+        # 过滤页同样回灌（它也是同一份配置的另一副面孔）
+        self.detail_panel.filter_panel.load_config(self.settings.filter)
+        self._refresh_filter_counts()
         # 上次开着 MCP 就接着开（默认关，用户手动开过才记 True）
         if self.settings.mcp_enabled:
             self.mcp_btn.setChecked(True)
@@ -262,11 +296,10 @@ class MainWindow(QMainWindow):
         self._restore_geometry()
         self._update_status()
 
-        # 启动后询问是否恢复上次退出时的会话快照。
-        # 用 singleShot(0) 而不是直接调用：等窗口先显示出来，模态框不会挡在空白窗口上；
-        # restore_prompt=False 时不挂这个定时器，脚本环境不会有模态框阻塞。
-        if self.restore_prompt:
-            QTimer.singleShot(0, self._maybe_restore_autosave)
+        # 注意：启动时的「恢复上次会话」弹窗不在构造里排程——它必须在
+        # start_proxy 的「端口变更」弹窗之后出现（见 main.py 的调度顺序），
+        # 否则端口弹窗的模态事件循环会把会话弹窗也一并处理，导致会话弹窗
+        # 叠在端口弹窗之上、看起来像"会话先弹"。
 
         # 启动时静默检查更新：延后几秒，避免和代理/证书初始化抢网络。
         # 只有确实发现新版本才弹窗，失败一律静默；测试环境（restore_prompt=False）
@@ -609,6 +642,13 @@ class MainWindow(QMainWindow):
         """往 tabs 加一页，并登记图标名（切主题时统一重取色）。"""
         self.tabs.addTab(widget, icons.icon(icon_name), label)
         self._tab_icon_names.append(icon_name)
+        # 左侧导航栏同步加一枚按钮（索引与 tab 一致，外部靠 index 对齐）
+        if getattr(self, "nav_rail", None) is not None:
+            self.nav_rail.add_page(
+                icons.icon(icon_name),
+                icons.icon(icon_name, color=theme.css("sel_fg")),
+                label,
+            )
 
     def _refresh_icons(self) -> None:
         """主题切换后重取所有图标颜色（图标是内联 SVG，按前景色渲染）。
@@ -625,6 +665,12 @@ class MainWindow(QMainWindow):
         icons.invalidate()
         for i, name in enumerate(self._tab_icon_names):
             self.tabs.setTabIcon(i, icons.icon(name))
+        sel_fg = theme.css("sel_fg")
+        if getattr(self, "nav_rail", None) is not None:
+            self.nav_rail.set_icons(
+                [icons.icon(n) for n in self._tab_icon_names],
+                [icons.icon(n, color=sel_fg) for n in self._tab_icon_names],
+            )
         for btn, name in (
             (self.clear_btn, "trash"),
             (self.search_btn, "search"),
@@ -807,7 +853,16 @@ class MainWindow(QMainWindow):
         self.tabs.setTabPosition(QTabWidget.TabPosition.West)
         self.tabs.setIconSize(QSize(18, 18))
         self._tab_icon_names: list[str] = []
-        root.addWidget(self.tabs, stretch=1)
+        # 原生 West tabBar 会把文字旋转 90°（PySide6 无 API 关掉），中英文都难读，
+        # 故藏掉它、用自定义 rail 接管导航（见 app/ui/nav_rail.py）
+        self.tabs.tabBar().hide()
+        self.nav_rail = NavRail()
+        tabs_row = QHBoxLayout()
+        tabs_row.setContentsMargins(0, 0, 0, 0)
+        tabs_row.setSpacing(0)
+        tabs_row.addWidget(self.nav_rail)
+        tabs_row.addWidget(self.tabs, stretch=1)
+        root.addLayout(tabs_row, stretch=1)
 
         # 流量页
         traffic_page = QWidget()
@@ -891,7 +946,24 @@ class MainWindow(QMainWindow):
         # + 时间直方图。聚合逻辑在 app/stats.py，与 MCP 的 get_stats 共用
         self.stats_panel = StatsPanel(flow_provider=self._stats_flows)
         self._add_tab(self.stats_panel, self.tr("统计"), "stats")
+        self.nav_rail.finish()
+        # 收起态全靠 tooltip 认路，把 Ctrl+N 写进去不然等于白给了快捷键
+        self.nav_rail.set_shortcut_hints(
+            [self.tr('Ctrl+{0}').format(i + 1) for i in range(self.tabs.count())]
+        )
+        # 钉住偏好（上次关掉程序前的选择）恢复；emit=False 免得开屏就写一次盘
+        self.nav_rail.set_pinned(
+            getattr(self.settings, "nav_rail_pinned", False),
+            emit=False, animate=False,
+        )
+        self.nav_rail.pin_toggled.connect(self._on_nav_pin_toggled)
+        # rail ↔ tabs 双向同步：点 rail 切页；tabs 变了（含 setCurrentWidget）
+        # 回灌选中态。currentChanged 里再调 rail.set_current 不会回头触发
+        # rail 的 current_changed（idClicked 只在用户点击时发），不成环。
+        self.nav_rail.current_changed.connect(self.tabs.setCurrentIndex)
+        self.tabs.currentChanged.connect(self.nav_rail.set_current)
         self.tabs.currentChanged.connect(self._on_tab_changed)
+        self._build_nav_shortcuts()
         # 统计防抖：新流量可能成批到达（页面加载时一串请求），没必要每条都
         # 全量聚合；500ms 内的多条变化合并成一次重算
         self._stats_timer = QTimer(self)
@@ -1190,6 +1262,28 @@ class MainWindow(QMainWindow):
         self.bridge.proxy_state_changed.connect(self._on_proxy_state_changed)
         self.filter_bar.changed.connect(self._on_filter_changed)
         self.filter_bar.preset_menu_about_to_show.connect(self._rebuild_preset_menu)
+        self.filter_bar.filter_page_requested.connect(
+            self._on_filter_page_requested
+        )
+        # 过滤页（详情面板第 4 个页签）与顶部栏同源：任一侧改动都落盘 +
+        # 推模型 + 回灌另一侧
+        self.detail_panel.filter_panel.changed.connect(
+            self._on_filter_panel_changed
+        )
+        # 过滤页要知道「会话里有哪些 host」才能算命中数、提供「从流量选…」，
+        # 但会话是主窗口的——注入一个取数函数，别让它反向依赖 MainWindow。
+        self.detail_panel.filter_panel.set_host_provider(
+            self._current_host_counts
+        )
+        # 切到「过滤」页时补一次命中数：页面不可见期间所有刷新都被跳过
+        # （省算力），用户手动点过来时如果不补，看到的就是空白/过期数字。
+        self.detail_panel.tabs.currentChanged.connect(
+            self._on_detail_tab_changed
+        )
+        self._filter_counts_timer = QTimer(self)
+        self._filter_counts_timer.setSingleShot(True)
+        self._filter_counts_timer.setInterval(400)
+        self._filter_counts_timer.timeout.connect(self._refresh_filter_counts)
         self.scripts_panel.scripts_changed.connect(self._on_scripts_changed)
         self.search_bar.config_changed.connect(self._on_search_changed)
         self.search_bar.closed.connect(self._on_search_closed)
@@ -1313,6 +1407,16 @@ class MainWindow(QMainWindow):
             self.mock.proxy_addr = ("127.0.0.1", actual)
             self.status_bar.showMessage(
                 self.tr('端口 {0} 被占用，代理已自动改用 {1}').format(requested, actual), 6000
+            )
+            # 端口被占用顺延到别的端口：弹窗明确告知（静默改端口用户发现不了，
+            # 会以为还在原端口监听，系统代理/客户端可能指向死端口）
+            dialogs.information(
+                self,
+                self.tr("端口被占用，已自动切换"),
+                self.tr(
+                    "请求端口 {0} 被其他程序占用，代理已自动改用 {1}。\n"
+                    "本次会话将使用新端口，设置已自动保存。"
+                ).format(requested, actual),
             )
         self.proxy_btn.setText(self.tr("停止代理"))
         self.proxy_btn.setChecked(True)
@@ -1454,6 +1558,8 @@ class MainWindow(QMainWindow):
         """
         if running:
             return
+        if self._exiting:
+            return                      # 应用退出流程的正常收尾，不是意外退出
         if not self.proxy_btn.isChecked():
             return                      # 已经在停止态（用户主动停的），no-op
         log.error("代理线程已退出，UI 状态复位: %s", message or "（无附加信息）")
@@ -1866,6 +1972,7 @@ class MainWindow(QMainWindow):
         self.detail_panel.clear()
         self._update_status()
         self._refresh_stats()
+        self._refresh_filter_counts()
 
     # ================================================================ 流量展示
 
@@ -1883,6 +1990,7 @@ class MainWindow(QMainWindow):
             self.traffic_table.scroll_to_newest(self.settings.newest_first)
         # 统计页防抖刷新（500ms 内的批量到达合并成一次重算）
         self._stats_timer.start()
+        self._schedule_filter_counts()
 
     def _on_flow_updated(self, summary: dict) -> None:
         """已存在会话的增量更新（响应到达 / WebSocket 消息到达）。
@@ -1979,7 +2087,37 @@ class MainWindow(QMainWindow):
     # ================================================================ 过滤 / 搜索
 
     def _on_filter_changed(self) -> None:
-        config = self.filter_bar.to_config()
+        """顶部过滤栏改动：合并另一份列表 → 落盘 → 推模型 → 回灌过滤页。"""
+        config = self._merge_bar_config(self.filter_bar.to_config())
+        self._commit_filter_config(config)
+
+    def _on_filter_panel_changed(self) -> None:
+        """过滤页（详情面板）改动：它看得到两个列表，直接用完整配置。"""
+        config = self.detail_panel.filter_panel.to_config()
+        self._commit_filter_config(config)
+
+    def _merge_bar_config(self, bar: FilterConfig) -> FilterConfig:
+        """把顶部栏配置与当前完整配置合并。
+
+        顶部栏只显示并编辑「当前启用」的那个列表，另一份列表的内容它看不到，
+        直接拿 to_config() 覆盖会把另一份抹掉——所以非活动列表从现有配置继承。
+        """
+        cur = self.settings.filter
+        if bar.active_list == "whitelist":
+            blacklist, whitelist = cur.blacklist, bar.whitelist
+        else:
+            blacklist, whitelist = bar.blacklist, cur.whitelist
+        return FilterConfig(
+            blacklist=blacklist,
+            whitelist=whitelist,
+            enabled=bar.enabled,
+            active_list=bar.active_list,
+            hide_connect=bar.hide_connect,
+            hide_image=bar.hide_image,
+        )
+
+    def _commit_filter_config(self, config: FilterConfig) -> None:
+        """过滤配置的唯一提交口：settings + 预设偏离标记 + 三处 UI 同步。"""
         self.settings.filter = config
         # 手改过滤条件 = 偏离当前预设：清掉 active 标记（菜单里不再显示
         # 「已套用」勾选），但预设本身保留——改回去还能对上。
@@ -1987,6 +2125,10 @@ class MainWindow(QMainWindow):
             self.settings.active_preset = ""
         save_settings(self.settings)
         self._apply_filter_config(config)
+        # 回灌另一侧 UI（load_config 内部 blockSignals，不会回头再触发 changed）
+        self.filter_bar.load_config(config)
+        self.detail_panel.filter_panel.load_config(config)
+        self._refresh_filter_counts()
 
     def _matches_active_preset(self, config) -> bool:
         """当前过滤条件是否与 active_preset 保存的一致。"""
@@ -1998,6 +2140,55 @@ class MainWindow(QMainWindow):
     def _apply_filter_config(self, config) -> None:
         self.proxy_model.set_filter_config(config)
         self._update_status()
+
+    # ------------------------------------------------------------ 过滤页辅助
+
+    def _on_filter_page_requested(self) -> None:
+        """顶部栏「过滤页」按钮：跳到详情面板的过滤页签（开着流量页才行）。"""
+        self.tabs.setCurrentWidget(self.traffic_page)
+        self.detail_panel.show_filter_page()
+        self.filter_bar.page_btn.clearFocus()
+        self._refresh_filter_counts()
+
+    def _current_host_counts(self) -> dict[str, int]:
+        """当前会话（未过滤）里每个 host 的条数。
+
+        过滤页的命中数与「从流量选…」共用这一份口径——统计**过滤前**的全量行，
+        这样黑名单的命中数含义就是「这个域名藏了多少条」。
+        """
+        counts: dict[str, int] = {}
+        for row in self.flow_store.rows:
+            host = (row.get("host") or "").strip().lower()
+            if host:
+                counts[host] = counts.get(host, 0) + 1
+        return counts
+
+    def _refresh_filter_counts(self) -> None:
+        """刷新过滤页里每个域名的实时命中数。
+
+        耗时与行数成正比，故只在该页可见时才算（_on_tab_changed 也会补一次）。
+        """
+        panel = self.detail_panel.filter_panel
+        if panel is None or not panel.isVisible():
+            return
+        try:
+            panel.update_counts(self._current_host_counts())
+        except Exception:
+            log.warning("过滤页命中数刷新失败", exc_info=True)
+
+    def _on_detail_tab_changed(self, index: int) -> None:
+        """详情面板切页：切到「过滤」页就补一次命中数。
+
+        直接起定时器（而不是 _schedule_filter_counts）——currentChanged 发出的
+        时候新页还没来得及变 visible，可见性判断要用 400ms 后真正算的那次。
+        """
+        if index == getattr(self.detail_panel, "filter_index", -1):
+            self._filter_counts_timer.start()
+
+    def _schedule_filter_counts(self) -> None:
+        """流量到达/删除后防抖刷新命中数（成批到达时合并成一次）。"""
+        if self.detail_panel.filter_panel.isVisible():
+            self._filter_counts_timer.start()
 
     # ------------------------------------------------------------ 过滤预设（#7）
 
@@ -2047,7 +2238,9 @@ class MainWindow(QMainWindow):
             self.settings.active_preset = name
             save_settings(self.settings)
             self.filter_bar.load_config(config)
+            self.detail_panel.filter_panel.load_config(config)
             self._apply_filter_config(config)
+            self._refresh_filter_counts()
             self.status_bar.showMessage(
                 self.tr('已套用过滤预设「{0}」').format(name), 3000
             )
@@ -2260,6 +2453,24 @@ class MainWindow(QMainWindow):
         mock_action.setEnabled(count == 1)
         mock_action.triggered.connect(self._add_selected_to_mock)
 
+        # -- 域名过滤：把选中请求的域名加进黑/白名单（增量，多选批量）
+        menu.addSeparator()
+        domains = _unique_domains(flows)
+        black_action = menu.addAction(
+            self.tr('把域名加入黑名单{0}').format(batch)
+        )
+        black_action.setToolTip(
+            self.tr("增量加入，不会覆盖已有内容；命中的域名将从流量列表隐藏")
+        )
+        black_action.triggered.connect(lambda: self._add_domains_to_filter(domains, "blacklist"))
+        white_action = menu.addAction(
+            self.tr('把域名加入白名单{0}').format(batch)
+        )
+        white_action.setToolTip(
+            self.tr("增量加入并切到白名单：只显示这些域名的请求，其余全部隐藏")
+        )
+        white_action.triggered.connect(lambda: self._add_domains_to_filter(domains, "whitelist"))
+
         for action in (replay_action, edit_replay_action, compare_action,
                        curl_action, curl_cmd_action, copy_url_action,
                        export_action, export_resp_action):
@@ -2377,6 +2588,40 @@ class MainWindow(QMainWindow):
             return data.decode("utf-8", errors="replace")
         except Exception:
             return ""
+
+    # ------------------------------------------------------------ 域名过滤（右键）
+
+    def _add_domains_to_filter(self, domains, which: str) -> None:
+        """右键把选中请求的域名加进黑/白名单（增量 + 去重）。
+
+        - 黑名单：追加进 blacklist，并把启用开关切到黑名单——用户点它就是
+          要这个域名消失，开关还关着等于点了没反应；
+        - 白名单：追加进 whitelist 并切到白名单（「仅显示该域名」的意图）；
+        - 另一个列表原样保留：两个列表各自独立维护，互不覆盖。
+        """
+        domains = [d for d in domains if d]
+        if not domains:
+            return
+        cur = self.settings.filter
+        config = FilterConfig(
+            blacklist=add_domains(cur.blacklist, domains)
+            if which == "blacklist" else list(cur.blacklist),
+            whitelist=add_domains(cur.whitelist, domains)
+            if which == "whitelist" else list(cur.whitelist),
+            enabled=True,
+            active_list=which,
+            hide_connect=cur.hide_connect,
+            hide_image=cur.hide_image,
+        )
+        self._commit_filter_config(config)
+        label = (
+            self.tr('已把 {0} 加入域名黑名单').format("、".join(domains))
+            if which == "blacklist"
+            else self.tr('已把 {0} 加入域名白名单（只显示这些域名）').format(
+                "、".join(domains)
+            )
+        )
+        self.status_bar.showMessage(label, 5000)
 
     @staticmethod
     def _mock_rule_name(req, url: str) -> str:
@@ -2952,6 +3197,8 @@ class MainWindow(QMainWindow):
         )
         self._update_status()
         self._refresh_stats()
+        # 顺带刷新过滤页命中数（删掉的行要从计数里扣掉）
+        self._schedule_filter_counts()
 
     # ================================================================ 断点调试
 
@@ -3155,6 +3402,37 @@ class MainWindow(QMainWindow):
         """切到统计页时补一次刷新（防抖定时器可能还没到点）。"""
         if self.tabs.widget(index) is self.stats_panel:
             self._refresh_stats()
+        elif self.tabs.widget(index) is self.traffic_page:
+            # 回到流量页：把过滤页的域名命中数补到最新（不在前台时不白算）
+            self._refresh_filter_counts()
+
+    # ------------------------------------------------------------ 导航栏
+
+    def _build_nav_shortcuts(self, limit: int = 9) -> None:
+        """Ctrl+1…N 直达左侧导航各页。
+
+        导航默认收起成图标条，鼠标要点过去还得展开一下；常用页给个固定快捷键
+        更快。只绑前 9 页（现有 7 页，留点余量），多出来的不给。
+        """
+        from PySide6.QtGui import QShortcut
+
+        count = min(self.tabs.count(), limit)
+        for i in range(count):
+            shortcut = QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self)
+            shortcut.activated.connect(
+                lambda idx=i: self.tabs.setCurrentIndex(idx)
+            )
+
+    def _on_nav_pin_toggled(self, pinned: bool) -> None:
+        """用户切换了导航栏钉住：存进本机偏好，下次开屏直接恢复。"""
+        self.settings.nav_rail_pinned = bool(pinned)
+        save_settings(self.settings)
+        self.status_bar.showMessage(
+            self.tr("导航栏已钉住（保持展开）")
+            if pinned
+            else self.tr("导航栏已取消钉住（移开鼠标自动收起）"),
+            3000,
+        )
 
     def _reveal_flow(self, flow_id: str) -> None:
         """统计页双击慢请求 → 跳到流量列表对应行并选中。
@@ -3308,11 +3586,37 @@ class MainWindow(QMainWindow):
 
     # ================================================================ 状态
 
+    def _filter_reason(self) -> str:
+        """正在生效的过滤条件摘要（状态栏用），没有则返回空串。
+
+        只看「有没有在过滤」，不看这份过滤最终藏了几条——白名单开着但正好
+        全命中时一条没藏，用户照样需要知道白名单是开着的，否则改不动。
+        """
+        cfg = self.settings.filter
+        parts: list[str] = []
+        if cfg.is_active():
+            name = (
+                self.tr("域名白名单")
+                if cfg.active_list == LIST_WHITE
+                else self.tr("域名黑名单")
+            )
+            parts.append(self.tr('{0} {1} 条').format(name, len(cfg.active_entries)))
+        if cfg.hide_connect:
+            parts.append(self.tr("隐藏 CONNECT"))
+        if cfg.hide_image:
+            parts.append(self.tr("隐藏图片"))
+        return self.tr("、").join(parts)
+
     def _update_status(self) -> None:
         total = self.flow_store.rowCount()
         shown = self.proxy_model.rowCount()
         filtering = shown != total
         text = self.tr('共 {0} 条').format(total) + (self.tr(' · 显示 {0} 条').format(shown) if filtering else "")
+        # 「为什么流量变少了」：过滤条件一开,列表不再解释原因,用户得自己猜——
+        # 这里把正在生效的过滤项摆到状态栏上（域名黑白名单条数 / 类型隐藏）。
+        reason = self._filter_reason()
+        if reason:
+            text += self.tr(' · {0}').format(reason)
         selected = len(self.traffic_table.selectionModel().selectedRows())
         if selected > 1:
             text += self.tr(' · 已选 {0} 条').format(selected)
@@ -3489,6 +3793,10 @@ class MainWindow(QMainWindow):
                 name="sysproxy-restore-exit",
             )
             restorer.start()
+        # 置位后，代理线程收尾 emit 的 proxy_state_changed(False) 会被
+        # _on_proxy_state_changed 当成正常退出忽略——否则关窗瞬间会误弹
+        # "抓包进程意外退出"（closeEvent 不像 stop_proxy 那样先复位按钮）
+        self._exiting = True
         self.proxy.stop()
         for worker in (autosaver, restorer):
             if worker is not None:

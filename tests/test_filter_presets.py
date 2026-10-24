@@ -26,7 +26,11 @@ def window(qapp, tmp_path, monkeypatch):
 
 def _config(keywords=("a.test",), mode="blacklist", hide_image=True):
     return FilterConfig(
-        host_mode=mode, host_keywords=list(keywords), hide_image=hide_image
+        blacklist=list(keywords) if mode == "blacklist" else [],
+        whitelist=list(keywords) if mode == "whitelist" else [],
+        enabled=True,
+        active_list=mode,
+        hide_image=hide_image,
     )
 
 
@@ -44,24 +48,28 @@ def test_settings_presets_roundtrip():
     restored = Settings.from_dict(d)
     assert [p["name"] for p in restored.filter_presets] == ["只看 A", "只看 B"]
     assert restored.active_preset == "只看 A"
-    assert restored.filter_presets[0]["config"]["host_keywords"] == ["a.test"]
+    assert restored.filter_presets[0]["config"]["blacklist"] == ["a.test"]
 
 
 def test_settings_presets_sanitize():
     s = Settings.from_dict({
         "filter_presets": [
-            {"name": "ok", "config": {"host_mode": "blacklist",
-                                      "host_keywords": ["x"]}},
+            {"name": "ok", "config": {"blacklist": ["x"]}},
             {"name": ""},                      # 无名 → 丢
             "not a dict",                      # 坏类型 → 丢
             {"name": "ok", "config": {}},      # 重名 → 丢后者
-            {"name": "bad-mode", "config": {"host_mode": "nope"}},
+            {"name": "bad-list", "config": {"active_list": "nope"}},
+            {"name": "legacy", "config": {"host_mode": "whitelist",
+                                          "host_keywords": ["old.test"]}},
         ],
     })
     names = [p["name"] for p in s.filter_presets]
-    assert names == ["ok", "bad-mode"]
-    # 非法 mode 被收敛成 blacklist（FilterConfig.from_dict 的职责）
-    assert s.filter_presets[1]["config"]["host_mode"] == "blacklist"
+    assert names == ["ok", "bad-list", "legacy"]
+    # 非法 active_list 被收敛成 blacklist（FilterConfig.from_dict 的职责）
+    assert s.filter_presets[1]["config"]["active_list"] == "blacklist"
+    # 旧版 host_mode/host_keywords 迁进白名单
+    assert s.filter_presets[2]["config"]["whitelist"] == ["old.test"]
+    assert s.filter_presets[2]["config"]["enabled"] is True
 
 
 def test_settings_presets_default_empty():
@@ -78,7 +86,7 @@ def test_save_preset_persists_and_activates(window):
 
     assert [p["name"] for p in window.settings.filter_presets] == ["线上域名"]
     assert window.settings.active_preset == "线上域名"
-    assert window.settings.filter_presets[0]["config"]["host_keywords"] == ["a.test"]
+    assert window.settings.filter_presets[0]["config"]["blacklist"] == ["a.test"]
 
     from app.settings import load_settings
 
@@ -91,7 +99,7 @@ def test_save_preset_same_name_overwrites(window):
     window.settings.filter = _config(("b.test",))
     window._save_preset("P")
     assert len(window.settings.filter_presets) == 1
-    assert window.settings.filter_presets[0]["config"]["host_keywords"] == ["b.test"]
+    assert window.settings.filter_presets[0]["config"]["blacklist"] == ["b.test"]
 
 
 def test_apply_preset_loads_into_bar_and_model(window):
@@ -107,8 +115,9 @@ def test_apply_preset_loads_into_bar_and_model(window):
     assert window.filter_bar.keywords_edit.text() == "b.test"
     assert not window.filter_bar.hide_image_cb.isChecked()
     # 代理模型也拿到同一份配置
-    assert window.proxy_model.filter_config.host_keywords == ["b.test"]
-    assert window.proxy_model.filter_config.host_mode == "whitelist"
+    assert window.proxy_model.filter_config.whitelist == ["b.test"]
+    assert window.proxy_model.filter_config.active_list == "whitelist"
+    assert window.proxy_model.filter_config.is_active()
 
 
 def test_apply_unknown_preset_is_noop(window):
@@ -148,7 +157,7 @@ def test_update_and_delete_preset(window):
     window.settings.filter = _config(("c.test",))
 
     window._update_preset("P")
-    assert window.settings.filter_presets[0]["config"]["host_keywords"] == ["c.test"]
+    assert window.settings.filter_presets[0]["config"]["blacklist"] == ["c.test"]
 
     window._delete_preset("P")
     assert window.settings.filter_presets == []
@@ -214,6 +223,7 @@ def test_filter_bar_loads_persisted_config_on_startup(qapp, tmp_path, monkeypatc
     try:
         assert win2.filter_bar.mode_combo.currentData() == "whitelist"
         assert win2.filter_bar.keywords_edit.text() == "keep.test"
-        assert win2.proxy_model.filter_config.host_keywords == ["keep.test"]
+        assert win2.proxy_model.filter_config.whitelist == ["keep.test"]
+        assert win2.proxy_model.filter_config.enabled is True
     finally:
         win2.close()

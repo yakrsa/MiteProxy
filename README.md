@@ -193,8 +193,9 @@ python -m app.main
 
 > 图标随包提供：`packaging/icon.icns`（macOS）、`packaging/icon.ico`（Windows）。
 
-> ✅ 仓库根的 `MiteProxy-v<版本>-macOS-arm64.zip` 是最新产物（当前 **v2.5.0**，2026-10-22 构建）：
-> 脚本编辑器 Python 语法高亮 + JSON 树视图 Fiddler 风格（类型列 / 按层级展开）。
+> ✅ 仓库根的 `MiteProxy-v<版本>-macOS-arm64.zip` 是最新产物（当前 **v2.7.0**，2026-10-24 构建）：
+> 新增 FIX 协议解析工具页（含多消息 tab）、域名过滤页、API 集合、TLS 视图、GraphQL、命令面板；
+> 修复一批已知 Bug（证书按钮、代理线程存活、流量缓存泄漏、端口占用提示等）并做统一体验优化。
 > 冻结验收：offscreen 启动进程存活、代理端口监听正常、`curl -x` 走代理 HTTP/HTTPS 均 200、
 > 新模块与译文均确认在包内、无 `app.*` 缺失模块。
 > Windows 产物需在 Windows 上另行构建（`build_windows.ps1`）。

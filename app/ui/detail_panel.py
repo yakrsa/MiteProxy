@@ -106,6 +106,7 @@ from app.jsontree import (
 from app.session import AUTOSAVE_BODY_LIMIT, BODY_TRUNCATED_KEY, BODY_TRUNCATED_SIZE_KEY
 from app.textutil import decode_body
 from app.ui import theme
+from app.ui.filter_panel import FilterPanel
 from app.ui.highlight import JsonHighlighter, is_dark
 from app.ui.json_tree import JsonTreeView
 from app.ui.overview_card import OverviewCard
@@ -1850,6 +1851,11 @@ class DetailPanel(QWidget):
         # 默认停在「响应」页（见 show_flow）：本工具是 tab 切换布局，抓包时
         # 优先关注响应内容，故不在 addTab 阶段用首个 tab 当默认。
         self.timings_index = self.tabs.addTab(self.timings_pane, self.tr("耗时"))
+        # 过滤页：全局域名过滤（黑/白名单 + 启用开关），与顶部过滤栏同源。
+        # 它不是 per-flow 页签，故不走 setTabVisible 显隐逻辑——始终在场，
+        # 也不参与 _apply_tab_layout 的 sticky 回落判定。
+        self.filter_panel = FilterPanel()
+        self.filter_index = self.tabs.addTab(self.filter_panel, self.tr("过滤"))
         self.ws_index = self.tabs.addTab(self.ws_pane, "WebSocket")
         self.tabs.setTabVisible(self.ws_index, False)
         # TLS 页：仅 HTTPS/WSS 连接出现（明文连接显隐都懒得上场）
@@ -1990,6 +1996,10 @@ class DetailPanel(QWidget):
         self._suppress_tab_signal = True
         self.tabs.setCurrentIndex(index)
         self._suppress_tab_signal = False
+
+    def show_filter_page(self) -> None:
+        """跳到「过滤」页签（顶部过滤栏的「过滤页」按钮走这里）。"""
+        self._set_current(self.filter_index)
 
     def update_flow(self, flow) -> bool:
         """同一条 flow 有新数据时增量刷新（WebSocket 消息到达）。

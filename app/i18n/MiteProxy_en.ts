@@ -165,165 +165,165 @@ on send they are assembled into {&quot;query&quot;, &quot;variables&quot;} and P
 <context>
     <name>BodyPane</name>
     <message>
-        <location filename="../ui/detail_panel.py" line="344"/>
+        <location filename="../ui/detail_panel.py" line="345"/>
         <source>换行</source>
         <translation>Wrap</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="347"/>
+        <location filename="../ui/detail_panel.py" line="348"/>
         <source>超长行自动折行显示。单行超过 {0}KB 时会自动临时关闭（换行会让界面卡顿）。</source>
         <translation>Wrap long lines automatically. Temporarily disabled when a single line exceeds {0}KB (wrapping makes the UI laggy).</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="354"/>
+        <location filename="../ui/detail_panel.py" line="355"/>
         <source>图片缩放</source>
         <translation>Image zoom</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="416"/>
+        <location filename="../ui/detail_panel.py" line="417"/>
         <source>名称</source>
         <translation>Name</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="416"/>
+        <location filename="../ui/detail_panel.py" line="417"/>
         <source>值</source>
         <translation>Value</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="636"/>
+        <location filename="../ui/detail_panel.py" line="637"/>
         <source>已按 {0} 压缩，但解压失败，显示的是原始压缩字节</source>
         <translation>Compressed with {0}, but decompression failed; showing the raw compressed bytes</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="595"/>
-        <location filename="../ui/detail_panel.py" line="1080"/>
+        <location filename="../ui/detail_panel.py" line="596"/>
+        <location filename="../ui/detail_panel.py" line="1081"/>
         <source>已截断：会话快照单条只保留前 {0}KB，内容不完整（重新抓包可看全）</source>
         <translation>Truncated: session snapshots keep only the first {0}KB of each body, so the content is incomplete (capture again to see all of it)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="592"/>
-        <location filename="../ui/detail_panel.py" line="1073"/>
+        <location filename="../ui/detail_panel.py" line="593"/>
+        <location filename="../ui/detail_panel.py" line="1074"/>
         <source>已截断：快照只保留前 {0}KB，原 {1}KB（重新抓包可看全）</source>
         <translation>Truncated: the snapshot keeps only the first {0}KB of {1}KB (capture again to see all of it)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="717"/>
+        <location filename="../ui/detail_panel.py" line="718"/>
         <source>加载中 {0:.1f}/{1:.1f}MB</source>
         <translation>Loading {0:.1f}/{1:.1f}MB</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="742"/>
+        <location filename="../ui/detail_panel.py" line="743"/>
         <source>大内容加载中，加载完成后恢复换行</source>
         <translation>Loading large content; wrapping will be restored when loading finishes</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="814"/>
+        <location filename="../ui/detail_panel.py" line="815"/>
         <source>（无 body）</source>
         <translation>(no body)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="819"/>
+        <location filename="../ui/detail_panel.py" line="820"/>
         <source>（空 body）</source>
         <translation>(empty body)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="829"/>
+        <location filename="../ui/detail_panel.py" line="830"/>
         <source>自动 → {0}</source>
         <translation>Auto → {0}</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="847"/>
+        <location filename="../ui/detail_panel.py" line="848"/>
         <source>无法渲染为图片，已显示十六进制</source>
         <translation>Cannot render as image; showing hex instead</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="854"/>
+        <location filename="../ui/detail_panel.py" line="855"/>
         <source>已截断显示</source>
         <translation>Truncated</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="869"/>
-        <location filename="../ui/detail_panel.py" line="899"/>
+        <location filename="../ui/detail_panel.py" line="870"/>
+        <location filename="../ui/detail_panel.py" line="900"/>
         <source>无法按文本解码，已显示十六进制</source>
         <translation>Cannot decode as text; showing hex instead</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="877"/>
+        <location filename="../ui/detail_panel.py" line="878"/>
         <source>{0} 个字段（已 URL 解码）</source>
         <translation>{0} fields (URL-decoded)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="879"/>
+        <location filename="../ui/detail_panel.py" line="880"/>
         <source>无法解析为表单，已显示原文</source>
         <translation>Cannot parse as form; showing raw text instead</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="904"/>
+        <location filename="../ui/detail_panel.py" line="905"/>
         <source>未解析到 SSE 事件</source>
         <translation>No SSE events parsed</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="905"/>
+        <location filename="../ui/detail_panel.py" line="906"/>
         <source>（没有可显示的事件）</source>
         <translation>(no events to show)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="911"/>
+        <location filename="../ui/detail_panel.py" line="912"/>
         <source>── 事件 {0} ──</source>
         <translation>── Event {0} ──</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="913"/>
+        <location filename="../ui/detail_panel.py" line="914"/>
         <source>（未收尾）</source>
         <translation>(not finalized)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="926"/>
+        <location filename="../ui/detail_panel.py" line="927"/>
         <source>{0} 个事件</source>
         <translation>{0} events</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="928"/>
+        <location filename="../ui/detail_panel.py" line="929"/>
         <source>，最后一个未收尾（响应可能仍在进行）</source>
         <translation>, last one not finalized (response may still be in progress)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="930"/>
+        <location filename="../ui/detail_panel.py" line="931"/>
         <source>，仅显示前 {0} 个</source>
         <translation>, showing first {0} only</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="366"/>
+        <location filename="../ui/detail_panel.py" line="367"/>
         <source>展开</source>
         <translation>Expand</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="371"/>
+        <location filename="../ui/detail_panel.py" line="372"/>
         <source>收起</source>
         <translation>Collapse</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="368"/>
+        <location filename="../ui/detail_panel.py" line="369"/>
         <source>展开全部节点（内容多时较慢）</source>
         <translation>Expand all nodes (slow for large content)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="373"/>
+        <location filename="../ui/detail_panel.py" line="374"/>
         <source>收起到只剩根节点</source>
         <translation>Collapse everything except the root</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="759"/>
+        <location filename="../ui/detail_panel.py" line="760"/>
         <source>内容超过 {0}KB，树视图不适用（可用原文 / JSON 视图）</source>
         <translation>Larger than {0}KB: the tree view is unavailable (use Raw / JSON)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="767"/>
+        <location filename="../ui/detail_panel.py" line="768"/>
         <source>无法解析为 JSON：{0}</source>
         <translation>Not valid JSON: {0}</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="774"/>
+        <location filename="../ui/detail_panel.py" line="775"/>
         <source>内容较大，全部展开会慢一些</source>
         <translation>Large content: expanding all may be slow</translation>
     </message>
@@ -1173,7 +1173,7 @@ Header differences:
 <context>
     <name>DetailPanel</name>
     <message>
-        <location filename="../ui/detail_panel.py" line="141"/>
+        <location filename="../ui/detail_panel.py" line="142"/>
         <source>自动 = 按 content-type 挑最合适的视图（JSON / 表单 / 图片 / 原文 / 十六进制）。
 手动切换后会保持，换会话也不回弹。
 解析失败会退回原文并说明原因，不会丢内容。</source>
@@ -1183,79 +1183,84 @@ A manual choice sticks and does not reset when switching sessions.
 On parse failure it falls back to raw text with an explanation; no content is lost.</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="165"/>
+        <location filename="../ui/detail_panel.py" line="166"/>
         <source>适应窗口</source>
         <extracomment>图片缩放档位：适应窗口 + 固定比例</extracomment>
         <translation>Fit window</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="166"/>
+        <location filename="../ui/detail_panel.py" line="167"/>
         <source>25%</source>
         <translation>25%</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="167"/>
+        <location filename="../ui/detail_panel.py" line="168"/>
         <source>50%</source>
         <translation>50%</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="168"/>
+        <location filename="../ui/detail_panel.py" line="169"/>
         <source>100%</source>
         <translation>100%</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="169"/>
+        <location filename="../ui/detail_panel.py" line="170"/>
         <source>200%</source>
         <translation>200%</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="181"/>
+        <location filename="../ui/detail_panel.py" line="182"/>
         <source>图片</source>
         <translation>Image</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1430"/>
+        <location filename="../ui/detail_panel.py" line="1431"/>
         <source>（空）</source>
         <translation>(empty)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1848"/>
+        <location filename="../ui/detail_panel.py" line="1849"/>
         <source>请求</source>
         <translation>Request</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1849"/>
+        <location filename="../ui/detail_panel.py" line="1850"/>
         <source>响应</source>
         <translation>Response</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1852"/>
+        <location filename="../ui/detail_panel.py" line="1853"/>
         <source>耗时</source>
         <translation>Timings</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1930"/>
+        <location filename="../ui/detail_panel.py" line="1858"/>
+        <source>过滤</source>
+        <translation>Filter</translation>
+    </message>
+    <message>
+        <location filename="../ui/detail_panel.py" line="1936"/>
         <source>尚未收到响应…</source>
         <translation>No response yet…</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="156"/>
+        <location filename="../ui/detail_panel.py" line="157"/>
         <source>查看</source>
         <extracomment>MessagePane 内部 tab 文案（对齐 Fiddler 的 inspector：查看 / Raw）</extracomment>
         <translation>Inspect</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="157"/>
+        <location filename="../ui/detail_panel.py" line="158"/>
         <source>原始</source>
         <translation>Raw</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="158"/>
+        <location filename="../ui/detail_panel.py" line="159"/>
         <source>完整 HTTP 报文：请求/状态行 + 全部头 + body（与 Fiddler Raw 一致）</source>
         <translation>Full HTTP message: request/status line + all headers + body (matches Fiddler Raw)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="148"/>
+        <location filename="../ui/detail_panel.py" line="149"/>
         <source>JSON 树视图：点箭头展开/收起，右键可复制值、键、路径或整个节点的 JSON。
 树是**解析后**的视图：重复键只保留最后一个，浮点形态可能与原文不同——
 要一字不差地校对请用「原文」视图。</source>
@@ -1264,37 +1269,37 @@ The tree is built from the **parsed** JSON: duplicate keys keep only the last on
 use the Raw view when you need byte-exact content.</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="378"/>
+        <location filename="../ui/detail_panel.py" line="379"/>
         <source>层级</source>
         <translation>Level</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="382"/>
+        <location filename="../ui/detail_panel.py" line="383"/>
         <source>按层级展开树（避免大数组一次性全展开卡顿）</source>
         <translation>Expand the tree by level (avoids freezing on large arrays when expanding all at once)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="385"/>
+        <location filename="../ui/detail_panel.py" line="386"/>
         <source>全部展开</source>
         <translation>Expand all</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="386"/>
+        <location filename="../ui/detail_panel.py" line="387"/>
         <source>展开到第 3 层</source>
         <translation>Expand to level 3</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="387"/>
+        <location filename="../ui/detail_panel.py" line="388"/>
         <source>展开到第 2 层</source>
         <translation>Expand to level 2</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="388"/>
+        <location filename="../ui/detail_panel.py" line="389"/>
         <source>展开到第 1 层</source>
         <translation>Expand to level 1</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="389"/>
+        <location filename="../ui/detail_panel.py" line="390"/>
         <source>全部收起</source>
         <translation>Collapse all</translation>
     </message>
@@ -1366,178 +1371,331 @@ use the Raw view when you need byte-exact content.</translation>
 <context>
     <name>FilterBar</name>
     <message>
-        <location filename="../ui/traffic_table.py" line="59"/>
-        <source>域名:</source>
-        <extracomment>「预设」菜单即将弹出：主窗口借此机会重建菜单内容（动态数据）</extracomment>
-        <translation>Domain:</translation>
-    </message>
-    <message>
-        <location filename="../ui/traffic_table.py" line="61"/>
-        <source>隐藏(黑名单)</source>
-        <translation>Hide (blocklist)</translation>
-    </message>
-    <message>
-        <location filename="../ui/traffic_table.py" line="62"/>
-        <source>只显示(白名单)</source>
-        <translation>Show only (allowlist)</translation>
-    </message>
-    <message>
-        <location filename="../ui/traffic_table.py" line="63"/>
-        <source>黑名单：隐藏含关键词的域名；白名单：只显示含关键词的域名</source>
-        <translation>Blocklist: hide domains containing the keywords; Allowlist: show only domains containing the keywords</translation>
-    </message>
-    <message>
-        <location filename="../ui/traffic_table.py" line="67"/>
-        <source>关键词，逗号分隔；留空 = 不过滤</source>
-        <translation>Keywords, comma-separated; empty = no filtering</translation>
+        <location filename="../ui/traffic_table.py" line="69"/>
+        <source>域名过滤:</source>
+        <extracomment>「预设」菜单即将弹出：主窗口借此机会重建菜单内容（动态数据） 用户请求打开「过滤」页（顶部栏 → 详情面板页签）</extracomment>
+        <translation>Domain filter:</translation>
     </message>
     <message>
         <location filename="../ui/traffic_table.py" line="71"/>
+        <source>关闭</source>
+        <translation>Off</translation>
+    </message>
+    <message>
+        <location filename="../ui/traffic_table.py" line="72"/>
+        <source>黑名单(隐藏)</source>
+        <translation>Blacklist (hide)</translation>
+    </message>
+    <message>
+        <location filename="../ui/traffic_table.py" line="73"/>
+        <source>白名单(只显示)</source>
+        <translation>Whitelist (only)</translation>
+    </message>
+    <message>
+        <location filename="../ui/traffic_table.py" line="75"/>
+        <source>三态互斥：一次只启用黑名单或白名单，关掉则两个列表都不生效</source>
+        <translation>Mutually exclusive: either the blacklist or the whitelist applies, and Off disables both</translation>
+    </message>
+    <message>
+        <location filename="../ui/traffic_table.py" line="82"/>
+        <source>编辑当前启用的列表（逗号分隔）；另一份列表在「过滤」页维护</source>
+        <translation>Edit the active list (comma-separated); the other list lives on the Filter page</translation>
+    </message>
+    <message>
+        <location filename="../ui/traffic_table.py" line="86"/>
         <source>隐藏 CONNECT</source>
         <translation>Hide CONNECT</translation>
     </message>
     <message>
-        <location filename="../ui/traffic_table.py" line="72"/>
+        <location filename="../ui/traffic_table.py" line="87"/>
         <source>隐藏 Image</source>
         <translation>Hide Image</translation>
     </message>
     <message>
-        <location filename="../ui/traffic_table.py" line="79"/>
+        <location filename="../ui/traffic_table.py" line="94"/>
         <source>预设</source>
         <translation>Presets</translation>
     </message>
     <message>
-        <location filename="../ui/traffic_table.py" line="81"/>
+        <location filename="../ui/traffic_table.py" line="96"/>
         <source>过滤预设：把当前过滤条件存成命名预设，切换场景一键套用（域名黑白名单 + 隐藏 CONNECT/Image）</source>
         <translation>Filter presets: save the current filters as a named preset and reapply it in one click (domain black/white list + hide CONNECT/Image)</translation>
+    </message>
+    <message>
+        <location filename="../ui/traffic_table.py" line="105"/>
+        <source>过滤页</source>
+        <translation>Filter page</translation>
+    </message>
+    <message>
+        <location filename="../ui/traffic_table.py" line="107"/>
+        <source>打开详情面板的「过滤」页：黑白名单两个列表一起看，带每个域名的实时命中数</source>
+        <translation>Open the Filter page in the detail panel: both lists together, with live hit counts per host</translation>
+    </message>
+    <message>
+        <location filename="../ui/traffic_table.py" line="200"/>
+        <source>域名过滤已关闭</source>
+        <translation>Domain filter is off</translation>
+    </message>
+    <message>
+        <location filename="../ui/traffic_table.py" line="203"/>
+        <source>白名单域名，逗号分隔；留空 = 不过滤</source>
+        <translation>Whitelist hosts, comma-separated; empty means no filtering</translation>
+    </message>
+    <message>
+        <location filename="../ui/traffic_table.py" line="207"/>
+        <source>黑名单域名，逗号分隔；留空 = 不过滤</source>
+        <translation>Blacklist hosts, comma-separated; empty means no filtering</translation>
+    </message>
+</context>
+<context>
+    <name>FilterPanel</name>
+    <message>
+        <location filename="../ui/filter_panel.py" line="49"/>
+        <source>黑名单与白名单是两个独立列表，各自增量维护；「启用」一次只生效其中一个。
+• 黑名单：命中域名的请求从列表隐藏；
+• 白名单：只显示命中域名的请求，其余全部隐藏；
+写 example.com 会同时覆盖 api.example.com 这类子域；写不带点的词（如 google）则按关键字子串匹配。
+在流量列表里右键任意请求，可以直接把它所属域名加进来。</source>
+        <extracomment>三态开关的 item data</extracomment>
+        <translation>The blacklist and whitelist are two independent lists, each maintained incrementally; Enable applies only one of them at a time.
+• Blacklist: requests to matching hosts are hidden from the table;
+• Whitelist: only requests to matching hosts are shown, everything else is hidden;
+example.com also covers subdomains such as api.example.com, while a word without dots (e.g. google) matches as a substring.
+Right-click any request in the traffic table to add its host directly.</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="320"/>
+        <source>域名过滤</source>
+        <extracomment>任意编辑（含列表增删、开关切换）→ 主窗口落盘并推模型</extracomment>
+        <translation>Domain filter</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="329"/>
+        <source>启用:</source>
+        <translation>Enable:</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="332"/>
+        <source>关闭</source>
+        <translation>Off</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="335"/>
+        <source>黑名单（隐藏这些域名）</source>
+        <translation>Blacklist (hide these hosts)</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="338"/>
+        <source>白名单（只显示这些域名）</source>
+        <translation>Whitelist (only show these hosts)</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="341"/>
+        <source>三态互斥：一次只启用黑名单或白名单，关掉则两个列表都不生效</source>
+        <translation>Mutually exclusive: either the blacklist or the whitelist applies, and Off disables both</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="352"/>
+        <source>隐藏 CONNECT</source>
+        <translation>Hide CONNECT</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="353"/>
+        <source>隐藏 Image</source>
+        <translation>Hide Image</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="355"/>
+        <source>隐藏 HTTPS 隧道的 CONNECT 请求，只看真实的 HTTP 会话</source>
+        <translation>Hide CONNECT requests of HTTPS tunnels and keep only real HTTP sessions</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="358"/>
+        <source>按 content-type 与扩展名识别图片请求并隐藏</source>
+        <translation>Detect image requests by content-type and extension, then hide them</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="368"/>
+        <source>黑名单（命中的域名隐藏）</source>
+        <translation>Blacklist (matching hosts are hidden)</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="369"/>
+        <source>域名加入这里后，命中它的请求不再显示在流量列表</source>
+        <translation>Once a host is listed here, its requests no longer appear in the traffic table</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="371"/>
+        <source>白名单（只显示命中的域名）</source>
+        <translation>Whitelist (only matching hosts are shown)</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="372"/>
+        <source>只显示命中这里的请求，其余全部隐藏；留空 = 不过滤</source>
+        <translation>Only requests matching these hosts are shown; empty means no filtering</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="385"/>
+        <source>域名，如 example.com，回车添加</source>
+        <translation>Host, e.g. example.com — press Enter to add</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="386"/>
+        <source>回车或点「添加」追加；域名会同时覆盖它的子域</source>
+        <translation>Press Enter or click Add to append; a host also covers its subdomains</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="388"/>
+        <source>添加</source>
+        <translation>Add</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="389"/>
+        <source>追加到列表（增量，不会覆盖已有内容）</source>
+        <translation>Append to the list (incremental, never overwrites existing entries)</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="399"/>
+        <source>从流量选…</source>
+        <translation>Pick from traffic…</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="401"/>
+        <source>列出当前会话里出现过的域名（带条数），勾选后批量追加到这里</source>
+        <translation>List hosts seen in this session with their counts; tick to append them here in bulk</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="404"/>
+        <source>删除选中</source>
+        <translation>Delete selected</translation>
     </message>
 </context>
 <context>
     <name>FixPanel</name>
     <message>
-        <location filename="../ui/fix_panel.py" line="47"/>
+        <location filename="../ui/fix_panel.py" line="52"/>
         <source>首字段不是 8=FIX（不是一条完整消息）</source>
-        <extracomment>值列展示上限（超长 RawData 之类）：单元格截断，完整值进 tooltip 错误码 → 提示文案。**NOOP 打标、运行时才 translate**（模块级 translate 会在 翻译器装载前求值，英文模式下永久烤成中文——bodyview 踩过的坑）</extracomment>
+        <extracomment>值列展示上限（超长 RawData 之类）：单元格截断，完整值进 tooltip 结果区同时展示的消息 tab 数上限：解析不设限（可读原文始终含全部）， 但 tab 建太多既无意义又拖慢首屏，超量部分在状态区提示 错误码 → 提示文案。**NOOP 打标、运行时才 translate**（模块级 translate 会在 翻译器装载前求值，英文模式下永久烤成中文——bodyview 踩过的坑）</extracomment>
         <translation>First field is not 8=FIX (not a complete message)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="49"/>
+        <location filename="../ui/fix_panel.py" line="54"/>
         <source>缺少 BodyLength(9)</source>
         <translation>Missing BodyLength(9)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="50"/>
+        <location filename="../ui/fix_panel.py" line="55"/>
         <source>缺少 MsgType(35)</source>
         <translation>Missing MsgType(35)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="51"/>
+        <location filename="../ui/fix_panel.py" line="56"/>
         <source>缺少 CheckSum(10)</source>
         <translation>Missing CheckSum(10)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="52"/>
+        <location filename="../ui/fix_panel.py" line="57"/>
         <source>BodyLength 与实际字节数不符</source>
         <translation>BodyLength does not match the actual byte count</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="54"/>
+        <location filename="../ui/fix_panel.py" line="59"/>
         <source>CheckSum 校验失败</source>
         <translation>CheckSum verification failed</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="55"/>
+        <location filename="../ui/fix_panel.py" line="60"/>
         <source>重复组声明实例数与实际解析不符</source>
         <translation>Declared repeating group instance count does not match the parsed count</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="57"/>
+        <location filename="../ui/fix_panel.py" line="62"/>
         <source>组实例数已达声明值，多出的字段已平铺展示</source>
         <translation>Group instance count has reached the declared value; extra fields are shown flattened</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="59"/>
+        <location filename="../ui/fix_panel.py" line="64"/>
         <source>存在 tag 不是数字的残字段</source>
         <translation>Contains residual fields whose tag is not numeric</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="60"/>
+        <location filename="../ui/fix_panel.py" line="65"/>
         <source>尾部有不成字段的内容</source>
         <translation>Trailing content that does not form a field</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="61"/>
+        <location filename="../ui/fix_panel.py" line="66"/>
         <source>字段数超过上限，后续内容未解析</source>
         <translation>Field count exceeds the limit; remaining content was not parsed</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="67"/>
+        <location filename="../ui/fix_panel.py" line="72"/>
         <source>UTC 时间戳</source>
         <extracomment>时间型字段的类型标注（值合法时顺带给出人话格式）</extracomment>
         <translation>UTC timestamp</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="68"/>
+        <location filename="../ui/fix_panel.py" line="73"/>
         <source>UTC 日期</source>
         <translation>UTC date</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="69"/>
+        <location filename="../ui/fix_panel.py" line="74"/>
         <source>UTC 时间</source>
         <translation>UTC time</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="70"/>
+        <location filename="../ui/fix_panel.py" line="75"/>
         <source>本地日期</source>
         <translation>Local date</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="131"/>
+        <location filename="../ui/fix_panel.py" line="136"/>
         <source>解析</source>
         <translation>Parse</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="132"/>
+        <location filename="../ui/fix_panel.py" line="137"/>
         <source>立即解析输入内容（识别不出 FIX 时也会给出原因）</source>
         <translation>Parse the input now (gives a reason even when FIX is not recognized)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="137"/>
+        <location filename="../ui/fix_panel.py" line="142"/>
         <source>视图:</source>
         <translation>View:</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="139"/>
+        <location filename="../ui/fix_panel.py" line="144"/>
         <source>字段树</source>
         <translation>Field tree</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="140"/>
+        <location filename="../ui/fix_panel.py" line="145"/>
         <source>可读原文</source>
         <translation>Readable raw text</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="144"/>
+        <location filename="../ui/fix_panel.py" line="149"/>
         <source>复制可读原文</source>
         <translation>Copy readable raw text</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="146"/>
+        <location filename="../ui/fix_panel.py" line="151"/>
         <source>按 | 分隔的报文文本复制到剪贴板（SOH 是不可见控制符，直接复制会丢）</source>
         <translation>Copy the message text (| separated) to the clipboard (SOH is an invisible control character; a direct copy would lose it)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="153"/>
+        <location filename="../ui/fix_panel.py" line="158"/>
         <source>清空</source>
         <translation>Clear</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="161"/>
+        <location filename="../ui/fix_panel.py" line="166"/>
         <source>输入</source>
         <translation>Input</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="166"/>
+        <location filename="../ui/fix_panel.py" line="171"/>
         <source>粘贴 FIX 报文，如：
 8=FIX.4.4|9=65|35=D|49=SENDER|56=TARGET|34=1|52=20261023-14:30:00.000|11=ORDER-1|55=000001|54=1|38=100|40=2|44=10.5|59=0|10=160|
 分隔符用 | 或 SOH 均可；一次粘贴多条消息会分别解析</source>
@@ -1546,27 +1704,27 @@ use the Raw view when you need byte-exact content.</translation>
 Use | or SOH as separator; pasting multiple messages parses each one</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="179"/>
+        <location filename="../ui/fix_panel.py" line="184"/>
         <source>结果</source>
         <translation>Result</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="186"/>
+        <location filename="../ui/fix_panel.py" line="316"/>
         <source>标签</source>
         <translation>Tag</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="186"/>
+        <location filename="../ui/fix_panel.py" line="316"/>
         <source>字段</source>
         <translation>Field</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="186"/>
+        <location filename="../ui/fix_panel.py" line="316"/>
         <source>值</source>
         <translation>Value</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="186"/>
+        <location filename="../ui/fix_panel.py" line="316"/>
         <source>注释</source>
         <translation>Description</translation>
     </message>
@@ -1581,101 +1739,98 @@ Use | or SOH as separator; pasting multiple messages parses each one</translatio
         <translation>No fields parsed - check that the input starts with 8=FIX</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="281"/>
+        <location filename="../ui/fix_panel.py" line="288"/>
         <source>共 {0} 条消息</source>
         <translation>{0} messages</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="293"/>
+        <location filename="../ui/fix_panel.py" line="344"/>
         <source>BodyLength ✓</source>
         <translation>BodyLength OK</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="296"/>
+        <location filename="../ui/fix_panel.py" line="346"/>
         <source>BodyLength ✗（声明 {0} / 实际 {1}）</source>
         <translation>BodyLength mismatch (declared {0} / actual {1})</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="299"/>
+        <location filename="../ui/fix_panel.py" line="349"/>
         <source>CheckSum 未校验（| 分隔输入）</source>
         <translation>CheckSum not verified (| separated input)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="301"/>
+        <location filename="../ui/fix_panel.py" line="351"/>
         <source>CheckSum ✓</source>
         <translation>CheckSum OK</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="304"/>
+        <location filename="../ui/fix_panel.py" line="353"/>
         <source>CheckSum ✗（声明 {0} / 实际 {1}）</source>
         <translation>CheckSum mismatch (declared {0} / actual {1})</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="306"/>
-        <location filename="../ui/fix_panel.py" line="334"/>
-        <location filename="../ui/fix_panel.py" line="344"/>
-        <location filename="../ui/fix_panel.py" line="364"/>
+        <location filename="../ui/fix_panel.py" line="342"/>
+        <location filename="../ui/fix_panel.py" line="406"/>
         <source>{0} 个字段</source>
         <translation>{0} fields</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="332"/>
-        <location filename="../ui/fix_panel.py" line="342"/>
+        <location filename="../ui/fix_panel.py" line="339"/>
         <source>SeqNum {0}</source>
         <translation>SeqNum {0}</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="357"/>
+        <location filename="../ui/fix_panel.py" line="399"/>
         <source>{0} 个实例</source>
         <translation>{0} instances</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="358"/>
+        <location filename="../ui/fix_panel.py" line="400"/>
         <source>重复组 · 解析出 {0} 个实例</source>
         <translation>Repeating group - {0} instances parsed</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="363"/>
+        <location filename="../ui/fix_panel.py" line="405"/>
         <source>实例 {0}</source>
         <translation>Instance {0}</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="377"/>
+        <location filename="../ui/fix_panel.py" line="419"/>
         <source>重复组引导字段（该组未收录，后续字段平铺）</source>
         <translation>Repeating group leading field (group not listed; following fields are flattened)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="384"/>
+        <location filename="../ui/fix_panel.py" line="426"/>
         <source>消息体字节数（10 字段之前的长度）</source>
         <translation>Message body byte count (length before field 10)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="386"/>
+        <location filename="../ui/fix_panel.py" line="428"/>
         <source>前三段字节累加 mod 256</source>
         <translation>Sum of the first three sections&apos; bytes mod 256</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="388"/>
+        <location filename="../ui/fix_panel.py" line="430"/>
         <source>未收录字段</source>
         <translation>Unlisted field</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="389"/>
+        <location filename="../ui/fix_panel.py" line="431"/>
         <source>字典未收录该 tag</source>
         <translation>Tag not in the dictionary</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="413"/>
+        <location filename="../ui/fix_panel.py" line="455"/>
         <source>暂无可复制的内容</source>
         <translation>Nothing to copy</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="417"/>
+        <location filename="../ui/fix_panel.py" line="459"/>
         <source>已复制 {0} 条消息的可读原文（| 分隔）到剪贴板</source>
         <translation>Copied readable raw text of {0} messages (| separated) to the clipboard</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="449"/>
+        <location filename="../ui/fix_panel.py" line="497"/>
         <source>{0} 字符 / {1} 字节</source>
         <translation>{0} chars / {1} bytes</translation>
     </message>
@@ -2042,17 +2197,17 @@ WebSocket: {0} messages</translation>
 <context>
     <name>ImageView</name>
     <message>
-        <location filename="../ui/detail_panel.py" line="218"/>
+        <location filename="../ui/detail_panel.py" line="219"/>
         <source>SVG 渲染不可用（缺少 QtSvg）</source>
         <translation>SVG rendering unavailable (QtSvg missing)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="221"/>
+        <location filename="../ui/detail_panel.py" line="222"/>
         <source>SVG 内容无法解析</source>
         <translation>SVG content cannot be parsed</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="234"/>
+        <location filename="../ui/detail_panel.py" line="235"/>
         <source>无法识别为图片（内容可能已损坏或非图片格式）</source>
         <translation>Not recognized as an image (the content may be corrupted or not an image format)</translation>
     </message>
@@ -2798,44 +2953,44 @@ WebSocket: {0} messages</translation>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../ui/main_window.py" line="955"/>
+        <location filename="../ui/main_window.py" line="1027"/>
         <source>文件</source>
         <translation>File</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="956"/>
+        <location filename="../ui/main_window.py" line="1028"/>
         <source>保存会话…</source>
         <translation>Save session…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="961"/>
+        <location filename="../ui/main_window.py" line="1033"/>
         <source>打开会话…</source>
         <translation>Open session…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="650"/>
-        <location filename="../ui/main_window.py" line="967"/>
+        <location filename="../ui/main_window.py" line="696"/>
+        <location filename="../ui/main_window.py" line="1039"/>
         <source>清除列表</source>
         <translation>Clear list</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="972"/>
+        <location filename="../ui/main_window.py" line="1044"/>
         <source>退出时自动保存会话</source>
         <translation>Auto-save session on exit</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="980"/>
+        <location filename="../ui/main_window.py" line="1052"/>
         <source>退出</source>
         <translation>Quit</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="878"/>
-        <location filename="../ui/main_window.py" line="985"/>
+        <location filename="../ui/main_window.py" line="933"/>
+        <location filename="../ui/main_window.py" line="1057"/>
         <source>工具</source>
         <translation>Tools</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="139"/>
+        <location filename="../ui/main_window.py" line="167"/>
         <source>CA 证书位置：{path}
 
 macOS：双击后在「钥匙串访问」中设为始终信任；
@@ -2846,56 +3001,56 @@ macOS: double-click it and set it to &quot;Always Trust&quot; in Keychain Access
 Phone: tap the &quot;Certificate service&quot; button and open the shown address in the phone&apos;s browser to install.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="664"/>
+        <location filename="../ui/main_window.py" line="710"/>
         <source>保存数量:</source>
         <translation>Keep:</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="667"/>
+        <location filename="../ui/main_window.py" line="713"/>
         <source>{0} 条</source>
         <translation>{0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="669"/>
+        <location filename="../ui/main_window.py" line="715"/>
         <source>流量列表最多保留的会话数，超出后从最旧一条开始丢弃（上限 5000）</source>
         <translation>Maximum sessions kept in the traffic list; beyond this the oldest are dropped (max 5000)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="678"/>
+        <location filename="../ui/main_window.py" line="724"/>
         <source>高亮:</source>
         <translation>Highlight:</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="680"/>
+        <location filename="../ui/main_window.py" line="726"/>
         <source>URL 关键字</source>
         <translation>URL keyword</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="684"/>
+        <location filename="../ui/main_window.py" line="730"/>
         <source>URL 包含该关键字的请求整行黄色高亮。
 实时生效：正在显示的与之后新到的流量都会高亮；清空即关闭。</source>
         <translation>Requests whose URL contains this keyword are highlighted across the whole row in yellow.
 Live: both currently shown and future traffic are highlighted; clearing the box turns it off.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="690"/>
+        <location filename="../ui/main_window.py" line="736"/>
         <source>自动滚动</source>
         <translation>Auto-scroll</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="693"/>
+        <location filename="../ui/main_window.py" line="739"/>
         <source>新会话到达时自动滚到最新一条。
 你手动翻到别处时不会来抢滚动条——只有停在最新端才跟着走。</source>
         <translation>Scrolls to the newest session as new ones arrive.
 It will not fight your manual scrolling — it only follows when you are already at the newest end.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="698"/>
+        <location filename="../ui/main_window.py" line="744"/>
         <source>设为系统代理</source>
         <translation>Set as system proxy</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="701"/>
+        <location filename="../ui/main_window.py" line="747"/>
         <source>启动代理时自动把系统 HTTP/HTTPS 代理指向本应用，停止或退出时自动还原
 （对齐 Fiddler「Act as System Proxy」）。
 macOS 首次接管会请求一次管理员授权；不想自动改系统设置就取消勾选。</source>
@@ -2904,417 +3059,434 @@ macOS 首次接管会请求一次管理员授权；不想自动改系统设置�
 macOS asks for admin authorization the first time it takes over; uncheck to avoid changing system settings.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="373"/>
-        <location filename="../ui/main_window.py" line="709"/>
-        <location filename="../ui/main_window.py" line="1330"/>
-        <location filename="../ui/main_window.py" line="1460"/>
-        <location filename="../ui/main_window.py" line="1486"/>
+        <location filename="../ui/main_window.py" line="406"/>
+        <location filename="../ui/main_window.py" line="755"/>
+        <location filename="../ui/main_window.py" line="1434"/>
+        <location filename="../ui/main_window.py" line="1566"/>
+        <location filename="../ui/main_window.py" line="1592"/>
         <source>启动代理</source>
         <translation>Start proxy</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="715"/>
+        <location filename="../ui/main_window.py" line="761"/>
         <source>顺序:</source>
         <translation>Order:</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="717"/>
+        <location filename="../ui/main_window.py" line="763"/>
         <source>到达顺序（新在底部）</source>
         <translation>Arrival order (newest at bottom)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="718"/>
+        <location filename="../ui/main_window.py" line="764"/>
         <source>新的在顶部</source>
         <translation>Newest at top</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="719"/>
+        <location filename="../ui/main_window.py" line="765"/>
         <source>倒序 = 按到达序号降序，最新的会话排在最上面</source>
         <translation>Reverse = sort by arrival number descending, newest session on top</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="723"/>
+        <location filename="../ui/main_window.py" line="769"/>
         <source>布局:</source>
         <translation>Layout:</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="725"/>
+        <location filename="../ui/main_window.py" line="771"/>
         <source>左右布局</source>
         <translation>Side by side</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="726"/>
+        <location filename="../ui/main_window.py" line="772"/>
         <source>上下布局</source>
         <translation>Top and bottom</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="728"/>
+        <location filename="../ui/main_window.py" line="774"/>
         <source>流量列表与详情区的排布方向。左右 = Fiddler 风格（列表在左、body 在右），
 上下 = 列表在上、body 在下。选择会记住，下次启动保持。</source>
         <translation>Arrangement of the traffic list and the detail area. Side by side = Fiddler style (list left, body right),
 top/bottom = list above, body below. The choice is remembered and kept on next launch.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="447"/>
-        <location filename="../ui/main_window.py" line="756"/>
+        <location filename="../ui/main_window.py" line="480"/>
+        <location filename="../ui/main_window.py" line="802"/>
         <source>证书服务</source>
         <translation>Certificate service</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="758"/>
-        <location filename="../ui/main_window.py" line="1720"/>
+        <location filename="../ui/main_window.py" line="804"/>
+        <location filename="../ui/main_window.py" line="1826"/>
         <source>启动局域网证书下载服务（手机装 CA 用）</source>
         <translation>Starts the LAN certificate download service (for installing the CA on phones)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="761"/>
-        <location filename="../ui/main_window.py" line="1855"/>
+        <location filename="../ui/main_window.py" line="807"/>
+        <location filename="../ui/main_window.py" line="1961"/>
         <source>导出 CA 证书</source>
         <translation>Export CA certificate</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="865"/>
+        <location filename="../ui/main_window.py" line="920"/>
         <source>流量</source>
         <translation>Traffic</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="869"/>
+        <location filename="../ui/main_window.py" line="924"/>
         <source>Mock 规则</source>
         <translation>Mock rules</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="874"/>
+        <location filename="../ui/main_window.py" line="929"/>
         <source>网络模拟</source>
         <translation>Network simulation</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="884"/>
+        <location filename="../ui/main_window.py" line="939"/>
         <source>脚本</source>
         <translation>Scripts</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="888"/>
+        <location filename="../ui/main_window.py" line="943"/>
         <source>日志</source>
         <translation>Log</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="893"/>
+        <location filename="../ui/main_window.py" line="948"/>
         <source>统计</source>
         <translation>Stats</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="905"/>
-        <location filename="../ui/main_window.py" line="3339"/>
+        <location filename="../ui/main_window.py" line="977"/>
+        <location filename="../ui/main_window.py" line="3643"/>
         <source>代理未启动</source>
         <translation>Proxy not started</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="913"/>
+        <location filename="../ui/main_window.py" line="985"/>
         <source>点击开始/停止抓包（接管或还原系统代理，与工具栏「设为系统代理」联动）</source>
         <translation>Click to start/stop capturing (takes over or restores the system proxy; linked with the toolbar&apos;s &quot;Set as system proxy&quot;)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="993"/>
+        <location filename="../ui/main_window.py" line="1065"/>
         <source>编码转换…</source>
         <translation>Encoding converter…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="998"/>
+        <location filename="../ui/main_window.py" line="1070"/>
         <source>JSON 格式化 / 提取…</source>
         <translation>JSON format / extract…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1003"/>
+        <location filename="../ui/main_window.py" line="1075"/>
         <source>JSON 比对…</source>
         <translation>JSON compare…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1014"/>
+        <location filename="../ui/main_window.py" line="1086"/>
         <source>设置</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1015"/>
+        <location filename="../ui/main_window.py" line="1087"/>
         <source>偏好设置…</source>
         <translation>Preferences…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1021"/>
+        <location filename="../ui/main_window.py" line="1093"/>
         <source>外观</source>
         <translation>Appearance</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1022"/>
+        <location filename="../ui/main_window.py" line="1094"/>
         <source>流量列表列…</source>
         <translation>Traffic Columns…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1024"/>
+        <location filename="../ui/main_window.py" line="1096"/>
         <source>勾选/取消要显示的列（内容类型、开始时刻、备注默认隐藏）</source>
         <translation>Check the columns to show (content type, started and comment are hidden by default)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1033"/>
+        <location filename="../ui/main_window.py" line="1105"/>
         <source>跟随系统</source>
         <translation>Follow system</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1034"/>
+        <location filename="../ui/main_window.py" line="1106"/>
         <source>浅色模式</source>
         <translation>Light mode</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1035"/>
+        <location filename="../ui/main_window.py" line="1107"/>
         <source>深色模式</source>
         <translation>Dark mode</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1048"/>
+        <location filename="../ui/main_window.py" line="1120"/>
         <source>语言</source>
         <translation>Language</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1065"/>
+        <location filename="../ui/main_window.py" line="1137"/>
         <source>帮助</source>
         <translation>Help</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1066"/>
+        <location filename="../ui/main_window.py" line="1138"/>
         <source>检查更新…</source>
         <translation>Check for updates…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1069"/>
+        <location filename="../ui/main_window.py" line="1141"/>
         <source>意见反馈…</source>
         <translation>Feedback…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1072"/>
-        <location filename="../ui/main_window.py" line="3459"/>
+        <location filename="../ui/main_window.py" line="1144"/>
+        <location filename="../ui/main_window.py" line="3763"/>
         <source>关于</source>
         <translation>About</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1087"/>
+        <location filename="../ui/main_window.py" line="1159"/>
         <source>语言已切换</source>
         <translation>Language changed</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1088"/>
+        <location filename="../ui/main_window.py" line="1160"/>
         <source>语言将在重启 MiteProxy 后生效。</source>
         <translation>The language will take effect after restarting MiteProxy.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1315"/>
-        <location filename="../ui/main_window.py" line="1626"/>
+        <location filename="../ui/main_window.py" line="1409"/>
+        <location filename="../ui/main_window.py" line="1732"/>
         <source>端口 {0} 被占用，代理已自动改用 {1}</source>
         <translation>Port {0} is in use; the proxy automatically switched to {1}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="373"/>
-        <location filename="../ui/main_window.py" line="1317"/>
+        <location filename="../ui/main_window.py" line="406"/>
+        <location filename="../ui/main_window.py" line="1421"/>
         <source>停止代理</source>
         <extracomment>重放并对比：等重放响应到达的超时（秒）。超时说明上游没响应， 清理 pending 并在状态栏告知，避免永远等一个不会来的 flow。 对比对话框保留个数：开太多不关也不至于无限攒着 启动时是否询问恢复上次会话快照（脚本/测试可关掉，避免模态框阻塞） 系统代理接管/还原串行化：停代理与后台接管线程竞争时保证不漏还原 更新检测：checker 惰性创建（用到才建 QNetworkAccessManager）； _update_manual 标记本次是否用户手动触发（决定无更新/失败要不要提示） 断点编辑器（非模态，多条会话可同时挂起 → 都留着引用，关掉时清） 会话对比对话框（非模态；开太多不关也不至于无限攒着）</extracomment>
         <translation>Stop proxy</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="379"/>
+        <location filename="../ui/main_window.py" line="412"/>
         <source>开始 / 停止抓包</source>
         <translation>Start / Stop capturing</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="385"/>
+        <location filename="../ui/main_window.py" line="418"/>
         <source>清空流量列表</source>
         <translation>Clear traffic list</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="391"/>
+        <location filename="../ui/main_window.py" line="424"/>
         <source>搜索会话</source>
         <translation>Search sessions</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="397"/>
+        <location filename="../ui/main_window.py" line="430"/>
         <source>重放选中请求</source>
         <translation>Replay selected request</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="403"/>
+        <location filename="../ui/main_window.py" line="436"/>
         <source>编辑并重放选中请求</source>
         <translation>Edit and replay selected request</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="415"/>
+        <location filename="../ui/main_window.py" line="448"/>
         <source>复制为 cURL</source>
         <translation>Copy as cURL</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="421"/>
+        <location filename="../ui/main_window.py" line="454"/>
         <source>复制 URL</source>
         <translation>Copy URL</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="427"/>
+        <location filename="../ui/main_window.py" line="460"/>
         <source>切换断点调试</source>
         <translation>Toggle breakpoint debugging</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="434"/>
+        <location filename="../ui/main_window.py" line="467"/>
         <source>切换 MCP 接口</source>
         <translation>Toggle MCP interface</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="440"/>
+        <location filename="../ui/main_window.py" line="473"/>
         <source>切换系统代理接管</source>
         <translation>Toggle system proxy takeover</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="453"/>
+        <location filename="../ui/main_window.py" line="486"/>
         <source>打开偏好设置</source>
         <translation>Open preferences</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="459"/>
+        <location filename="../ui/main_window.py" line="492"/>
         <source>保存会话</source>
         <translation>Save session</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="477"/>
+        <location filename="../ui/main_window.py" line="510"/>
         <source>JSON 格式化 / 提取</source>
         <translation>JSON format / extract</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="489"/>
+        <location filename="../ui/main_window.py" line="522"/>
         <source>FIX 报文解析</source>
         <translation>FIX Message Parsing</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="501"/>
+        <location filename="../ui/main_window.py" line="534"/>
         <source>主题：浅色</source>
         <translation>Theme: Light</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="507"/>
+        <location filename="../ui/main_window.py" line="540"/>
         <source>主题：深色</source>
         <translation>Theme: Dark</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="513"/>
+        <location filename="../ui/main_window.py" line="546"/>
         <source>主题：跟随系统</source>
         <translation>Theme: Follow system</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="519"/>
+        <location filename="../ui/main_window.py" line="552"/>
         <source>语言：中文</source>
         <translation>Language: Chinese</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="525"/>
+        <location filename="../ui/main_window.py" line="558"/>
         <source>语言：English</source>
         <translation>Language: English</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="531"/>
+        <location filename="../ui/main_window.py" line="564"/>
         <source>跳到 流量页</source>
         <translation>Go to Traffic tab</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="537"/>
+        <location filename="../ui/main_window.py" line="570"/>
         <source>跳到 Mock 规则页</source>
         <translation>Go to Mock rules tab</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="543"/>
+        <location filename="../ui/main_window.py" line="576"/>
         <source>跳到 网络模拟页</source>
         <translation>Go to Network simulation tab</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="549"/>
+        <location filename="../ui/main_window.py" line="582"/>
         <source>跳到 工具页</source>
         <translation>Go to Tools tab</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="555"/>
+        <location filename="../ui/main_window.py" line="588"/>
         <source>跳到 脚本页</source>
         <translation>Go to Scripts tab</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="561"/>
+        <location filename="../ui/main_window.py" line="594"/>
         <source>跳到 日志页</source>
         <translation>Go to Logs tab</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="567"/>
+        <location filename="../ui/main_window.py" line="600"/>
         <source>跳到 统计页</source>
         <translation>Go to Statistics tab</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="573"/>
+        <location filename="../ui/main_window.py" line="606"/>
         <source>布局：左右</source>
         <translation>Layout: Side by side</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="579"/>
+        <location filename="../ui/main_window.py" line="612"/>
         <source>布局：上下</source>
         <translation>Layout: Top / bottom</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="585"/>
+        <location filename="../ui/main_window.py" line="618"/>
         <source>行密度：舒适</source>
         <translation>Row density: Comfortable</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="591"/>
+        <location filename="../ui/main_window.py" line="624"/>
         <source>行密度：紧凑</source>
         <translation>Row density: Compact</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="739"/>
+        <location filename="../ui/main_window.py" line="785"/>
         <source>密度:</source>
         <translation>Density:</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="741"/>
+        <location filename="../ui/main_window.py" line="787"/>
         <source>舒适</source>
         <translation>Comfortable</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="742"/>
+        <location filename="../ui/main_window.py" line="788"/>
         <source>紧凑</source>
         <translation>Compact</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="744"/>
+        <location filename="../ui/main_window.py" line="790"/>
         <source>流量列表行密度：舒适更宽松，紧凑一屏容纳更多行（重启保持）</source>
         <translation>Traffic list row density: Comfortable is looser; Compact fits more rows on screen (persists after restart)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1008"/>
+        <location filename="../ui/main_window.py" line="952"/>
+        <source>Ctrl+{0}</source>
+        <translation>Ctrl+{0}</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="1080"/>
         <source>FIX 报文解析…</source>
         <translation>FIX Message Parsing…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1378"/>
-        <location filename="../ui/main_window.py" line="1401"/>
+        <location filename="../ui/main_window.py" line="1415"/>
+        <source>端口被占用，已自动切换</source>
+        <translation>Port in use, switched automatically</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="1417"/>
+        <source>请求端口 {0} 被其他程序占用，代理已自动改用 {1}。
+本次会话将使用新端口，设置已自动保存。</source>
+        <translation>Port {0} is taken by another program, so the proxy switched to {1}.
+This session runs on the new port and the setting has been saved.</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="1482"/>
+        <location filename="../ui/main_window.py" line="1505"/>
         <source>无接管记录</source>
         <translation>No takeover record</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1406"/>
+        <location filename="../ui/main_window.py" line="1510"/>
         <source>{0}（停止代理或退出时自动还原）</source>
         <translation>{0} (restored automatically on proxy stop or exit)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1409"/>
+        <location filename="../ui/main_window.py" line="1513"/>
         <source>系统代理接管失败：{0}（可手动设置代理 127.0.0.1:{1}）</source>
         <translation>Failed to take over the system proxy: {0} (you can set the proxy to 127.0.0.1:{1} manually)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1418"/>
+        <location filename="../ui/main_window.py" line="1522"/>
         <source>系统代理接管失败</source>
         <translation>Failed to take over the system proxy</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1419"/>
+        <location filename="../ui/main_window.py" line="1523"/>
         <source>{0}
 
 用管理员权限重试？（会弹出密码确认框，与 Charles 行为一致）</source>
@@ -3323,12 +3495,12 @@ top/bottom = list above, body below. The choice is remembered and kept on next l
 Retry with administrator privileges? (a password prompt will appear, same as Charles)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1467"/>
+        <location filename="../ui/main_window.py" line="1573"/>
         <source>代理已停止</source>
         <translation>Proxy stopped</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1469"/>
+        <location filename="../ui/main_window.py" line="1575"/>
         <source>抓包进程意外退出，可能原因：
 - 端口被其他程序占用
 - CA 证书损坏或权限不足（可到「设置 → 证书」重建）
@@ -3343,34 +3515,34 @@ Retry with administrator privileges? (a password prompt will appear, same as Cha
 {0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1473"/>
+        <location filename="../ui/main_window.py" line="1579"/>
         <source>（无详细信息，见应用日志）</source>
         <translation>(no further detail; see the application log)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1492"/>
+        <location filename="../ui/main_window.py" line="1598"/>
         <source>代理启动失败</source>
         <translation>Failed to start the proxy</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1494"/>
+        <location filename="../ui/main_window.py" line="1600"/>
         <source>端口 {0} 可能已被占用，或权限不足。
 请在「设置 → 偏好设置 → 代理」里换一个端口后重试。</source>
         <translation>Port {0} may already be in use, or permissions are insufficient.
 Pick a different port under Settings → Preferences → Proxy and retry.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1533"/>
+        <location filename="../ui/main_window.py" line="1639"/>
         <source>代理端口已保存为 {0}（重启后生效）</source>
         <translation>Proxy port saved as {0} (takes effect after restart)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1538"/>
+        <location filename="../ui/main_window.py" line="1644"/>
         <source>端口已修改</source>
         <translation>Port changed</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1539"/>
+        <location filename="../ui/main_window.py" line="1645"/>
         <source>代理端口已修改为 {0}，需要重启才能生效。
 
 是否立即重启应用？重启后系统代理会自动切换到新端口。</source>
@@ -3379,459 +3551,534 @@ Pick a different port under Settings → Preferences → Proxy and retry.</trans
 Restart the app now? The system proxy will switch to the new port automatically after the restart.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1546"/>
+        <location filename="../ui/main_window.py" line="1652"/>
         <source>新端口 {0} 将在下次启动时生效</source>
         <translation>New port {0} will take effect on next launch</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1552"/>
+        <location filename="../ui/main_window.py" line="1658"/>
         <source>抓包代理开关。监听 127.0.0.1:{0}——端口在「设置 → 偏好设置 → 代理」里改。</source>
         <translation>Capture proxy toggle. Listening on 127.0.0.1:{0} — change the port in Settings → Preferences → Proxy.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1587"/>
+        <location filename="../ui/main_window.py" line="1693"/>
         <source>正在重启应用，切换到端口 {0} …</source>
         <translation>Restarting the app, switching to port {0} …</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1606"/>
+        <location filename="../ui/main_window.py" line="1712"/>
         <source>正在重启代理，切换到 127.0.0.1:{0} …</source>
         <translation>Restarting the proxy, switching to 127.0.0.1:{0} …</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1631"/>
+        <location filename="../ui/main_window.py" line="1737"/>
         <source>代理已重启，监听 127.0.0.1:{0}；系统代理切换中…</source>
         <translation>Proxy restarted, listening on 127.0.0.1:{0}; switching the system proxy…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1687"/>
-        <location filename="../ui/main_window.py" line="1754"/>
+        <location filename="../ui/main_window.py" line="1793"/>
+        <location filename="../ui/main_window.py" line="1860"/>
         <source>端口 {0} 被占用，证书服务已自动改用 {1}</source>
         <translation>Port {0} is in use; the certificate service automatically switched to {1}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1718"/>
+        <location filename="../ui/main_window.py" line="1824"/>
         <source>证书服务运行中：{0}（点击查看二维码）</source>
         <translation>Certificate service running: {0} (click to view QR code)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1732"/>
+        <location filename="../ui/main_window.py" line="1838"/>
         <source>证书端口已保存为 {0}，下次启动证书服务时生效</source>
         <translation>Certificate port saved as {0}; takes effect the next time the service starts</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1785"/>
+        <location filename="../ui/main_window.py" line="1891"/>
         <source>证书服务已启动</source>
         <translation>Certificate service started</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1788"/>
+        <location filename="../ui/main_window.py" line="1894"/>
         <source>手机连上同一 Wi-Fi，用相机扫下方任一二维码（或浏览器打开地址），
 在打开的网页里下载并安装证书：</source>
         <translation>Connect the phone to the same Wi-Fi, scan either QR code below with the camera (or open the address in a browser),
 then download and install the certificate on the page that opens:</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1816"/>
+        <location filename="../ui/main_window.py" line="1922"/>
         <source>安装证书后，手机 Wi-Fi 的代理请设为：电脑IP : {0}</source>
         <translation>After installing the certificate, set the phone&apos;s Wi-Fi proxy to: computer IP : {0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1823"/>
+        <location filename="../ui/main_window.py" line="1929"/>
         <source>证书服务已停止</source>
         <translation>Certificate service stopped</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1827"/>
+        <location filename="../ui/main_window.py" line="1933"/>
         <source>停止服务</source>
         <translation>Stop service</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1829"/>
+        <location filename="../ui/main_window.py" line="1935"/>
         <source>停止局域网证书下载服务（手机已装好证书再停）</source>
         <translation>Stop the LAN certificate download service (stop after the phone has installed the certificate)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1833"/>
+        <location filename="../ui/main_window.py" line="1939"/>
         <source>好</source>
         <translation>OK</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1855"/>
+        <location filename="../ui/main_window.py" line="1961"/>
         <source>证书 (*.pem *.cer)</source>
         <translation>Certificates (*.pem *.cer)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="1860"/>
+        <location filename="../ui/main_window.py" line="1966"/>
         <source>已导出</source>
         <translation>Exported</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2015"/>
+        <location filename="../ui/main_window.py" line="2206"/>
         <source>（没有预设，保存一个吧）</source>
         <translation>(no presets yet — save one)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2019"/>
+        <location filename="../ui/main_window.py" line="2210"/>
         <source>（已修改）</source>
         <translation>(modified)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2027"/>
+        <location filename="../ui/main_window.py" line="2218"/>
         <source>保存当前过滤为预设…</source>
         <translation>Save Current Filters as Preset…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2031"/>
+        <location filename="../ui/main_window.py" line="2222"/>
         <source>更新预设「{0}」</source>
         <translation>Update Preset &quot;{0}&quot;</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2035"/>
+        <location filename="../ui/main_window.py" line="2226"/>
         <source>删除预设「{0}」</source>
         <translation>Delete Preset &quot;{0}&quot;</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2052"/>
+        <location filename="../ui/main_window.py" line="2245"/>
         <source>已套用过滤预设「{0}」</source>
         <translation>Filter preset &quot;{0}&quot; applied</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2060"/>
+        <location filename="../ui/main_window.py" line="2253"/>
         <source>保存过滤预设</source>
         <translation>Save Filter Preset</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2061"/>
+        <location filename="../ui/main_window.py" line="2254"/>
         <source>预设名称：</source>
         <translation>Preset name:</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2062"/>
+        <location filename="../ui/main_window.py" line="2255"/>
         <source>预设 {0}</source>
         <translation>Preset {0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2085"/>
+        <location filename="../ui/main_window.py" line="2278"/>
         <source>已保存过滤预设「{0}」</source>
         <translation>Filter preset &quot;{0}&quot; saved</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2095"/>
+        <location filename="../ui/main_window.py" line="2288"/>
         <source>已更新过滤预设「{0}」</source>
         <translation>Filter preset &quot;{0}&quot; updated</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2108"/>
+        <location filename="../ui/main_window.py" line="2301"/>
         <source>已删除过滤预设「{0}」</source>
         <translation>Filter preset &quot;{0}&quot; deleted</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2217"/>
+        <location filename="../ui/main_window.py" line="2410"/>
         <source>（{0} 条）</source>
         <translation>({0})</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2219"/>
+        <location filename="../ui/main_window.py" line="2412"/>
         <source>查看详情…</source>
         <translation>View details…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2225"/>
+        <location filename="../ui/main_window.py" line="2418"/>
         <source>重放请求 (R / Ctrl+R)</source>
         <translation>Replay request (R / Ctrl+R)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2226"/>
+        <location filename="../ui/main_window.py" line="2419"/>
         <source>编辑并重放… (E)</source>
         <translation>Edit and replay… (E)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2227"/>
+        <location filename="../ui/main_window.py" line="2420"/>
         <source>重放并对比…</source>
         <translation>Replay and compare…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2230"/>
+        <location filename="../ui/main_window.py" line="2423"/>
         <source>对比两条会话…</source>
         <translation>Compare Two Sessions…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2232"/>
+        <location filename="../ui/main_window.py" line="2425"/>
         <source>复制为 cURL (bash){0}  Ctrl+Shift+C</source>
         <translation>Copy as cURL (bash){0}  Ctrl+Shift+C</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2233"/>
+        <location filename="../ui/main_window.py" line="2426"/>
         <source>复制为 cURL (Windows cmd){0}</source>
         <translation>Copy as cURL (Windows cmd){0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2234"/>
+        <location filename="../ui/main_window.py" line="2427"/>
         <source>仅复制 URL{0}  Ctrl+Shift+U</source>
         <translation>Copy URL only{0}  Ctrl+Shift+U</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2236"/>
+        <location filename="../ui/main_window.py" line="2429"/>
         <source>导出选中会话{0}…  Ctrl+E</source>
         <translation>Export selected sessions{0}…  Ctrl+E</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2237"/>
+        <location filename="../ui/main_window.py" line="2430"/>
         <source>导出完整响应（Headers+Body）…</source>
         <translation>Export full response (Headers+Body)…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2243"/>
+        <location filename="../ui/main_window.py" line="2436"/>
         <source>在工具页中打开 body</source>
         <translation>Open body in the Tools page</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2246"/>
+        <location filename="../ui/main_window.py" line="2439"/>
         <source>发送到 API 调试</source>
         <translation>Send to API debugger</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2250"/>
+        <location filename="../ui/main_window.py" line="2443"/>
         <source>标记/备注…</source>
         <translation>Mark / comment…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2253"/>
+        <location filename="../ui/main_window.py" line="2446"/>
         <source>清除备注</source>
         <translation>Clear comment</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2259"/>
+        <location filename="../ui/main_window.py" line="2452"/>
         <source>加入 Mock（用原响应做 Mock）</source>
         <translation>Add to Mock (mock with the original response)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2279"/>
+        <location filename="../ui/main_window.py" line="2460"/>
+        <source>把域名加入黑名单{0}</source>
+        <translation>Add host to blacklist{0}</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="2463"/>
+        <source>增量加入，不会覆盖已有内容；命中的域名将从流量列表隐藏</source>
+        <translation>Added incrementally without overwriting; matching hosts will be hidden from the traffic table</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="2467"/>
+        <source>把域名加入白名单{0}</source>
+        <translation>Add host to whitelist{0}</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="2470"/>
+        <source>增量加入并切到白名单：只显示这些域名的请求，其余全部隐藏</source>
+        <translation>Added incrementally and switched to whitelist: only these hosts are shown, the rest is hidden</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="2490"/>
         <source>请选中两条会话（Ctrl 点选第二条）</source>
         <translation>Select two sessions (Ctrl-click for the second one)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2311"/>
+        <location filename="../ui/main_window.py" line="2522"/>
         <source>用户脚本已热替换（{0} 个生效）</source>
         <translation>User scripts hot-reloaded ({0} active)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2315"/>
+        <location filename="../ui/main_window.py" line="2526"/>
         <source>用户脚本将在下次启动代理时生效</source>
         <translation>User scripts take effect next time the proxy starts</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2357"/>
+        <location filename="../ui/main_window.py" line="2568"/>
         <source>该请求还没有响应，无法生成 Mock</source>
         <translation>This request has no response yet, so a Mock rule cannot be generated</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2367"/>
+        <location filename="../ui/main_window.py" line="2578"/>
         <source>已加入 Mock：{0}（精确匹配 URL，响应=原响应）</source>
         <translation>Added to Mock: {0} (exact URL match, response = original response)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2467"/>
+        <location filename="../ui/main_window.py" line="2618"/>
+        <source>已把 {0} 加入域名黑名单</source>
+        <translation>Added {0} to the domain blacklist</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="2620"/>
+        <source>已把 {0} 加入域名白名单（只显示这些域名）</source>
+        <translation>Added {0} to the domain whitelist (only these hosts are shown)</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="2712"/>
         <source>FIX 解析</source>
         <translation>FIX Parser</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3361"/>
+        <location filename="../ui/main_window.py" line="3431"/>
+        <source>导航栏已钉住（保持展开）</source>
+        <translation>Navigation pinned (stays expanded)</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="3433"/>
+        <source>导航栏已取消钉住（移开鼠标自动收起）</source>
+        <translation>Navigation unpinned (collapses when the mouse leaves)</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="3599"/>
+        <source>域名白名单</source>
+        <translation>Domain whitelist</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="3601"/>
+        <source>域名黑名单</source>
+        <translation>Domain blacklist</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="3603"/>
+        <source>{0} {1} 条</source>
+        <translation>{0} {1} rows</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="3605"/>
+        <source>隐藏 CONNECT</source>
+        <translation>Hide CONNECT</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="3607"/>
+        <source>隐藏图片</source>
+        <translation>Hide images</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="3608"/>
+        <source>、</source>
+        <translation>, </translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="3619"/>
+        <source> · {0}</source>
+        <translation> · {0}</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="3665"/>
         <source>抓包中（系统代理 127.0.0.1:{0}）</source>
         <translation>Capturing (system proxy 127.0.0.1:{0})</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3368"/>
+        <location filename="../ui/main_window.py" line="3672"/>
         <source>抓包暂停（未接管系统代理）</source>
         <translation>Capture paused (system proxy not taken over)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3374"/>
+        <location filename="../ui/main_window.py" line="3678"/>
         <source>未抓包（代理未运行）</source>
         <translation>Not capturing (proxy not running)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2450"/>
+        <location filename="../ui/main_window.py" line="2695"/>
         <source>（二进制内容已按十六进制导入）</source>
         <translation>(binary content imported as hex)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2452"/>
+        <location filename="../ui/main_window.py" line="2697"/>
         <source>（已截断到前 512KB）</source>
         <translation>(truncated to the first 512KB)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2464"/>
+        <location filename="../ui/main_window.py" line="2709"/>
         <source>JSON 工具</source>
         <translation>JSON tools</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="483"/>
-        <location filename="../ui/main_window.py" line="2465"/>
+        <location filename="../ui/main_window.py" line="516"/>
+        <location filename="../ui/main_window.py" line="2710"/>
         <source>JSON 比对</source>
         <translation>JSON compare</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2466"/>
+        <location filename="../ui/main_window.py" line="2711"/>
         <source>API 调试</source>
         <translation>API debugger</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="471"/>
-        <location filename="../ui/main_window.py" line="2468"/>
+        <location filename="../ui/main_window.py" line="504"/>
+        <location filename="../ui/main_window.py" line="2713"/>
         <source>编码转换</source>
         <translation>Encoding converter</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2470"/>
+        <location filename="../ui/main_window.py" line="2715"/>
         <source>已把该会话的 body 送入工具页 · {0}{1}</source>
         <translation>Sent this session&apos;s body to the Tools page · {0}{1}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2518"/>
+        <location filename="../ui/main_window.py" line="2763"/>
         <source>已把该请求带入 API 调试页（改完点「发送」）</source>
         <translation>Loaded this request into the API debugger (click &quot;Send&quot; when done)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2534"/>
+        <location filename="../ui/main_window.py" line="2779"/>
         <source>标记/备注</source>
         <translation>Mark / comment</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2535"/>
+        <location filename="../ui/main_window.py" line="2780"/>
         <source>给这条会话写个备注（列表「标记」列显示）：</source>
         <translation>Write a comment for this session (shown in the list&apos;s &quot;Mark&quot; column):</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2558"/>
+        <location filename="../ui/main_window.py" line="2803"/>
         <source>已备注</source>
         <translation>Commented</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2558"/>
+        <location filename="../ui/main_window.py" line="2803"/>
         <source>已清除备注</source>
         <translation>Comment cleared</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2570"/>
+        <location filename="../ui/main_window.py" line="2815"/>
         <source>{0} 条 · </source>
         <translation>{0} · </translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2572"/>
+        <location filename="../ui/main_window.py" line="2817"/>
         <source>已复制 cURL（{0}，{1}{2} 字符）: {3}…</source>
         <translation>Copied cURL ({0}, {1}{2} chars): {3}…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2586"/>
+        <location filename="../ui/main_window.py" line="2831"/>
         <source>{0} 条（首条 {1}）</source>
         <translation>{0} (first: {1})</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2587"/>
+        <location filename="../ui/main_window.py" line="2832"/>
         <source>已复制 URL: {0}</source>
         <translation>Copied URL: {0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2592"/>
-        <location filename="../ui/main_window.py" line="2896"/>
+        <location filename="../ui/main_window.py" line="2837"/>
+        <location filename="../ui/main_window.py" line="3141"/>
         <source>提示</source>
         <translation>Notice</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2592"/>
+        <location filename="../ui/main_window.py" line="2837"/>
         <source>请先在流量列表里选中一条会话</source>
         <translation>Please select a session in the traffic list first</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2597"/>
-        <location filename="../ui/main_window.py" line="2624"/>
+        <location filename="../ui/main_window.py" line="2842"/>
+        <location filename="../ui/main_window.py" line="2869"/>
         <source>该格式不支持多选</source>
         <translation>This format does not support multi-selection</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2598"/>
+        <location filename="../ui/main_window.py" line="2843"/>
         <source>「仅响应 Body」一个文件只能装一条会话的 body。
 请只选一条，或改用 HAR / 原始报文 / 完整响应。</source>
         <translation>&quot;Response body only&quot; can hold just one session&apos;s body per file.
 Please select only one, or use HAR / raw messages / full response instead.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2606"/>
-        <location filename="../ui/main_window.py" line="2630"/>
+        <location filename="../ui/main_window.py" line="2851"/>
+        <location filename="../ui/main_window.py" line="2875"/>
         <source>暂无响应</source>
         <translation>No response yet</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2607"/>
+        <location filename="../ui/main_window.py" line="2852"/>
         <source>所选会话里有还没响应的请求（请求进行中或连接已中断），无法导出。</source>
         <translation>Some selected sessions have requests that have not responded yet (in progress or the connection was interrupted); export is not possible.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2614"/>
+        <location filename="../ui/main_window.py" line="2859"/>
         <source>导出选中会话（{0} 条）</source>
         <translation>Export selected sessions ({0})</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="409"/>
-        <location filename="../ui/main_window.py" line="2614"/>
+        <location filename="../ui/main_window.py" line="442"/>
+        <location filename="../ui/main_window.py" line="2859"/>
         <source>导出选中会话</source>
         <translation>Export selected sessions</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2624"/>
+        <location filename="../ui/main_window.py" line="2869"/>
         <source>「仅响应 Body」请只选一条会话。</source>
         <translation>&quot;Response body only&quot;: please select just one session.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2630"/>
+        <location filename="../ui/main_window.py" line="2875"/>
         <source>所选会话里有还没响应的请求，无法导出。</source>
         <translation>Some selected sessions have requests that have not responded yet; export is not possible.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2639"/>
+        <location filename="../ui/main_window.py" line="2884"/>
         <source>已导出 {0} 条 → {1}</source>
         <translation>Exported {0} → {1}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2639"/>
+        <location filename="../ui/main_window.py" line="2884"/>
         <source>已导出 → {0}</source>
         <translation>Exported → {0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2694"/>
+        <location filename="../ui/main_window.py" line="2939"/>
         <source>退出时将自动保存会话快照</source>
         <translation>A session snapshot will be saved automatically on exit</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2694"/>
+        <location filename="../ui/main_window.py" line="2939"/>
         <source>已关闭退出自动保存</source>
         <translation>Auto-save on exit turned off</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2700"/>
+        <location filename="../ui/main_window.py" line="2945"/>
         <source>没有可保存的会话</source>
         <translation>No sessions to save</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2700"/>
+        <location filename="../ui/main_window.py" line="2945"/>
         <source>当前列表是空的。</source>
         <translation>The current list is empty.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2705"/>
+        <location filename="../ui/main_window.py" line="2950"/>
         <source>保存会话（{0} 条）</source>
         <translation>Save session ({0})</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2705"/>
-        <location filename="../ui/main_window.py" line="2734"/>
+        <location filename="../ui/main_window.py" line="2950"/>
+        <location filename="../ui/main_window.py" line="2979"/>
         <source>会话文件 (*{0})</source>
         <translation>Session files (*{0})</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2721"/>
+        <location filename="../ui/main_window.py" line="2966"/>
         <source>
 
 注意：有 {0} 条会话的 body 未保存（超出单包体积预算）。</source>
@@ -3840,7 +4087,7 @@ Please select only one, or use HAR / raw messages / full response instead.</tran
 Note: the bodies of {0} sessions were not saved (exceeding the per-package size budget).</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2724"/>
+        <location filename="../ui/main_window.py" line="2969"/>
         <source>
 
 注意：有 {0} 条会话的 body 被截断。</source>
@@ -3849,43 +4096,43 @@ Note: the bodies of {0} sessions were not saved (exceeding the per-package size 
 Note: the bodies of {0} sessions were truncated.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2727"/>
+        <location filename="../ui/main_window.py" line="2972"/>
         <source>已保存</source>
         <translation>Saved</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2728"/>
+        <location filename="../ui/main_window.py" line="2973"/>
         <source>共 {0} 条会话 → {1}
 文件大小 {2}{3}</source>
         <translation>{0} sessions → {1}
 File size {2}{3}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2730"/>
+        <location filename="../ui/main_window.py" line="2975"/>
         <source>已保存 {0} 条会话 → {1}</source>
         <translation>Saved {0} sessions → {1}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="465"/>
-        <location filename="../ui/main_window.py" line="2734"/>
-        <location filename="../ui/main_window.py" line="2745"/>
+        <location filename="../ui/main_window.py" line="498"/>
+        <location filename="../ui/main_window.py" line="2979"/>
+        <location filename="../ui/main_window.py" line="2990"/>
         <source>打开会话</source>
         <translation>Open session</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2746"/>
+        <location filename="../ui/main_window.py" line="2991"/>
         <source>当前列表有 {0} 条会话，打开文件会先清空它们。
 是否继续？</source>
         <translation>The current list has {0} sessions; opening a file will clear them first.
 Continue?</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2759"/>
+        <location filename="../ui/main_window.py" line="3004"/>
         <source>没有可恢复的会话</source>
         <translation>No sessions to restore</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2759"/>
+        <location filename="../ui/main_window.py" line="3004"/>
         <source>{0}
 
 文件中没有有效会话。</source>
@@ -3894,232 +4141,232 @@ Continue?</translation>
 The file contains no valid sessions.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2767"/>
+        <location filename="../ui/main_window.py" line="3012"/>
         <source>
 跳过无法解析的行：{0} 条。</source>
         <translation>
 Skipped {0} unparsable lines.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2772"/>
+        <location filename="../ui/main_window.py" line="3017"/>
         <source>
 有 {0} 条会话的 body 被截断（超出快照单条上限），详情面板会标注。</source>
         <translation>
 {0} bodies were truncated (over the per-body snapshot limit); the detail panel marks them.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2775"/>
+        <location filename="../ui/main_window.py" line="3020"/>
         <source>
 超出保存条数上限，最早的 {0} 条未载入。</source>
         <translation>
 Exceeded the save limit; the oldest {0} were not loaded.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2778"/>
+        <location filename="../ui/main_window.py" line="3023"/>
         <source>已恢复</source>
         <translation>Restored</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2779"/>
+        <location filename="../ui/main_window.py" line="3024"/>
         <source>共恢复 {0} 条会话。{1}</source>
         <translation>Restored {0} sessions. {1}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2781"/>
+        <location filename="../ui/main_window.py" line="3026"/>
         <source>已打开会话 {0}</source>
         <translation>Opened session {0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2812"/>
+        <location filename="../ui/main_window.py" line="3057"/>
         <source>恢复上次会话</source>
         <translation>Restore last session</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2813"/>
+        <location filename="../ui/main_window.py" line="3058"/>
         <source>检测到上次退出时保存的 {0} 条会话</source>
         <translation>Found {0} sessions saved on last exit</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2815"/>
+        <location filename="../ui/main_window.py" line="3060"/>
         <source>。
 是否恢复到列表？</source>
         <translation>.
 Restore them to the list?</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2872"/>
+        <location filename="../ui/main_window.py" line="3117"/>
         <source>已立即生效</source>
         <translation>Effective immediately</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2872"/>
+        <location filename="../ui/main_window.py" line="3117"/>
         <source>代理启动后生效</source>
         <translation>Effective after the proxy starts</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2876"/>
+        <location filename="../ui/main_window.py" line="3121"/>
         <source>弱网 {0}ms / {1}kbps</source>
         <translation>Throttle {0}ms / {1}kbps</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2878"/>
+        <location filename="../ui/main_window.py" line="3123"/>
         <source>{0} 条域名映射</source>
         <translation>{0} domain mappings</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2880"/>
+        <location filename="../ui/main_window.py" line="3125"/>
         <source>{0} 条本地目录映射</source>
         <translation>{0} local directory mappings</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2881"/>
+        <location filename="../ui/main_window.py" line="3126"/>
         <source>网络模拟已关闭</source>
         <translation>Network simulation is off</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2883"/>
+        <location filename="../ui/main_window.py" line="3128"/>
         <source>（{0} 条映射填写不完整，已跳过）</source>
         <translation>({0} mappings are incomplete and were skipped)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2896"/>
+        <location filename="../ui/main_window.py" line="3141"/>
         <source>请先启动代理再重放</source>
         <translation>Please start the proxy before replaying</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2932"/>
+        <location filename="../ui/main_window.py" line="3177"/>
         <source>已加入重放队列: {0} {1}</source>
         <translation>Added to the replay queue: {0} {1}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2934"/>
+        <location filename="../ui/main_window.py" line="3179"/>
         <source>（响应到达后自动打开对比）</source>
         <translation>(the comparison opens automatically when the response arrives)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3037"/>
+        <location filename="../ui/main_window.py" line="3284"/>
         <source>缺少 url 参数</source>
         <translation>Missing &quot;url&quot; parameter</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3041"/>
+        <location filename="../ui/main_window.py" line="3288"/>
         <source>不支持的匹配方式：{0}（可用 {1}）</source>
         <translation>Unsupported match type: {0} (available: {1})</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3047"/>
+        <location filename="../ui/main_window.py" line="3294"/>
         <source>正则无法编译：{0}</source>
         <translation>Regex failed to compile: {0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3051"/>
+        <location filename="../ui/main_window.py" line="3298"/>
         <source>status 必须是整数</source>
         <translation>status must be an integer</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3053"/>
+        <location filename="../ui/main_window.py" line="3300"/>
         <source>status 必须在 100~599 之间</source>
         <translation>status must be between 100 and 599</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3056"/>
+        <location filename="../ui/main_window.py" line="3303"/>
         <source>headers 必须是 JSON 对象</source>
         <translation>headers must be a JSON object</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3090"/>
+        <location filename="../ui/main_window.py" line="3337"/>
         <source>代理未运行，无法重放</source>
         <translation>Proxy is not running; cannot replay</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3093"/>
+        <location filename="../ui/main_window.py" line="3340"/>
         <source>重放入队失败</source>
         <translation>Failed to enqueue replay</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3106"/>
+        <location filename="../ui/main_window.py" line="3353"/>
         <source>url_keywords 必须是字符串数组</source>
         <translation>url_keywords must be an array of strings</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3180"/>
+        <location filename="../ui/main_window.py" line="3458"/>
         <source>该会话被当前过滤条件隐藏，已切回流量页</source>
         <translation>This session is hidden by the current filter; switched back to the Traffic tab</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3271"/>
+        <location filename="../ui/main_window.py" line="3549"/>
         <source>重放对比等待超时（{0} 条）：未收到重放响应</source>
         <translation>Replay comparison timed out ({0}): no replay response received</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3281"/>
+        <location filename="../ui/main_window.py" line="3559"/>
         <source>对比失败：原会话或重放会话已被淘汰出缓存</source>
         <translation>Comparison failed: the original or replayed session has been evicted from the cache</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3315"/>
+        <location filename="../ui/main_window.py" line="3614"/>
         <source>共 {0} 条</source>
         <translation>{0} in total</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3315"/>
+        <location filename="../ui/main_window.py" line="3614"/>
         <source> · 显示 {0} 条</source>
         <translation> · {0} shown</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3318"/>
+        <location filename="../ui/main_window.py" line="3622"/>
         <source> · 已选 {0} 条</source>
         <translation> · {0} selected</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3320"/>
+        <location filename="../ui/main_window.py" line="3624"/>
         <source> · 搜索「{0}」</source>
         <translation> · search &quot;{0}&quot;</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3322"/>
+        <location filename="../ui/main_window.py" line="3626"/>
         <source> · 已排序</source>
         <translation> · sorted</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3324"/>
+        <location filename="../ui/main_window.py" line="3628"/>
         <source> · 弱网模拟中</source>
         <translation> · throttling</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3335"/>
+        <location filename="../ui/main_window.py" line="3639"/>
         <source>代理运行中 127.0.0.1:{0}</source>
         <translation>Proxy running on 127.0.0.1:{0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3343"/>
+        <location filename="../ui/main_window.py" line="3647"/>
         <source>证书服务 {0}</source>
         <translation>Certificate service {0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="495"/>
-        <location filename="../ui/main_window.py" line="3438"/>
-        <location filename="../ui/main_window.py" line="3448"/>
+        <location filename="../ui/main_window.py" line="528"/>
+        <location filename="../ui/main_window.py" line="3742"/>
+        <location filename="../ui/main_window.py" line="3752"/>
         <source>检查更新</source>
         <translation>Check for updates</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3439"/>
+        <location filename="../ui/main_window.py" line="3743"/>
         <source>暂时无法获取版本信息：{0}</source>
         <translation>Could not retrieve version information: {0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3440"/>
+        <location filename="../ui/main_window.py" line="3744"/>
         <source>未知错误</source>
         <translation>unknown error</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3449"/>
+        <location filename="../ui/main_window.py" line="3753"/>
         <source>当前已是最新版本（{0}）。</source>
         <translation>You are already on the latest version ({0}).</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3460"/>
+        <location filename="../ui/main_window.py" line="3764"/>
         <source>MiteProxy {0}
 
 基于 mitmproxy + PySide6 的抓包 / Mock 工具。
@@ -4130,102 +4377,102 @@ A traffic capture / mock tool built on mitmproxy + PySide6.
 Supports HTTP/HTTPS capture, mock rules and Fiddler rule import.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2434"/>
+        <location filename="../ui/main_window.py" line="2679"/>
         <source>该会话没有可查看的 body（响应为空或尚未捕获）</source>
         <translation>This session has no body to show (the response is empty or not captured yet)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2239"/>
+        <location filename="../ui/main_window.py" line="2432"/>
         <source>删除选中会话{0}  Del</source>
         <translation>Delete selected session{0}  Del</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2912"/>
+        <location filename="../ui/main_window.py" line="3157"/>
         <source>已加入重放队列（{0} 条）</source>
         <translation>Added to replay queue ({0} sessions)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2914"/>
+        <location filename="../ui/main_window.py" line="3159"/>
         <source>，{0} 条入队失败</source>
         <translation>, {0} failed to queue</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2917"/>
+        <location filename="../ui/main_window.py" line="3162"/>
         <source>重放失败：没有请求进入队列</source>
         <translation>Replay failed: no request was queued</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2951"/>
+        <location filename="../ui/main_window.py" line="3196"/>
         <source>已删除 {0} 条会话</source>
         <translation>Deleted {0} sessions</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2274"/>
+        <location filename="../ui/main_window.py" line="2485"/>
         <source>仅支持单条会话：编辑与对比弹窗一次只能处理一条</source>
         <translation>Single session only: the edit and compare dialogs handle one at a time</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="765"/>
+        <location filename="../ui/main_window.py" line="811"/>
         <source>断点</source>
         <translation>Breakpoint</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="769"/>
+        <location filename="../ui/main_window.py" line="815"/>
         <source>断点调试：命中的会话会挂起，改完再放行（请求前 / 响应前在设置里配）</source>
         <translation>Breakpoints: matched sessions are held until you edit and release them (configure before-request / before-response in Settings)</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2964"/>
+        <location filename="../ui/main_window.py" line="3211"/>
         <source>断点调试{0}</source>
         <translation>Breakpoints {0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2962"/>
+        <location filename="../ui/main_window.py" line="3209"/>
         <source>已开启</source>
         <translation>enabled</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2962"/>
+        <location filename="../ui/main_window.py" line="3209"/>
         <source>已关闭</source>
         <translation>disabled</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2981"/>
+        <location filename="../ui/main_window.py" line="3228"/>
         <source>断点命中（{0}）：会话已挂起，改完点「继续放行」</source>
         <translation>Breakpoint hit ({0}): session held, click &quot;Release&quot; when done</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2982"/>
+        <location filename="../ui/main_window.py" line="3229"/>
         <source>请求前</source>
         <translation>before request</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="2982"/>
+        <location filename="../ui/main_window.py" line="3229"/>
         <source>响应前</source>
         <translation>before response</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="655"/>
+        <location filename="../ui/main_window.py" line="701"/>
         <source>搜索</source>
         <translation>Search</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="658"/>
+        <location filename="../ui/main_window.py" line="704"/>
         <source>搜索会话（URL / Header / Body）  Ctrl+F</source>
         <translation>Search sessions (URL / headers / body)  Ctrl+F</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="987"/>
+        <location filename="../ui/main_window.py" line="1059"/>
         <source>搜索会话…</source>
         <translation>Search sessions…</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="775"/>
+        <location filename="../ui/main_window.py" line="821"/>
         <source>MCP</source>
         <translation>MCP</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="778"/>
+        <location filename="../ui/main_window.py" line="824"/>
         <source>MCP 接口：把最近抓包暴露给 AI 客户端（默认关）。
 监听地址与端口在「设置 → 流量列表 → MCP 接口」里改：
 默认 127.0.0.1 仅本机可连；改成 0.0.0.0 或网卡 IP 后局域网内的设备也能读到完整抓包。</source>
@@ -4234,22 +4481,22 @@ Change the bind address and port in Settings → Traffic list → MCP:
 127.0.0.1 (default) is local-only; 0.0.0.0 or a NIC IP makes the full capture readable from other devices on the LAN.</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3214"/>
+        <location filename="../ui/main_window.py" line="3492"/>
         <source>MCP 服务已启动：{0}</source>
         <translation>MCP server started: {0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3228"/>
+        <location filename="../ui/main_window.py" line="3506"/>
         <source>MCP 服务已停止</source>
         <translation>MCP server stopped</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3200"/>
+        <location filename="../ui/main_window.py" line="3478"/>
         <source>MCP 服务启动失败：地址 {0} 的端口 {1} 起均不可用</source>
         <translation>MCP server failed to start: no free port from {1} on {0}</translation>
     </message>
     <message>
-        <location filename="../ui/main_window.py" line="3208"/>
+        <location filename="../ui/main_window.py" line="3486"/>
         <source>MCP 服务已启动（局域网可见）：{0} —— 抓包含 Cookie / 鉴权头，用完记得关</source>
         <translation>MCP server started (LAN visible): {0} — captures contain cookies/tokens, remember to turn it off</translation>
     </message>
@@ -4421,10 +4668,25 @@ Change the bind address and port in Settings → Traffic list → MCP:
 <context>
     <name>MessagePane</name>
     <message>
-        <location filename="../ui/detail_panel.py" line="1130"/>
-        <location filename="../ui/detail_panel.py" line="1190"/>
+        <location filename="../ui/detail_panel.py" line="1131"/>
+        <location filename="../ui/detail_panel.py" line="1191"/>
         <source>（未选择会话）</source>
         <translation>(no session selected)</translation>
+    </message>
+</context>
+<context>
+    <name>NavRail</name>
+    <message>
+        <location filename="../ui/nav_rail.py" line="135"/>
+        <location filename="../ui/nav_rail.py" line="249"/>
+        <source>钉住导航栏（保持展开）</source>
+        <extracomment>单枚导航按钮的高度（图标 18 + 一行文字的留量） 收起时 rail 宽度：图标居中，两侧留边距 底部「钉住」开关按钮的高度（比导航按钮矮，别抢它们的戏） 展开宽度的下限 / 上限（按最长标签算完后夹到这里，别让它抖动） 展开/收起动画时长（毫秒） 用户点了某页（外部据此切 QTabWidget） 用户切换了「钉住」（外部据此持久化偏好）</extracomment>
+        <translation>Pin the navigation rail (stays expanded)</translation>
+    </message>
+    <message>
+        <location filename="../ui/nav_rail.py" line="247"/>
+        <source>取消钉住（移开鼠标后自动收起）</source>
+        <translation>Unpin (collapses when the mouse leaves)</translation>
     </message>
 </context>
 <context>
@@ -5433,27 +5695,27 @@ Combined with &quot;Only enabled&quot;; clear to restore all.</translation>
 <context>
     <name>SearchBar</name>
     <message>
-        <location filename="../ui/traffic_table.py" line="139"/>
+        <location filename="../ui/traffic_table.py" line="224"/>
         <source>搜索 URL / Headers / Body …</source>
         <translation>Search URL / Headers / Body …</translation>
     </message>
     <message>
-        <location filename="../ui/traffic_table.py" line="152"/>
+        <location filename="../ui/traffic_table.py" line="237"/>
         <source>区分大小写</source>
         <translation>Case sensitive</translation>
     </message>
     <message>
-        <location filename="../ui/traffic_table.py" line="164"/>
+        <location filename="../ui/traffic_table.py" line="249"/>
         <source>在匹配项间跳转（Enter / Shift+Enter）</source>
         <translation>Jump between matches (Enter / Shift+Enter)</translation>
     </message>
     <message>
-        <location filename="../ui/traffic_table.py" line="169"/>
+        <location filename="../ui/traffic_table.py" line="254"/>
         <source>关闭搜索（Esc）</source>
         <translation>Close search (Esc)</translation>
     </message>
     <message>
-        <location filename="../ui/traffic_table.py" line="198"/>
+        <location filename="../ui/traffic_table.py" line="283"/>
         <source>匹配 {0} / {1} 条</source>
         <translation>Match {0} / {1}</translation>
     </message>
@@ -6066,124 +6328,124 @@ Only the top {0} hosts are shown (by request count, descending).</translation>
 <context>
     <name>TimingsPane</name>
     <message>
-        <location filename="../ui/detail_panel.py" line="1447"/>
+        <location filename="../ui/detail_panel.py" line="1448"/>
         <source>连接服务器（含 DNS）</source>
         <extracomment>分段耗时 key → 展示名。模块级中文一律打 QT_TRANSLATE_NOOP 标（AST 守卫 + lupdate 抽取，运行时走 translate，见 rule_editor 同款教训）</extracomment>
         <translation>Connect (incl. DNS)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1448"/>
+        <location filename="../ui/detail_panel.py" line="1449"/>
         <source>TLS 握手</source>
         <translation>TLS handshake</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1449"/>
+        <location filename="../ui/detail_panel.py" line="1450"/>
         <source>发送请求</source>
         <translation>Send request</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1450"/>
+        <location filename="../ui/detail_panel.py" line="1451"/>
         <source>等待响应（TTFB）</source>
         <translation>Waiting for response (TTFB)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1451"/>
+        <location filename="../ui/detail_panel.py" line="1452"/>
         <source>接收响应</source>
         <translation>Receive response</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1589"/>
+        <location filename="../ui/detail_panel.py" line="1590"/>
         <source>总耗时 {0} ms</source>
         <translation>Total {0} ms</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1592"/>
+        <location filename="../ui/detail_panel.py" line="1593"/>
         <source>（含弱网延迟 {0} ms）</source>
         <translation>(incl. {0} ms throttled delay)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1661"/>
+        <location filename="../ui/detail_panel.py" line="1662"/>
         <source>暂无计时数据</source>
         <translation>No timing data</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1665"/>
+        <location filename="../ui/detail_panel.py" line="1666"/>
         <source>该响应未经上游网络（mock / 本地映射 / 恢复的会话），仅统计本机处理耗时。</source>
         <translation>This response never went to the upstream network (mock / local mapping / restored session); only local processing time is counted.</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1677"/>
+        <location filename="../ui/detail_panel.py" line="1678"/>
         <source>响应尚未返回，「等待响应 / 接收响应」暂缺。</source>
         <translation>The response has not arrived yet; &quot;waiting&quot; and &quot;receive&quot; phases are missing.</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1692"/>
+        <location filename="../ui/detail_panel.py" line="1693"/>
         <source>未选择会话</source>
         <translation>No session selected</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1547"/>
+        <location filename="../ui/detail_panel.py" line="1548"/>
         <source>阶段</source>
         <extracomment>行内列宽（表头与数据行必须同值，否则列会错位）。 名称列保持 180：英文分段名（Waiting for response (TTFB)）比中文长， 压窄会在英文界面被截断——宁可让占比条窄一点。</extracomment>
         <translation>Phase</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1548"/>
+        <location filename="../ui/detail_panel.py" line="1549"/>
         <source>开始时刻</source>
         <translation>Start time</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1549"/>
+        <location filename="../ui/detail_panel.py" line="1550"/>
         <source>耗时</source>
         <translation>Duration</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1557"/>
+        <location filename="../ui/detail_panel.py" line="1558"/>
         <source>占比</source>
         <translation>Share</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1629"/>
+        <location filename="../ui/detail_panel.py" line="1630"/>
         <source>起点 {0}  →  终点 {1}（时段跨度 {2} ms）</source>
         <translation>Start {0}  →  end {1} (span {2} ms)</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1634"/>
+        <location filename="../ui/detail_panel.py" line="1635"/>
         <source>起点 {0}</source>
         <translation>Start {0}</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1682"/>
+        <location filename="../ui/detail_panel.py" line="1683"/>
         <source>起点到终点共 {0} ms，其中 {1} ms 不属于上述任何分段（如 TLS 完成后等待客户端真正发送请求、本机处理等间隙）。</source>
         <translation>Start to end spans {0} ms; {1} ms of it belongs to none of the phases above (e.g. waiting after the TLS handshake for the client to actually send the request, local processing).</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1784"/>
+        <location filename="../ui/detail_panel.py" line="1785"/>
         <source>开始：{0}</source>
         <translation>Start: {0}</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1786"/>
+        <location filename="../ui/detail_panel.py" line="1787"/>
         <source>结束：{0}</source>
         <translation>End: {0}</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1790"/>
+        <location filename="../ui/detail_panel.py" line="1791"/>
         <source>相对起点：{0} ms</source>
         <translation>From start: {0} ms</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1603"/>
+        <location filename="../ui/detail_panel.py" line="1604"/>
         <source>请求耗时（列表「耗时」列）: {0} ms</source>
         <translation>Request time (traffic list &quot;Duration&quot; column): {0} ms</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1605"/>
+        <location filename="../ui/detail_panel.py" line="1606"/>
         <source>，另含建连与 TLS {0} ms</source>
         <translation>; connection setup and TLS add {0} ms</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1672"/>
+        <location filename="../ui/detail_panel.py" line="1673"/>
         <source>总耗时含建连与 TLS 握手（一次连接只付一次的沉没成本）；列表「耗时」列只统计「发送请求 → 响应结束」，与 Fiddler 的会话计时口径一致。</source>
         <translation>Total includes connection setup and the TLS handshake (a one-off cost per connection); the traffic list&apos;s &quot;Duration&quot; column only counts &quot;send request → response end&quot;, matching Fiddler&apos;s session timing.</translation>
     </message>
@@ -6303,7 +6565,7 @@ TLS info only appears on HTTPS / WSS connections, shown in two segments:
 <context>
     <name>TrafficTable</name>
     <message>
-        <location filename="../ui/traffic_table.py" line="258"/>
+        <location filename="../ui/traffic_table.py" line="343"/>
         <source>还没有抓到请求
 
 点击左下角状态点开始抓包，或检查过滤条件是否把全部流量藏起来了</source>
@@ -6381,69 +6643,145 @@ Click the status dot at the bottom-left to start capturing, or check whether the
 <context>
     <name>WebSocketPane</name>
     <message>
-        <location filename="../ui/detail_panel.py" line="1245"/>
+        <location filename="../ui/detail_panel.py" line="1246"/>
         <source>时间</source>
         <translation>Time</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1245"/>
+        <location filename="../ui/detail_panel.py" line="1246"/>
         <source>方向</source>
         <translation>Direction</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1245"/>
+        <location filename="../ui/detail_panel.py" line="1246"/>
         <source>类型</source>
         <translation>Type</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1245"/>
+        <location filename="../ui/detail_panel.py" line="1246"/>
         <source>长度</source>
         <translation>Length</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1245"/>
+        <location filename="../ui/detail_panel.py" line="1246"/>
         <source>内容预览</source>
         <translation>Content preview</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1342"/>
+        <location filename="../ui/detail_panel.py" line="1343"/>
         <source>文本</source>
         <translation>Text</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1342"/>
+        <location filename="../ui/detail_panel.py" line="1343"/>
         <source>二进制</source>
         <translation>Binary</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1352"/>
+        <location filename="../ui/detail_panel.py" line="1353"/>
         <source>→ 发送</source>
         <translation>→ sent</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1352"/>
+        <location filename="../ui/detail_panel.py" line="1353"/>
         <source>← 接收</source>
         <translation>← received</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1378"/>
+        <location filename="../ui/detail_panel.py" line="1379"/>
         <source>共 {0} 条消息（发送 {1} / 接收 {2}）</source>
         <translation>{0} messages in total (sent {1} / received {2})</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1381"/>
+        <location filename="../ui/detail_panel.py" line="1382"/>
         <source>已关闭：code={0} {1}</source>
         <translation>Closed: code={0} {1}</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1387"/>
+        <location filename="../ui/detail_panel.py" line="1388"/>
         <source>连接中…</source>
         <translation>Connecting…</translation>
     </message>
     <message>
-        <location filename="../ui/detail_panel.py" line="1389"/>
+        <location filename="../ui/detail_panel.py" line="1390"/>
         <source>（表格仅显示最近 {0} 条）</source>
         <translation>(the table shows only the most recent {0})</translation>
+    </message>
+</context>
+<context>
+    <name>_DomainPickerDialog</name>
+    <message>
+        <location filename="../ui/filter_panel.py" line="162"/>
+        <source>从当前流量挑选域名</source>
+        <translation>Pick hosts from current traffic</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="184"/>
+        <source>输入片段过滤域名</source>
+        <translation>Filter hosts by substring</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="190"/>
+        <source>域名</source>
+        <translation>Host</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="190"/>
+        <source>条数</source>
+        <translation>Count</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="224"/>
+        <source>全选</source>
+        <translation>Select all</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="225"/>
+        <source>清空选择</source>
+        <translation>Clear selection</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="236"/>
+        <source>加入列表</source>
+        <translation>Add to list</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="239"/>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="253"/>
+        <source>当前会话里没有新的域名可选（都已经在这个列表里了）</source>
+        <translation>No new hosts to pick — they are all in this list already</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="278"/>
+        <source>当前会话里有 {0} 个域名可加入（按条数倒序）</source>
+        <translation>{0} hosts from this session can be added (sorted by count)</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="280"/>
+        <source>；另有 {0} 个已在列表里或被现有域名覆盖</source>
+        <translation>; {0} more are already listed or covered</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="283"/>
+        <source>；可多选，确定后增量追加到这里</source>
+        <translation>; multiple selection allowed, appended incrementally</translation>
+    </message>
+</context>
+<context>
+    <name>_DomainTable</name>
+    <message>
+        <location filename="../ui/filter_panel.py" line="129"/>
+        <source>域名</source>
+        <translation>Host</translation>
+    </message>
+    <message>
+        <location filename="../ui/filter_panel.py" line="129"/>
+        <source>命中</source>
+        <translation>Hits</translation>
     </message>
 </context>
 <context>
@@ -6920,12 +7258,12 @@ Click the status dot at the bottom-left to start capturing, or check whether the
 <context>
     <name>main</name>
     <message>
-        <location filename="../main.py" line="97"/>
+        <location filename="../main.py" line="98"/>
         <source>MiteProxy 已在运行</source>
         <translation>MiteProxy is already running</translation>
     </message>
     <message>
-        <location filename="../main.py" line="98"/>
+        <location filename="../main.py" line="99"/>
         <source>检测到 MiteProxy 已有一个实例在运行，请切换到已打开的窗口。</source>
         <translation>Another instance of MiteProxy is already running. Please switch to the open window.</translation>
     </message>

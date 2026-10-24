@@ -73,6 +73,17 @@ _SVG: dict[str, str] = {
              '<polyline points="17 21 17 13 7 13 7 21"/>'
              '<polyline points="7 3 7 8 15 8"/>'),
     "collection": ('<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>'),
+    # -- 过滤页 / 域名过滤 --
+    "filter": ('<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>'),
+    "ban": ('<circle cx="12" cy="12" r="9"/>'
+            '<line x1="5.6" y1="5.6" x2="18.4" y2="18.4"/>'),
+    "check": '<polyline points="20 6 9 17 4 12"/>',
+    # -- 导航栏钉住开关（收起态也能一眼找到要它保持展开）--
+    "pin": ('<path d="M12 17v5"/>'
+            '<path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 '
+            '15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79'
+            'l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8'
+            'a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>'),
 }
 
 
@@ -99,11 +110,14 @@ def _render(name: str, color: str, size: int) -> QPixmap:
     return pm
 
 
-def icon(name: str, size: int = 18) -> QIcon:
-    """取一个跟随当前主题前景色的图标。``name`` 必须是 ``_SVG`` 里的键。"""
+def icon(name: str, size: int = 18, color: str = "") -> QIcon:
+    """取一个跟随当前主题前景色的图标。``name`` 必须是 ``_SVG`` 里的键。
+
+    ``color`` 可覆盖前景色（如导航栏选中态要白图标压蓝底）；留空用主题 fg。
+    """
     if name not in _SVG:
         return QIcon()
-    color = theme.css("fg")
+    color = color or theme.css("fg")
     if not color:
         color = "#374151"
     return QIcon(_render(name, color, size))

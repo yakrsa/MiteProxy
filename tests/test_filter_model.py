@@ -28,6 +28,9 @@ from app.ui.filter_model import (  # noqa: E402
     FilterConfig,
     FlowFilterProxyModel,
     SearchConfig,
+    add_domains,
+    host_matches,
+    normalize_domain,
 )
 from app.ui.flow_store import FlowStore  # noqa: E402
 
@@ -113,7 +116,7 @@ class TestDomainFilter:
             ]
         )
         model.set_filter_config(
-            FilterConfig(host_mode="blacklist", host_keywords=["example.com"])
+            FilterConfig(blacklist=["example.com"], enabled=True)
         )
         assert model.rowCount() == 1  # other.com 保留
 
@@ -125,16 +128,32 @@ class TestDomainFilter:
             ]
         )
         model.set_filter_config(
-            FilterConfig(host_mode="whitelist", host_keywords=["example.com"])
+            FilterConfig(whitelist=["example.com"], enabled=True,
+                         active_list="whitelist")
         )
         assert model.rowCount() == 1
 
-    def test_whitelist_empty_keywords_shows_all(self, qapp):
-        model, _ = _make_model([_row(id="a"), _row(id="b")])
-        model.set_filter_config(FilterConfig(host_mode="whitelist", host_keywords=[]))
-        assert model.rowCount() == 2  # 空白名单不过滤
+    def test_disabled_switch_shows_all(self, qapp):
+        """启用开关关掉 → 两个列表都写满也不过问。"""
+        model, _ = _make_model(
+            [
+                _row(id="a", host="api.example.com"),
+                _row(id="b", host="cdn.other.com"),
+            ]
+        )
+        model.set_filter_config(
+            FilterConfig(blacklist=["example.com"], whitelist=["other.com"])
+        )
+        assert model.rowCount() == 2
 
-    def test_multiple_keywords(self, qapp):
+    def test_whitelist_empty_shows_all(self, qapp):
+        """空白名单不过滤：防止启用后把全部流量藏起来。"""
+        model, _ = _make_model([_row(id="a"), _row(id="b")])
+        model.set_filter_config(FilterConfig(whitelist=[], enabled=True,
+                                             active_list="whitelist"))
+        assert model.rowCount() == 2
+
+    def test_multiple_entries(self, qapp):
         model, _ = _make_model(
             [
                 _row(id="a", host="api.example.com"),
@@ -143,9 +162,136 @@ class TestDomainFilter:
             ]
         )
         model.set_filter_config(
-            FilterConfig(host_mode="whitelist", host_keywords=["example.com", "other.com"])
+            FilterConfig(whitelist=["example.com", "other.com"], enabled=True,
+                         active_list="whitelist")
         )
         assert model.rowCount() == 2
+
+    def test_domain_entry_matches_subdomain_only(self, qapp):
+        """带点条目 = 域名语义：命中子域，不命中同后缀无关域名。"""
+        model, _ = _make_model(
+            [
+                _row(id="a", host="example.com"),
+                _row(id="b", host="api.example.com"),
+                _row(id="c", host="notexample.com"),
+                _row(id="d", host="example.com.evil.net"),
+            ]
+        )
+        model.set_filter_config(
+            FilterConfig(blacklist=["example.com"], enabled=True)
+        )
+        assert model.rowCount() == 2  # 只藏 a/b，c/d 保留
+
+    def test_keyword_entry_keeps_substring_semantics(self, qapp):
+        """不带点条目 = 老的关键字语义（子串）。"""
+        model, _ = _make_model(
+            [
+                _row(id="a", host="www.google.com"),
+                _row(id="b", host="api.example.com"),
+            ]
+        )
+        model.set_filter_config(FilterConfig(blacklist=["google"], enabled=True))
+        assert model.rowCount() == 1
+
+    def test_only_active_list_consulted(self, qapp):
+        """只启用黑名单时，白名单内容不参与判定。"""
+        model, _ = _make_model(
+            [
+                _row(id="a", host="api.example.com"),
+                _row(id="b", host="cdn.other.com"),
+            ]
+        )
+        model.set_filter_config(
+            FilterConfig(whitelist=["example.com"], enabled=True,
+                         active_list="blacklist")
+        )
+        assert model.rowCount() == 2
+
+
+class TestDomainHelpers:
+    def test_host_matches_subdomain(self):
+        assert host_matches("api.example.com", "example.com")
+        assert host_matches("example.com", "example.com")
+        assert not host_matches("notexample.com", "example.com")
+        assert not host_matches("example.com.evil.net", "example.com")
+
+    def test_host_matches_case_and_trailing_dot(self):
+        assert host_matches("API.Example.COM.", "example.com")
+        assert host_matches("example.com", "EXAMPLE.com.")
+
+    def test_host_matches_keyword(self):
+        assert host_matches("www.google.com", "google")
+        assert not host_matches("example.com", "google")
+
+    def test_normalize_domain(self):
+        assert normalize_domain("  Example.com.  ") == "example.com"
+        assert normalize_domain("") == ""
+
+    def test_add_domains_incremental_dedup(self):
+        out = add_domains(["a.test"], ["b.test", "A.TEST", " ", "c.test."])
+        assert out == ["a.test", "b.test", "c.test"]
+
+    def test_add_domains_empty_returns_copy(self):
+        assert add_domains([], []) == []
+
+
+class TestFilterConfigPersistence:
+    def test_round_trip(self):
+        cfg = FilterConfig(
+            blacklist=["a.test"], whitelist=["b.test"], enabled=True,
+            active_list="whitelist", hide_connect=True, hide_image=True,
+        )
+        restored = FilterConfig.from_dict(cfg.to_dict())
+        assert restored.blacklist == ["a.test"]
+        assert restored.whitelist == ["b.test"]
+        assert restored.enabled is True
+        assert restored.active_list == "whitelist"
+        assert restored.hide_connect is True
+        assert restored.hide_image is True
+
+    def test_legacy_migration_blacklist(self):
+        """旧配置 host_mode=blacklist + host_keywords → 落入黑名单并启用。"""
+        cfg = FilterConfig.from_dict(
+            {"host_mode": "blacklist", "host_keywords": ["a.test"]}
+        )
+        assert cfg.blacklist == ["a.test"]
+        assert cfg.whitelist == []
+        assert cfg.enabled is True
+        assert cfg.active_list == "blacklist"
+
+    def test_legacy_migration_whitelist(self):
+        cfg = FilterConfig.from_dict(
+            {"host_mode": "whitelist", "host_keywords": ["a.test"]}
+        )
+        assert cfg.whitelist == ["a.test"]
+        assert cfg.blacklist == []
+        assert cfg.active_list == "whitelist"
+
+    def test_legacy_empty_keywords_not_enabled(self):
+        cfg = FilterConfig.from_dict({"host_mode": "blacklist", "host_keywords": []})
+        assert cfg.enabled is False
+
+    def test_legacy_bad_mode_falls_back(self):
+        cfg = FilterConfig.from_dict({"host_mode": "nope", "host_keywords": ["x"]})
+        assert cfg.active_list == "blacklist"
+        assert cfg.blacklist == ["x"]
+
+    def test_new_schema_takes_priority(self):
+        cfg = FilterConfig.from_dict(
+            {"blacklist": ["a.test"], "host_keywords": ["ignored"]}
+        )
+        assert cfg.blacklist == ["a.test"]
+
+    def test_is_active_requires_enabled_and_entries(self):
+        assert FilterConfig(enabled=True, blacklist=["a.test"]).is_active()
+        assert not FilterConfig(enabled=True, blacklist=[]).is_active()
+        assert not FilterConfig(enabled=False, blacklist=["a.test"]).is_active()
+
+    def test_active_entries_follows_active_list(self):
+        cfg = FilterConfig(blacklist=["a"], whitelist=["b"])
+        assert cfg.active_entries == ["a"]
+        cfg.active_list = "whitelist"
+        assert cfg.active_entries == ["b"]
 
 
 class TestTypeHide:
@@ -236,7 +382,8 @@ class TestSearch:
             ]
         )
         model.set_filter_config(
-            FilterConfig(host_mode="whitelist", host_keywords=["example.com"])
+            FilterConfig(whitelist=["example.com"], enabled=True,
+                         active_list="whitelist")
         )
         cfg = SearchConfig()
         cfg.text = "user"

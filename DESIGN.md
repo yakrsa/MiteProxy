@@ -201,24 +201,26 @@ mitmproxy 的 DumpMaster 跑在自己的 asyncio 事件循环里，**不能**直
 
 | 维度 | 控件 | 判定逻辑 |
 |---|---|---|
-| 域名过滤 | 模式单选（黑名单 / 白名单）+ 输入框（多关键词逗号分隔） | 见下方语义表 |
+| 域名过滤 | 三态开关（关闭 / 黑名单 / 白名单）+ 两个独立列表 | 见下方语义表 |
 | 隐藏 CONNECT | 复选框 | `flow.request.method == "CONNECT"` |
 | 隐藏 Image | 复选框 | 响应 `content-type` 以 `image/` 开头，**或** URL 路径以 `.png/.jpg/.jpeg/.gif/.webp/.svg/.ico/.bmp` 结尾 |
 
-**域名过滤语义**：
+**域名过滤语义**（黑名单与白名单是两个独立列表，各自增量维护，**一次只能启用其中一个**）：
 
-| 模式 | keywords 非空 | keywords 为空 |
+| 开关 | 启用列表非空 | 启用列表为空 |
 |---|---|---|
-| 黑名单（隐藏这些域名） | host 不含任何关键词的才显示 | 全部显示 |
-| 白名单（只显示这些域名） | host 含任一关键词才显示 | 全部显示（等同未启用） |
+| 关闭 | 两个列表都不生效 | 同左 |
+| 黑名单 | host 未命中任何条目的才显示 | 全部显示 |
+| 白名单 | host 命中任一条目的才显示 | 全部显示（等同未启用） |
 
-- 模式切换时**保留关键词**，不用重输；空白名单不过滤，避免清空输入框后界面全空。
-- 关键词匹配按 host 子串包含（大小写不敏感），如 `example.com` 同时命中 `www.example.com` 与 `api.example.com`。
+- **条目语义**：带点的条目（`example.com`）按域名匹配——命中自身及其子域（`api.example.com`），不命中 `notexample.com` / `example.com.evil.net`；不带点的条目（`google`）按关键字子串匹配（兼容手输片段词）。
+- **增量语义**：右键「把域名加入黑/白名单」、过滤页「添加」「从流量选…」都是**追加去重**，不覆盖已有内容；切换启用开关不丢另一个列表的内容。
+- **两处入口同一份配置**：顶部过滤栏（`traffic_table.FilterBar`）只显示并编辑当前启用的列表；详情面板「过滤」页（`filter_panel.FilterPanel`，位于请求/响应/耗时页签之后）同时维护两个列表 + 每个域名的实时命中数。任一侧改动都经主窗口 `_commit_filter_config` 落盘并回灌另一侧。
+- 空白启用列表不过滤，避免误把流量全藏了；状态栏常驻 `显示 X / 共 Y 条`，过滤生效时追加原因摘要（域名黑/白名单 N 条、隐藏 CONNECT、隐藏图片），避免"流量突然没了"的困惑。
 
 - **可扩展结构**：类型隐藏内部维护一个"隐藏类型集合"（目前 `{CONNECT, IMAGE}`），后续加 CSS/JS/Font/Video 只需往集合加项 + 加复选框，过滤管线不变。
 - **实现**：`QSortFilterProxyModel` 子类，`filterAcceptsRow` 中读取 `FilterConfig`；配置变更时 `invalidateFilter()` 全表重算（5000 条规模无感）。
-- **状态反馈**：状态栏常驻 `显示 X / 共 Y 条`，过滤生效时高亮，避免"流量突然没了"的困惑。
-- **持久化**：过滤配置随 `settings.json` 保存（见 4.3），重启后恢复。
+- **持久化**：过滤配置随 `settings.json` 保存（见 4.3），重启后恢复；旧版单列表配置（`host_mode`/`host_keywords`）读取时自动迁入对应新列表。
 
 #### 3.2.2 流量搜索
 
@@ -951,8 +953,10 @@ FIX 子页，解析成**树形四列（标签 / 字段 / 值 / 注释）**——
   "cert_port": 8081,
   "max_flows": 5000,
   "filter": {
-    "host_mode": "blacklist",
-    "host_keywords": [],
+    "blacklist": [],
+    "whitelist": [],
+    "enabled": false,
+    "active_list": "blacklist",
     "hide_connect": false,
     "hide_image": false
   },
