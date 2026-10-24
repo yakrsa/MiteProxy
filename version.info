@@ -4,48 +4,44 @@
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "新增 FIX 协议解析工具页（Ctrl+Shift+F）：直接粘贴 FIX 报文文本（SOH 或 | 分隔均可），自动解析成树形表格——每行一个 tag=value，字段带中英文名称与枚举值释义，重复组可折叠；支持 FIX 4.0–4.4",
-      "en": "New FIX protocol parser tool page (Ctrl+Shift+F): paste raw FIX text (SOH or |-separated) and get a formatted tree — one row per tag=value with bilingual field names and enum explanations, repeat groups collapsible; supports FIX 4.0–4.4"
+      "zh": "新增 FIX 协议解析工具页：粘贴报文自动解析成树形表格，带字段名与枚举释义，重复组可折叠，支持 FIX 4.0–4.4",
+      "en": "New FIX parser tool page: paste raw FIX and get a tree table with field names, enum explanations and collapsible repeat groups; supports FIX 4.0–4.4"
     },
     {
-      "zh": "FIX 解析自带协议自校验：BodyLength(9) 与 CheckSum(10) 按 UTF-8 字节精确验证（含中文的报文也不会误报），DataLength 数据对（95/96 等）按长度原样读取不截断，多条消息粘贴自动切分；流量详情页可将 FIX 报文一键发送到解析页",
-      "en": "FIX parsing includes protocol self-validation: BodyLength(9) and CheckSum(10) are verified byte-accurately over UTF-8 (Chinese payloads no longer false-fail), DataLength pairs (95/96 etc.) are read verbatim by length, and multiple pasted messages are split automatically; FIX flows can be sent from the detail page to the parser in one click"
+      "zh": "FIX 解析自带协议校验：BodyLength/CheckSum 按字节校验，DataLength 原样读取，转义写法与日志前缀自动还原",
+      "en": "FIX parsing validates the protocol itself: byte-accurate BodyLength/CheckSum, verbatim DataLength fields, and automatic recovery of escaped SOH and log prefixes"
     },
     {
-      "zh": "证书服务按钮交互修复：点击始终弹出二维码（运行中再点为重弹而非静默停止），停止改为弹窗内显式按钮 + 状态栏反馈，消除「点了没反应」的歧义",
-      "en": "Fixed certificate-service button interaction: clicking now always shows the QR dialog (re-clicking while running re-opens it instead of silently stopping), stopping is an explicit in-dialog button plus status-bar feedback, removing the 'nothing happened' ambiguity"
+      "zh": "FIX 多消息 tab 化：一次粘贴多条时每条一个 tab，有校验错误的标红并可一键跳转",
+      "en": "Multi-message FIX now uses one tab per message, with failing messages flagged in red and a one-click jump to the first problem"
     },
     {
-      "zh": "新增 API 集合：API 面板可把当前请求（方法/URL/请求头/请求体）保存到本地集合，支持加载、重命名、删除，抓包调试常用请求一键复用",
-      "en": "New API collections: the API panel can save the current request (method/URL/headers/body) to a local collection with load/rename/delete support, so frequently used requests are one click away"
+      "zh": "修复证书服务按钮：点击始终弹出二维码，停止改为弹窗内显式按钮加状态栏反馈",
+      "en": "Fixed the certificate-service button: clicking always opens the QR dialog, and stopping is now an explicit in-dialog button with status-bar feedback"
     },
     {
-      "zh": "HTTPS 流量详情页新增 TLS 页签：协议版本、加密套件、SNI、ALPN 与证书链（使用者/颁发者/有效期/序列号/SHA-256 指纹）一目了然，仅对 TLS 流量显示",
-      "en": "New TLS tab in the HTTPS flow detail page: protocol version, cipher suite, SNI, ALPN and certificate chain (subject/issuer/validity/serial/SHA-256 fingerprint) at a glance, shown only for TLS flows"
+      "zh": "新增 API 集合：把当前请求保存到本地，支持加载、重命名、删除",
+      "en": "New API collections: save the current request locally with load, rename and delete"
     },
     {
-      "zh": "API 面板支持 GraphQL：自动识别 GraphQL 请求体，query 与 variables 分区编辑，可直接修改变量后发送",
-      "en": "GraphQL support in the API panel: GraphQL request bodies are detected automatically, with query and variables in separate editors so you can tweak variables and send"
+      "zh": "新增 TLS 页签：协议版本、加密套件、SNI、ALPN 与证书链一目了然",
+      "en": "New TLS tab: protocol version, cipher suite, SNI, ALPN and certificate chain at a glance"
     },
     {
-      "zh": "命令面板（Ctrl/Cmd+K）：可搜索的快捷动作启动器，输入关键字实时过滤全部命令，上下键选择、回车执行",
-      "en": "Command palette (Ctrl/Cmd+K): a searchable quick-action launcher that filters all commands as you type, with arrow-key navigation and Enter to run"
+      "zh": "API 面板支持 GraphQL：自动识别请求体，query 与 variables 分区编辑",
+      "en": "GraphQL support in the API panel: request bodies are detected automatically, with query and variables edited separately"
     },
     {
-      "zh": "流量表右侧新增状态码 minimap：可见流量按 2xx/3xx/4xx/5xx 画成色点窄带，几千条里快速定位异常请求，点击即跳转对应行",
-      "en": "New status-code minimap beside the traffic table: visible flows are drawn as a colored dot strip (2xx/3xx/4xx/5xx) so you can spot errors in thousands of rows instantly, and click to jump to the row"
+      "zh": "新增命令面板（Ctrl/Cmd+K）：输入即时过滤全部命令，回车执行",
+      "en": "New command palette (Ctrl/Cmd+K): filters all commands as you type, Enter to run"
     },
     {
-      "zh": "工具条改用内联 SVG 图标（无外部资源文件），自动跟随深浅主题配色",
-      "en": "Toolbar now uses inline SVG icons (no external resource files) that automatically follow the light/dark theme"
+      "zh": "流量表新增状态码 minimap：色点窄带快速定位异常请求，点击跳转对应行",
+      "en": "New status-code minimap beside the traffic table: a colored dot strip to spot errors fast, click to jump to the row"
     },
     {
-      "zh": "详情面板顶部新增请求概览卡：方法/状态码 pill + URL + 耗时/大小/内容类型/IP 一行看清，数据与流量列表同源",
-      "en": "New overview card atop the detail panel: method/status pills + URL + duration/size/content-type/IP at a glance, using the same data source as the traffic table"
-    },
-    {
-      "zh": "流量列表支持行密度切换（舒适/紧凑，重启保持）；无流量时显示居中引导替代空白",
-      "en": "Traffic table supports row-density switching (comfortable/compact, persisted across restarts); an empty table now shows centered guidance instead of a blank pane"
+      "zh": "界面打磨：内联 SVG 图标跟随主题、详情页请求概览卡、行密度切换、无流量时显示引导",
+      "en": "UI polish: theme-aware inline SVG icons, a request overview card in the detail panel, row-density switching, and guidance text instead of an empty table"
     }
   ]
 }
