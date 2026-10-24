@@ -58,7 +58,12 @@ tag,英文名,中文名,类型,枚举,组成员
 
 列名认别名（tag/标签/字段号、en/英文名/name、cn/中文名/含义、type/类型、
 enum/枚举/取值、members/组成员）；没有表头时按前五列位置读。`组成员`
-只对 NumInGroup 类型的行有意义，用来把重复组展开成树。`#` 开头是注释行。
+只对 NumInGroup 类型的行有意义，用来把重复组展开成树。`#` 开头是注释行，
+其中 `# 合作方: XX期货` / `# 版本: FIX.4.4` / `# 备注: …` 会被读成元信息
+（换了文件名再导也能认作同一家）。
+
+对方文档的表格**不用先整理**：表头上方的标题行、`Tag（必填）` 这类括注、
+全角数字、`-` / `/` 占位的空格子、列间只有空格的 PDF 文本，都能直接导。
 
 语义约定：
 
@@ -66,6 +71,8 @@ enum/枚举/取值、members/组成员）；没有表头时按前五列位置读
   所以同一份字典可以只写对方的私有字段。
 - **同 tag 以合作方为准**：对方把内置 tag 重新定义了（例如 58 有自己的
   子类型），按对方文档走。
+- **同名即更新**：同一家改版后把新文件再导一次，按名称认人、就地覆盖，
+  不会多出 `-2` 副本（见 `resolve_slug`）。
 - **不认识的行不丢输入**：解析时收集 warning 返回，界面把 warning 计数
   和第一条原因显示出来，用户自己判断要不要改文件。
 """
@@ -76,7 +83,9 @@ import csv
 import io
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from app import fixdict
@@ -147,6 +156,8 @@ class Profile:
     msg_types: dict[str, str] = field(default_factory=dict)
     #: 导入时的来源文件（只做展示，不参与解析）
     source: str = ""
+    #: 最近一次落盘时间（ISO 8601，界面用来判断「这份是新的还是旧的」）
+    updated_at: str = ""
     #: 解析该文件时收集的问题（不阻断导入）
     warnings: list[str] = field(default_factory=list)
 
@@ -158,6 +169,8 @@ class Profile:
             "name": self.name,
             "fix_version": self.fix_version,
             "note": self.note,
+            **({"source": self.source} if self.source else {}),
+            **({"updated_at": self.updated_at} if self.updated_at else {}),
             "fields": {
                 str(tag): {
                     "en": d[0], "cn": d[1], "type": d[2],
@@ -210,7 +223,9 @@ class Profile:
             fix_version=str(data.get("fix_version") or "").strip(),
             note=str(data.get("note") or "").strip(),
             fields=fields, groups=groups, data_pairs=pairs,
-            msg_types=msg_types, source=source,
+            msg_types=msg_types,
+            source=source or str(data.get("source") or ""),
+            updated_at=str(data.get("updated_at") or ""),
         )
 
     #: 界面里 combo 的显示文案
@@ -277,20 +292,78 @@ def list_profiles() -> list[Profile]:
     return out
 
 
+def read_profile_file(path: str | Path) -> str:
+    """读字典文件的文本（自动认编码）。
+
+    Excel / WPS 另存的 CSV 在中文 Windows 上是 GB18030，在 macOS 上是带 BOM
+    的 UTF-8；再加上 UTF-16（少数工具导出）与 Big5（繁体合作方），按顺序试
+    到能解开为止。都解不开时用替换模式兜底，至少让用户看到哪里是乱码。
+    """
+    data = Path(path).read_bytes()
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        try:
+            return data.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
+    for enc in ("utf-8-sig", "gb18030", "big5"):
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", "replace")
+
+
+def _norm_name(text: str) -> str:
+    """名称归一：全角转半角、忽略大小写与空格/间隔号（「XX 期货」≡「xx期货」）。"""
+    s = unicodedata.normalize("NFKC", str(text or "")).strip().casefold()
+    return re.sub(r"[\s·・_\-]+", "", s)
+
+
+def resolve_slug(name: str, slug: str = "") -> tuple[str, Profile | None]:
+    """决定这份字典存成哪个 slug，并返回被它替代的旧字典（没有则 None）。
+
+    规则（用户要的「再导一次同名字典就是更新」）：
+
+    - **合作方名称相同 → 覆盖**，不管这次是从哪个文件导入的（对方发了新版
+      文档、你把文件改成 `xx期货_2026Q4.csv` 再导，仍是同一家）；
+    - 名称不同但文件名（slug）撞了 → 视为另一家，加 `-2` 后缀，绝不悄悄
+      覆盖别人；
+    - 全新 → 用文件名/名称生成 slug。
+    """
+    base = slug or slugify(name) or "profile"
+    existing = {p.slug: p for p in list_profiles()}
+    target = _norm_name(name)
+    if target:
+        for prof in existing.values():
+            if _norm_name(prof.name) == target:
+                return prof.slug, prof
+    old = existing.get(base)
+    if old is None:
+        return base, None
+    i = 2
+    while "{0}-{1}".format(base, i) in existing:
+        i += 1
+    return "{0}-{1}".format(base, i), None
+
+
 def load_profile(path: Path) -> Profile | None:
     try:
-        text = path.read_text(encoding="utf-8")
+        text = read_profile_file(path)
     except OSError:
         return None
-    prof, _warnings = parse_profile_text(text, slug=path.stem, source=str(path))
+    # source 传空：优先用文件里记的「最初导入的那个 CSV」，没有才退回 json 路径
+    prof, _warnings = parse_profile_text(text, slug=path.stem)
     if prof is None:
         return None
     prof.slug = prof.slug or path.stem
+    if not prof.source:
+        prof.source = str(path)
     return prof
 
 
 def save_profile(prof: Profile) -> Path:
-    """落盘（文件名冲突时按内容覆盖同名 slug——同名字典即视为更新）。"""
+    """落盘（同一个 slug 即同一份字典，直接覆盖——同名字典视为更新）。"""
+    prof.updated_at = datetime.now().astimezone().isoformat(timespec="seconds")
     path = profile_dir() / "{0}.json".format(prof.slug)
     path.write_text(
         json.dumps(prof.to_dict(), ensure_ascii=False, indent=2) + "\n",
@@ -311,17 +384,39 @@ def delete_profile(slug: str) -> bool:
 
 # ====================================================================== 解析导入文件
 
-#: CSV 表头别名（小写比较）。表头认不出时按位置读（tag, en, cn, type, enums）
+#: CSV 表头别名（先做 NFKC + 去空格 + 去括注，再比较）。表头认不出时按位置读
+#: （tag, en, cn, type, enums）。
 _HEADER_ALIASES: dict[str, tuple[str, ...]] = {
-    "tag": ("tag", "标签", "tag号", "tag 号", "字段号", "序号", "编号", "field"),
-    "en": ("en", "english", "英文", "英文名", "英文名称", "name", "字段英文名"),
+    "en": ("en", "english", "英文", "英文名", "英文名称", "name", "字段英文名",
+           "字段名称", "字段", "fieldname"),
     "cn": ("cn", "chinese", "中文", "中文名", "中文名称", "名称", "含义",
-           "说明", "描述", "desc", "description", "字段中文名"),
-    "type": ("type", "类型", "数据类型", "字段类型"),
-    "enums": ("enum", "enums", "枚举", "取值", "值", "值说明", "枚举值", "values"),
+           "说明", "描述", "desc", "description", "字段中文名", "释义",
+           "字段含义", "字段说明"),
+    "type": ("type", "类型", "数据类型", "字段类型", "格式"),
+    "enums": ("enum", "enums", "枚举", "取值", "值", "值说明", "枚举值", "values",
+              "枚举说明", "取值说明", "枚举含义", "值域"),
     #: 重复组：NumInGroup 那一行填成员 tag（`10011,10012` 或 `10011 10012`）
-    "members": ("members", "组成员", "成员", "子字段", "组内字段", "子tag"),
+    "members": ("members", "组成员", "成员", "子字段", "组内字段", "子tag", "group"),
 }
+
+#: tag 列的「强」表头：文档里同时有「序号」和「Tag」时必须优先认这个，
+#: 否则会把行号当 tag（对方文档常是 `序号 | Tag | 字段名 | 说明`）。
+_TAG_STRONG = ("tag", "标签", "tag号", "tag编号", "字段号", "field", "fieldid", "域号")
+#: 弱表头：只有没有强表头时才用（有些文档通篇只写「编号」）
+_TAG_WEAK = ("序号", "编号", "id", "no", "number")
+
+#: 注释行里可写的元信息：`# 合作方: XX期货` / `# 版本: FIX.4.4` / `# 备注: 2026Q4`
+_META_ALIASES: dict[str, tuple[str, ...]] = {
+    "name": ("名称", "名字", "合作方", "券商", "机构", "公司", "name", "profile"),
+    "fix_version": ("版本", "fix版本", "协议版本", "version", "fix_version"),
+    "note": ("备注", "说明", "note", "remark"),
+}
+
+#: 文档表格里表示「无」的写法（PDF / Word 常拿 `-`、`/` 占位）
+_PLACEHOLDERS = frozenset({
+    "", "-", "--", "—", "–", "/", "\\", "n/a", "na", "none", "null",
+    "无", "空", "不适用", "非必填",
+})
 
 
 def parse_profile_text(text: str, *, slug: str = "",
@@ -376,41 +471,62 @@ def _parse_json(raw: str, *, slug: str,
 
 def _parse_table(raw: str, *, slug: str,
                  source: str) -> tuple[Profile | None, list[str]]:
-    """按 CSV/TSV 读字段表（分隔符自动识别，表头可选）。"""
-    lines = [ln for ln in raw.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    """按 CSV/TSV 读字段表（分隔符自动识别，表头可选，容忍文档里的多余行）。
+
+    从 Word / PDF / Excel 一路复制过来会有各种残留：标题行、`sep=,` 提示行、
+    「（必填）」括注、全角数字、用 `-` 占位的空单元格……这里都按「用户只是
+    把文档表格贴过来了」处理，不要求对方整理成严格格式。
+    """
+    meta, lines = _split_meta(raw.splitlines())
+    lines = [ln for ln in lines if ln.strip()]
+    if lines and re.match(r"(?i)^\s*sep\s*=", lines[0]):
+        lines.pop(0)                      # Excel 另存 CSV 偶尔带的首行提示
     if not lines:
         return None, ["内容为空"]
-    delim = "\t" if "\t" in lines[0] else (";" if ";" in lines[0] and "," not in lines[0] else ",")
-    rows = list(csv.reader(io.StringIO("\n".join(lines)), delimiter=delim))
+
+    delim = _detect_delim(lines)
+    rows = _split_rows(lines, delim)
     warnings: list[str] = []
 
-    header = _map_header(rows[0])
-    if header:
-        body = rows[1:]
-    else:
+    # 表头不一定在第一行（上面常有文档标题 / 合并单元格留下的空行）：
+    # 前面几行里哪行能认出 tag 列，哪行就是表头，之前的都当噪音。
+    header = None
+    header_idx = -1
+    for i, row in enumerate(rows[:10]):
+        mapped = _map_header(row)
+        if mapped:
+            header, header_idx = mapped, i
+            break
+    if header is None:
         # 没表头：按 tag, 英文名, 中文名, 类型, 枚举 的位置读
         header = {"tag": 0, "en": 1, "cn": 2, "type": 3, "enums": 4}
-        body = rows
 
-    prof = Profile(slug=slug or "profile", name=slug or "profile", source=source)
-    for lineno, row in enumerate(body, start=1):
-        if not row or not any(c.strip() for c in row):
+    body = rows[header_idx + 1:]
+    first_lineno = header_idx + 2 if header_idx >= 0 else 1
+
+    name = meta.get("name") or slug or "profile"
+    prof = Profile(slug=slug or slugify(name) or "profile", name=name,
+                   fix_version=meta.get("fix_version", ""),
+                   note=meta.get("note", ""), source=source)
+    for offset, row in enumerate(body):
+        lineno = first_lineno + offset
+        if not row or not any((c or "").strip() for c in row):
             continue
         tag = _as_tag(_cell(row, header["tag"]))
         if tag is None:
             warnings.append("第 {0} 行 tag 不是数字，已跳过".format(lineno))
             continue
-        en = _cell(row, header.get("en"))
-        cn = _cell(row, header.get("cn"))
+        en = _clean(_cell(row, header.get("en")))
+        cn = _clean(_cell(row, header.get("cn")))
+        if not cn and _has_cjk(en):
+            # 文档只有一列中文名（表头写成「字段名称」）时，别让它占着英文名列
+            cn, en = en, ""
         prof.fields[tag] = (
-            en, cn, _cell(row, header.get("type")),
+            en, cn, _clean(_cell(row, header.get("type"))),
             _parse_enums(_cell(row, header.get("enums"))),
         )
         # 可选「组成员」列：NumInGroup 引导 tag 后面跟的成员，用来展开重复组
-        members = tuple(
-            m for m in (_as_tag(x) for x in
-                        re.split(r"[,，;；\s]+", _cell(row, header.get("members"))))
-            if m is not None)
+        members = _parse_members(_cell(row, header.get("members")))
         if members:
             prof.groups[tag] = (en, cn, members)
     if not prof.fields:
@@ -419,18 +535,86 @@ def _parse_table(raw: str, *, slug: str,
     return prof, warnings
 
 
+def _split_meta(lines: list[str]) -> tuple[dict[str, str], list[str]]:
+    """把开头的 `#` 注释拆成（元信息, 其余行）。
+
+    注释里写成 `# 合作方: XX期货` 就行——这样即使文件改了名（对方发新版
+    文档叫 `xx期货_2026Q4.csv`），再导一次也能认出是同一家、覆盖旧字典。
+    """
+    meta: dict[str, str] = {}
+    out: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            m = re.match(r"^#+\s*(?P<key>[^:：=]{1,16})\s*[:：=]\s*(?P<val>\S.*)$",
+                         stripped)
+            if m:
+                key = _meta_key(m.group("key"))
+                if key and key not in meta:
+                    meta[key] = m.group("val").strip()
+            continue
+        out.append(line)
+    return meta, out
+
+
+def _meta_key(text: str) -> str:
+    key = _norm_header(text)
+    for name, aliases in _META_ALIASES.items():
+        if key in {_norm_header(a) for a in aliases}:
+            return name
+    return ""
+
+
+def _detect_delim(lines: list[str]) -> str:
+    """猜分隔符；返回空串表示「按 2 个以上空格/制表符对齐的文本」。"""
+    head = lines[:5]
+    if any("\t" in ln for ln in head):
+        return "\t"
+    if any("," in ln for ln in head):
+        return ","
+    if any(re.search(r"\S {2,}\S", ln) for ln in head):
+        return ""                         # PDF 复制出来的对齐文本
+    if any(";" in ln for ln in head):
+        return ";"
+    return ""
+
+
+def _split_rows(lines: list[str], delim: str) -> list[list[str]]:
+    if delim:
+        return list(csv.reader(io.StringIO("\n".join(lines)), delimiter=delim))
+    return [[p.strip() for p in re.split(r" {2,}|\t+", ln.strip())] for ln in lines]
+
+
+def _norm_header(cell) -> str:
+    """表头归一：全角转半角、去括注（「（必填）」「[Tag]」）、去空格与装饰符。"""
+    s = unicodedata.normalize("NFKC", str(cell or "")).strip().lower()
+    s = re.sub(r"[（(\[【][^）)\]】]*[）)\]】]", "", s)
+    s = re.sub(r"[\s　]+", "", s)
+    return s.strip("*:：#、.-_")
+
+
 def _map_header(row: list[str]) -> dict[str, int] | None:
-    """认表头；认不出 tag 列就当没有表头。"""
-    mapping: dict[str, int] = {}
-    for idx, cell in enumerate(row):
-        key = (cell or "").strip().lower().replace(" ", "")
-        for name, aliases in _HEADER_ALIASES.items():
-            if name in mapping:
+    """认表头；认不出 tag 列就返回 None（调用方按位置读）。
+
+    tag 列分强弱两档：文档写 `序号 | Tag | 字段名 | 说明` 时必须认 Tag，
+    别把行号当 tag 号。
+    """
+    norm = [_norm_header(c) for c in row]
+    tag_idx = next((i for i, k in enumerate(norm) if k in _TAG_STRONG), None)
+    if tag_idx is None:
+        tag_idx = next((i for i, k in enumerate(norm) if k in _TAG_WEAK), None)
+    if tag_idx is None:
+        return None
+    mapping: dict[str, int] = {"tag": tag_idx}
+    for name, aliases in _HEADER_ALIASES.items():
+        wanted = {_norm_header(a) for a in aliases}
+        for idx, key in enumerate(norm):
+            if idx == tag_idx or not key or name in mapping:
                 continue
-            if key in {a.replace(" ", "") for a in aliases}:
+            if key in wanted:
                 mapping[name] = idx
                 break
-    return mapping if "tag" in mapping else None
+    return mapping
 
 
 def _cell(row: list[str], idx) -> str:
@@ -439,8 +623,25 @@ def _cell(row: list[str], idx) -> str:
     return (row[idx] or "").strip()
 
 
+def _clean(value: str) -> str:
+    """单元格取值：全角转半角、去掉首尾装饰符，`-` / `/` / 「无」这类占位当空串。"""
+    text = unicodedata.normalize("NFKC", str(value or "")).strip().strip("*＊").strip()
+    return "" if text.casefold() in _PLACEHOLDERS else text
+
+
+def _has_cjk(text: str) -> bool:
+    return bool(re.search(r"[\u4e00-\u9fff]", text or ""))
+
+
+def _parse_members(value: str) -> tuple[int, ...]:
+    """组成员列：`10011 10012` / `10011,10012` / `10011、10012` 都认。"""
+    return tuple(
+        m for m in (_as_tag(x) for x in re.split(r"[,，;；、\s]+", value or ""))
+        if m is not None)
+
+
 def _parse_enums(value) -> dict[str, str]:
-    """枚举：dict 直接用；字符串支持 `1=买;2=卖` / `1:买|2:卖`。"""
+    """枚举：dict 直接用；字符串支持 `1=买;2=卖` / `1:买|2:卖` / `0=New, 1=Filled`。"""
     if isinstance(value, dict):
         return {str(k).strip(): str(v).strip() for k, v in value.items()
                 if str(k).strip()}
@@ -448,7 +649,9 @@ def _parse_enums(value) -> dict[str, str]:
     if not text:
         return {}
     out: dict[str, str] = {}
-    for item in re.split(r"[;|；\n]+", text):
+    # 逗号只在后面紧跟 `键=值` 时才当分隔符——英文文档爱用 `, `，而枚举
+    # 释义本身也常带逗号（`1=部分成交, 剩余 200`），不能一刀切。
+    for item in re.split(r"[;|；\n]+|[,，](?=\s*[^\s=:：]{1,12}\s*[=:：])", text):
         item = item.strip()
         if not item:
             continue
@@ -474,12 +677,16 @@ def _field_def(val) -> FieldDef:
 
 
 def _as_tag(value) -> int | None:
-    """tag 规范化：允许 '10001' / ' 10001 ' / 10001，非法返回 None。"""
+    """tag 规范化：允许 '10001' / ' 10001 ' / '１０００１' / 10001，非法返回 None。
+
+    PDF 里抠出来的数字常是全角，先做 NFKC 再判。
+    """
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
         return value if 1 <= value <= 999999 else None
-    text = str(value or "").strip().lstrip("#")
+    text = unicodedata.normalize("NFKC", str(value or ""))
+    text = text.strip().strip("*＊").lstrip("#").strip()
     if not text.isdigit():
         return None
     tag = int(text)

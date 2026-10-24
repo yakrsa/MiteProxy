@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from PySide6.QtWidgets import QApplication, QTreeWidgetItem
 
@@ -338,6 +340,45 @@ class TestFixPanelDictionary:
         assert panel.import_profile(str(bad)) is False
         assert panel.dict_combo.currentData() == "xx期货"
         assert "导入失败" in panel.status_label.text()
+        panel.deleteLater()
+
+    def test_reimport_same_file_updates_in_place(self, home):
+        """改版后把同一个文件再导一次：覆盖旧内容，不多出一份。"""
+        panel = FixPanel()
+        path = self._csv(home)
+        panel.import_profile(path)
+        assert panel.dict_combo.count() == 2
+
+        Path(path).write_text(
+            "tag,英文名,中文名\n"
+            "10001,LocalOrderID,本地订单号(新版)\n"
+            "10003,NewField,新字段\n",
+            encoding="utf-8")
+        assert panel.import_profile(path) is True
+        assert panel.dict_combo.count() == 2          # 覆盖，不是新增
+        assert "已更新字典" in panel.status_label.text()
+        assert "原 4 个" in panel.status_label.text()
+        assert len(fixprofile.list_profiles()) == 1
+        # 旧字段被替换成新含义，新字段立刻能解析
+        panel.set_text(make_fix(ORDER + [(10001, "L"), (10003, "v")]))
+        root = _cur_tree(panel).invisibleRootItem()
+        tags = [root.child(i).text(0) for i in range(root.childCount())]
+        assert "新版" in root.child(tags.index("10001")).text(1)
+        assert "新字段" in root.child(tags.index("10003")).text(1)
+        panel.deleteLater()
+
+    def test_reimport_renamed_file_with_partner_comment(self, home):
+        """换了文件名但写了 `# 合作方:`：仍认作同一家，不生成 -2 副本。"""
+        panel = FixPanel()
+        panel.import_profile(self._csv(home))
+        other = home / "xx期货-2026Q4.csv"
+        other.write_text(
+            "# 合作方: xx期货\n"
+            "tag,英文名\n10001,LocalOrderID\n10005,Extra\n",
+            encoding="utf-8")
+        assert panel.import_profile(str(other)) is True
+        assert len(fixprofile.list_profiles()) == 1
+        assert "已更新字典" in panel.status_label.text()
         panel.deleteLater()
 
     def test_template_copied_to_clipboard(self, home):

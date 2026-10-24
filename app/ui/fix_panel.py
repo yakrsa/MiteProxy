@@ -121,30 +121,6 @@ def _cell_text(value: str) -> str:
     return text
 
 
-def _read_text(path: str) -> str:
-    """读字典文件：先 UTF-8（含 BOM），失败再按 GB18030（Excel 导出常见）。"""
-    data = Path(path).read_bytes()
-    for enc in ("utf-8-sig", "gb18030"):
-        try:
-            return data.decode(enc)
-        except UnicodeDecodeError:
-            continue
-    return data.decode("utf-8", "replace")
-
-
-def _unique_slug(prof: fixprofile.Profile) -> str:
-    """同一合作方的同名字典视为更新（覆盖）；名字不同但文件名撞了就加后缀。"""
-    base = prof.slug or fixprofile.slugify(prof.name) or "profile"
-    existing = {p.slug: p for p in fixprofile.list_profiles()}
-    old = existing.get(base)
-    if old is None or old.name == prof.name:
-        return base
-    i = 2
-    while "{0}-{1}".format(base, i) in existing:
-        i += 1
-    return "{0}-{1}".format(base, i)
-
-
 class FixPanel(QWidget):
     """工具页子页：FIX 报文解析。"""
 
@@ -324,10 +300,14 @@ class FixPanel(QWidget):
         for prof in fixprofile.list_profiles():
             self.dict_combo.addItem(prof.label(), prof.slug)
             idx = self.dict_combo.count() - 1
+            # tooltip 里带上来源文件与更新时间：改版后重新导入过没有，一眼能认
+            bits = [self.tr("{0} 个字段").format(len(prof.fields)), prof.slug]
+            if prof.source:
+                bits.append(Path(prof.source).name)
+            if prof.updated_at:
+                bits.append(prof.updated_at.replace("T", " ")[:16])
             self.dict_combo.setItemData(
-                idx,
-                self.tr("{0} 个字段 · {1}").format(len(prof.fields), prof.slug),
-                Qt.ItemDataRole.ToolTipRole)
+                idx, " · ".join(bits), Qt.ItemDataRole.ToolTipRole)
         pos = self.dict_combo.findData(want) if want else 0
         self.dict_combo.setCurrentIndex(pos if pos >= 0 else 0)
         self.dict_combo.blockSignals(False)
@@ -363,9 +343,12 @@ class FixPanel(QWidget):
 
         解析问题不阻断导入（对方文档常有空行 / 合并单元格），只把问题条数
         写在状态区，用户自己决定要不要回去改文件。
+
+        **同名即更新**：同一家合作方改版后直接把新文件再导一次就行——按名称
+        认人（不看文件名），旧字典被就地覆盖，不会多出 `-2` 副本。
         """
         try:
-            text = _read_text(path)
+            text = fixprofile.read_profile_file(path)
         except OSError as exc:
             self._set_status(self.tr("读取字典失败：{0}").format(exc), "error")
             return False
@@ -383,7 +366,7 @@ class FixPanel(QWidget):
             return False
         if not prof.name or prof.name == prof.slug:
             prof.name = stem
-        prof.slug = _unique_slug(prof)
+        prof.slug, replaced = fixprofile.resolve_slug(prof.name, prof.slug)
         fixprofile.save_profile(prof)
         self._dict_cache = None
         self._refresh_dicts()
@@ -392,8 +375,13 @@ class FixPanel(QWidget):
             self.dict_combo.setCurrentIndex(idx)   # 触发落盘 + 重新解析
         note = (self.tr("，{0} 行无法识别已跳过").format(len(warnings))
                 if warnings else "")
-        self._set_status(self.tr("已导入字典「{0}」：{1} 个字段{2}").format(
-            prof.name, len(prof.fields), note), "ok")
+        if replaced is None:
+            self._set_status(self.tr("已导入字典「{0}」：{1} 个字段{2}").format(
+                prof.name, len(prof.fields), note), "ok")
+        else:
+            self._set_status(self.tr(
+                "已更新字典「{0}」：{1} 个字段（原 {2} 个）{3}").format(
+                    prof.name, len(prof.fields), len(replaced.fields), note), "ok")
         return True
 
     def remove_current_profile(self) -> bool:

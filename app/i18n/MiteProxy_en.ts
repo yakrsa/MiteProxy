@@ -1650,88 +1650,88 @@ Right-click any request in the traffic table to add its host directly.</translat
         <translation>Local date</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="180"/>
+        <location filename="../ui/fix_panel.py" line="156"/>
         <source>解析</source>
         <extracomment>(slug, Dictionary) 缓存：每次按键都读一遍字典文件太浪费</extracomment>
         <translation>Parse</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="181"/>
+        <location filename="../ui/fix_panel.py" line="157"/>
         <source>立即解析输入内容（识别不出 FIX 时也会给出原因）</source>
         <translation>Parse the input now (gives a reason even when FIX is not recognized)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="186"/>
+        <location filename="../ui/fix_panel.py" line="162"/>
         <source>视图:</source>
         <translation>View:</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="188"/>
+        <location filename="../ui/fix_panel.py" line="164"/>
         <source>字段树</source>
         <translation>Field tree</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="189"/>
+        <location filename="../ui/fix_panel.py" line="165"/>
         <source>可读原文</source>
         <translation>Readable raw text</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="195"/>
+        <location filename="../ui/fix_panel.py" line="171"/>
         <source>字典:</source>
         <translation>Dictionary:</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="202"/>
+        <location filename="../ui/fix_panel.py" line="178"/>
         <source>导入 / 删除合作方 FIX 字典</source>
         <translation>Import / remove partner FIX dictionaries</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="206"/>
+        <location filename="../ui/fix_panel.py" line="182"/>
         <source>导入字典文件…</source>
         <translation>Import dictionary file…</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="207"/>
+        <location filename="../ui/fix_panel.py" line="183"/>
         <source>打开字典文件夹</source>
         <translation>Open dictionary folder</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="208"/>
+        <location filename="../ui/fix_panel.py" line="184"/>
         <source>删除当前字典</source>
         <translation>Remove current dictionary</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="210"/>
+        <location filename="../ui/fix_panel.py" line="186"/>
         <source>复制 JSON 模板</source>
         <translation>Copy JSON template</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="212"/>
+        <location filename="../ui/fix_panel.py" line="188"/>
         <source>复制 CSV 模板</source>
         <translation>Copy CSV template</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="217"/>
+        <location filename="../ui/fix_panel.py" line="193"/>
         <source>复制可读原文</source>
         <translation>Copy readable raw text</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="219"/>
+        <location filename="../ui/fix_panel.py" line="195"/>
         <source>按 | 分隔的报文文本复制到剪贴板（SOH 是不可见控制符，直接复制会丢）</source>
         <translation>Copy the message text (| separated) to the clipboard (SOH is an invisible control character; a direct copy would lose it)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="226"/>
+        <location filename="../ui/fix_panel.py" line="202"/>
         <source>清空</source>
         <translation>Clear</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="234"/>
+        <location filename="../ui/fix_panel.py" line="210"/>
         <source>输入</source>
         <translation>Input</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="239"/>
+        <location filename="../ui/fix_panel.py" line="215"/>
         <source>粘贴 FIX 报文，如：
 8=FIX.4.4|9=65|35=D|49=SENDER|56=TARGET|34=1|52=20261023-14:30:00.000|11=ORDER-1|55=000001|54=1|38=100|40=2|44=10.5|59=0|10=160|
 分隔符用 | 或 SOH 均可；一次粘贴多条消息会分别解析</source>
@@ -1740,264 +1740,265 @@ Right-click any request in the traffic table to add its host directly.</translat
 Use | or SOH as separator; pasting multiple messages parses each one</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="252"/>
+        <location filename="../ui/fix_panel.py" line="228"/>
         <source>结果</source>
         <translation>Result</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="323"/>
+        <location filename="../ui/fix_panel.py" line="299"/>
         <source>内置（通用字段）</source>
         <translation>Built-in (standard fields)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="329"/>
-        <source>{0} 个字段 · {1}</source>
-        <translation>{0} fields · {1}</translation>
-    </message>
-    <message>
-        <location filename="../ui/fix_panel.py" line="340"/>
+        <location filename="../ui/fix_panel.py" line="320"/>
         <source>当前用「{0}」字典解析：内置字段照常可用，同名 tag 以该字典为准</source>
-        <translation>Parsing with "{0}": built-in fields stay available, but same-tag definitions follow this dictionary</translation>
+        <translation>Parsing with &quot;{0}&quot;: built-in fields stay available, but same-tag definitions follow this dictionary</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="344"/>
+        <location filename="../ui/fix_panel.py" line="324"/>
         <source>内置字典只含通用字段；导入合作方字典后，对方的私有 tag 才有名字与枚举释义</source>
         <translation>The built-in dictionary covers standard fields only; import a partner dictionary to name their private tags and decode their value enums</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="356"/>
+        <location filename="../ui/fix_panel.py" line="336"/>
         <source>导入合作方 FIX 字典</source>
         <translation>Import partner FIX dictionary</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="357"/>
+        <location filename="../ui/fix_panel.py" line="337"/>
         <source>FIX 字典 (*.json *.csv *.tsv *.txt);;所有文件 (*)</source>
         <translation>FIX dictionary (*.json *.csv *.tsv *.txt);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="370"/>
+        <location filename="../ui/fix_panel.py" line="353"/>
         <source>读取字典失败：{0}</source>
         <translation>Failed to read dictionary: {0}</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="378"/>
+        <location filename="../ui/fix_panel.py" line="361"/>
         <source>格式无法识别</source>
         <translation>Unrecognized format</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="380"/>
+        <location filename="../ui/fix_panel.py" line="363"/>
         <source>导入失败：无法识别字典格式（支持 JSON / CSV / TSV）</source>
         <translation>Import failed: unrecognized dictionary format (JSON / CSV / TSV supported)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="393"/>
+        <location filename="../ui/fix_panel.py" line="376"/>
         <source>，{0} 行无法识别已跳过</source>
         <translation>, {0} rows skipped</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="395"/>
+        <location filename="../ui/fix_panel.py" line="379"/>
         <source>已导入字典「{0}」：{1} 个字段{2}</source>
-        <translation>Imported '{0}': {1} fields{2}</translation>
+        <translation>Imported &apos;{0}&apos;: {1} fields{2}</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="410"/>
+        <location filename="../ui/fix_panel.py" line="383"/>
+        <source>已更新字典「{0}」：{1} 个字段（原 {2} 个）{3}</source>
+        <translation>Updated dictionary &#34;{0}&#34;: {1} fields (was {2}){3}</translation>
+    </message>
+    <message>
+        <location filename="../ui/fix_panel.py" line="398"/>
         <source>已删除字典「{0}」，回到内置字典</source>
-        <translation>Removed '{0}', back to the built-in dictionary</translation>
+        <translation>Removed &apos;{0}&apos;, back to the built-in dictionary</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="411"/>
+        <location filename="../ui/fix_panel.py" line="399"/>
         <source>删除失败：{0}</source>
         <translation>Remove failed: {0}</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="418"/>
+        <location filename="../ui/fix_panel.py" line="406"/>
         <source>当前用的是内置字典，没有可删除的字典</source>
         <translation>The built-in dictionary is active - nothing to remove</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="421"/>
+        <location filename="../ui/fix_panel.py" line="409"/>
         <source>删除字典</source>
         <translation>Remove dictionary</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="422"/>
+        <location filename="../ui/fix_panel.py" line="410"/>
         <source>删除字典「{0}」？字典文件会从磁盘上移除。</source>
-        <translation>Remove dictionary '{0}'? The dictionary file will be deleted from disk.</translation>
+        <translation>Remove dictionary &apos;{0}&apos;? The dictionary file will be deleted from disk.</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="434"/>
+        <location filename="../ui/fix_panel.py" line="422"/>
         <source>模板已复制到剪贴板：按对方文档填好字段，另存为 .json / .csv 后用「导入字典文件…」导入</source>
-        <translation>Template copied to clipboard: fill in the fields from the partner's spec, save as .json / .csv, then use "Import dictionary file…"</translation>
+        <translation>Template copied to clipboard: fill in the fields from the partner&apos;s spec, save as .json / .csv, then use &quot;Import dictionary file…&quot;</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="520"/>
+        <location filename="../ui/fix_panel.py" line="508"/>
         <source>标签</source>
         <translation>Tag</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="520"/>
+        <location filename="../ui/fix_panel.py" line="508"/>
         <source>字段</source>
         <translation>Field</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="520"/>
+        <location filename="../ui/fix_panel.py" line="508"/>
         <source>值</source>
         <translation>Value</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="520"/>
+        <location filename="../ui/fix_panel.py" line="508"/>
         <source>注释</source>
         <translation>Description</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="451"/>
+        <location filename="../ui/fix_panel.py" line="439"/>
         <source>未识别为 FIX 报文（需以 8=FIX 开头，且含 8/9/35 字段）</source>
         <translation>Not recognized as a FIX message (must start with 8=FIX and contain fields 8/9/35)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="468"/>
+        <location filename="../ui/fix_panel.py" line="456"/>
         <source>未解析出任何字段——请检查输入是否以 8=FIX 开头</source>
         <translation>No fields parsed - check that the input starts with 8=FIX</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="492"/>
+        <location filename="../ui/fix_panel.py" line="480"/>
         <source>共 {0} 条消息</source>
         <translation>{0} messages</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="559"/>
+        <location filename="../ui/fix_panel.py" line="547"/>
         <source>BodyLength ✓</source>
         <translation>BodyLength OK</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="561"/>
+        <location filename="../ui/fix_panel.py" line="549"/>
         <source>BodyLength ✗（声明 {0} / 实际 {1}）</source>
         <translation>BodyLength mismatch (declared {0} / actual {1})</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="564"/>
+        <location filename="../ui/fix_panel.py" line="552"/>
         <source>CheckSum 未校验（| 分隔输入）</source>
         <translation>CheckSum not verified (| separated input)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="566"/>
+        <location filename="../ui/fix_panel.py" line="554"/>
         <source>CheckSum ✓</source>
         <translation>CheckSum OK</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="568"/>
+        <location filename="../ui/fix_panel.py" line="556"/>
         <source>CheckSum ✗（声明 {0} / 实际 {1}）</source>
         <translation>CheckSum mismatch (declared {0} / actual {1})</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="557"/>
-        <location filename="../ui/fix_panel.py" line="626"/>
+        <location filename="../ui/fix_panel.py" line="304"/>
+        <location filename="../ui/fix_panel.py" line="545"/>
+        <location filename="../ui/fix_panel.py" line="614"/>
         <source>{0} 个字段</source>
         <translation>{0} fields</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="554"/>
+        <location filename="../ui/fix_panel.py" line="542"/>
         <source>SeqNum {0}</source>
         <translation>SeqNum {0}</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="617"/>
+        <location filename="../ui/fix_panel.py" line="605"/>
         <source>{0} 个实例</source>
         <translation>{0} instances</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="612"/>
+        <location filename="../ui/fix_panel.py" line="600"/>
         <source>重复组 · 解析出 {0} 个实例</source>
         <translation>Repeating group - {0} instances parsed</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="620"/>
-        <location filename="../ui/fix_panel.py" line="662"/>
+        <location filename="../ui/fix_panel.py" line="608"/>
+        <location filename="../ui/fix_panel.py" line="650"/>
         <source>tag {0}</source>
         <translation>tag {0}</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="625"/>
+        <location filename="../ui/fix_panel.py" line="613"/>
         <source>实例 {0}</source>
         <translation>Instance {0}</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="639"/>
+        <location filename="../ui/fix_panel.py" line="627"/>
         <source>重复组引导字段（该组未收录，后续字段平铺）</source>
         <translation>Repeating group leading field (group not listed; following fields are flattened)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="646"/>
+        <location filename="../ui/fix_panel.py" line="634"/>
         <source>消息体字节数（10 字段之前的长度）</source>
         <translation>Message body byte count (length before field 10)</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="648"/>
+        <location filename="../ui/fix_panel.py" line="636"/>
         <source>前三段字节累加 mod 256</source>
         <translation>Sum of the first three sections&apos; bytes mod 256</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="650"/>
+        <location filename="../ui/fix_panel.py" line="638"/>
         <source>未收录字段</source>
         <translation>Unlisted field</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="655"/>
+        <location filename="../ui/fix_panel.py" line="643"/>
         <source>私有扩展 tag（FIX 规范 5000 起为用户自定义），字典未收录</source>
         <translation>Private extension tag (FIX reserves 5000+ for user-defined fields); not in the dictionary</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="657"/>
+        <location filename="../ui/fix_panel.py" line="645"/>
         <source>字典未收录该 tag</source>
         <translation>Tag not in the dictionary</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="683"/>
+        <location filename="../ui/fix_panel.py" line="671"/>
         <source>暂无可复制的内容</source>
         <translation>Nothing to copy</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="687"/>
+        <location filename="../ui/fix_panel.py" line="675"/>
         <source>已复制 {0} 条消息的可读原文（| 分隔）到剪贴板</source>
         <translation>Copied readable raw text of {0} messages (| separated) to the clipboard</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="726"/>
+        <location filename="../ui/fix_panel.py" line="714"/>
         <source>{0} 字符 / {1} 字节</source>
         <translation>{0} chars / {1} bytes</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="261"/>
+        <location filename="../ui/fix_panel.py" line="237"/>
         <source>跳到第一个有校验问题的消息</source>
         <translation>Jump to the first message with a validation error</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="475"/>
+        <location filename="../ui/fix_panel.py" line="463"/>
         <source>✗ {0}</source>
         <translation>✗ {0}</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="494"/>
+        <location filename="../ui/fix_panel.py" line="482"/>
         <source>显示前 {0} 条</source>
         <translation>Showing first {0}</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="498"/>
+        <location filename="../ui/fix_panel.py" line="486"/>
         <source> 等 {0} 条</source>
         <translation> and {0} more</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="499"/>
+        <location filename="../ui/fix_panel.py" line="487"/>
         <source>{0} 条有问题（{1}{2}）</source>
         <translation>{0} message(s) with issues ({1}{2})</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="508"/>
+        <location filename="../ui/fix_panel.py" line="496"/>
         <source>问题：{0}</source>
         <translation>Issues: {0}</translation>
     </message>
     <message>
-        <location filename="../ui/fix_panel.py" line="510"/>
+        <location filename="../ui/fix_panel.py" line="498"/>
         <source>内容超限已截断</source>
         <translation>Input exceeded limits and was truncated</translation>
     </message>
