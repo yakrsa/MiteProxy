@@ -1,8 +1,12 @@
 {
-  "version": "2.7.2",
-  "published_at": "2026-10-24T16:00:00+08:00",
+  "version": "3.0.0",
+  "published_at": "2026-10-27T17:00:00+08:00",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
+    {
+      "zh": "新增页签拖出浮窗能力：NavRail 按钮和工具子页可按住拖到独立窗口，收回原位还原；详情面板也可拖出",
+      "en": "Detachable panels: drag NavRail buttons or tool sub-tabs to pop out floating windows; detail panel also supports detach"
+    },
     {
       "zh": "新增 FIX 协议解析工具页（Ctrl+Shift+F）：粘贴报文自动解析成树形表格，字段名与枚举释义、重复组可折叠，自带 BodyLength/CheckSum 校验，多条消息按 tab 分列、错误标红；支持导入各合作方的私有字段字典（协议说明整理成 CSV/JSON，PDF/Word 表格贴进 Excel 另存 CSV 也认），私有 tag 自动显示成业务字段名与枚举释义",
       "en": "New FIX parser tool page (Ctrl+Shift+F): paste raw FIX and get a tree table with field names, enum explanations and collapsible repeat groups, built-in BodyLength/CheckSum validation, and one tab per message with failures flagged in red. Partner dictionaries are supported too: import a private-field spec as CSV/JSON (a table copied from PDF/Word into Excel and saved as CSV works), and private tags are decoded into business field names and enum meanings"
