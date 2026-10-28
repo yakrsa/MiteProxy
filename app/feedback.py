@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import sys
 from pathlib import Path
 
@@ -106,11 +107,11 @@ def build_issue_title(nickname: str, title: str) -> str:
     return f"[{nick}] {t}" if nick else t
 
 
-def payload(title: str, body: str) -> dict:
+def payload(title: str, body: str, labels: list[str] | None = None) -> dict:
     return {
         "title": (title or "").strip()[:200],
         "body": body,
-        "labels": ["feedback"],
+        "labels": list(labels) if labels else ["feedback"],
     }
 
 
@@ -158,3 +159,149 @@ def parse_issue_response(status: int, raw: bytes, err: str = "") -> tuple[bool, 
             pass
         return True, QCoreApplication.translate("feedback", "反馈已提交，感谢！"), url
     return False, describe_result(status, err), ""
+
+
+# ---------------------------------------------------------------- 崩溃报告脱敏
+
+#: 需要整行抹掉的敏感头。代理抓包日志里出现 Authorization / Cookie 是常态，
+#: 而这两个头一旦泄露就等于泄露了用户的登录态。
+_SECRET_HEADERS = (
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "set-cookie",
+    "x-api-key",
+    "x-auth-token",
+    "x-csrf-token",
+)
+
+#: 同一条 URL 里出现这些参数名时，整个 query 都不留（宁可少给信息）。
+#: 两个坑都要避开：① 只匹配参数名、不匹配值，替换后值还挂在后面，等于没脱敏；
+#: ② 用 ``\btoken`` 匹配不到 ``access_token``——下划线也是单词字符，没有边界。
+#: 所以这里带上前缀一起匹配，整体替换。
+_SECRET_QUERY_HINT = re.compile(
+    r"(?i)([A-Za-z0-9_\-]*(?:access_token|refresh_token|token|secret|password|"
+    r"passwd|pwd|sessionid|session|cookie|authorization|auth|signature|"
+    r"access_key|api_key|apikey|ticket|credential))"
+    r"(\s*=\s*)([^\s&\"'<>;,)]+)"
+)
+
+_RE_HEADER_LINE = re.compile(
+    r"(?im)^(\s*(?:" + "|".join(_SECRET_HEADERS) + r")\s*[:=]\s*)(.*)$"
+)
+_RE_URL = re.compile(r"(?i)\b(https?://[^\s?#\"'<>]+)(\?[^\s#\"'<>]*)?")
+
+
+def redact(text: str, keep_urls: bool = False) -> str:
+    """把诊断文本里的凭据抹掉再上报。
+
+    ``keep_urls=False``（默认）时连 URL 的 query 一起抹掉——抓包日志里的
+    query 常常带 ``access_token`` / 会话票据，而 path 本身通常不足以定位问题。
+    ``keep_urls=True`` 时保留 host 与 path（协议、域名、接口路径对排查有用），
+    仅抹掉 query；用于用户明确勾选「包含请求地址」的场景。
+
+    这段代码跑在上报前，宁可抹多不可漏——漏一个 token 的代价远大于丢一点线索。
+    """
+    if not text:
+        return ""
+
+    out = _RE_HEADER_LINE.sub(lambda m: f"{m.group(1)}<已脱敏>", text)
+
+    def _url(match: re.Match) -> str:
+        base, query = match.group(1), match.group(2) or ""
+        if not query:
+            return base
+        if keep_urls:
+            # 保留参数名与个数，值一律不给：既说明"带了 3 个参数"，又不泄露值
+            names = [part.split("=", 1)[0] for part in query[1:].split("&") if part]
+            masked = "&".join(f"{n}=<已脱敏>" for n in names)
+            return f"{base}?{masked}"
+        return f"{base}?<已脱敏>"
+
+    out = _RE_URL.sub(_url, out)
+    # 无条件再跑一遍：keep_urls 模式放过了 URL，但日志里还可能有被拆行的
+    # 裸参数（如 traceback 里带出的 access_token=…），那些同样要抹。
+    out = _SECRET_QUERY_HINT.sub(
+        lambda m: f"{m.group(1)}{m.group(2)}<已脱敏>", out
+    )
+    return out
+
+
+def build_crash_body(summary: dict, diagnostics: str = "",
+                     include_actions: bool = True,
+                     include_urls: bool = False) -> str:
+    """组装崩溃报告 issue 正文。
+
+    分层组织：结论（何时、什么类型）在最上，诊断信息其次，最容易污染视线的
+    栈与操作轨迹收进折叠块——既保证信息完整，又不让维护者一打开就看到几百行日志。
+    """
+    detected = summary.get("detected_at", "未知")
+    started = summary.get("started_at", "")
+    version = summary.get("version", "未知")
+    excerpt = redact(summary.get("excerpt", ""), keep_urls=include_urls)
+    hang = redact(summary.get("hang", ""), keep_urls=include_urls)
+    actions = summary.get("actions") or []
+
+    kinds = []
+    if excerpt.strip():
+        kinds.append("崩溃")
+    if hang.strip():
+        kinds.append("界面卡死")
+    kind_text = " / ".join(kinds) or "非正常退出"
+
+    lines = [
+        f"**类型**：{kind_text}",
+        f"**检测到的时间**：{detected}",
+        f"**上个进程启动于**：{started or '未知'}",
+        f"**程序版本**：v{version}",
+    ]
+
+    diag = (diagnostics or "").strip()
+    if diag:
+        lines += ["", "---", "", "**诊断信息（自动生成）**", "", "```text", diag, "```"]
+
+    if excerpt.strip():
+        lines += [
+            "", "<details><summary>崩溃栈与 Qt 消息（crash.log）</summary>",
+            "", "```text", excerpt, "```", "", "</details>",
+        ]
+    if hang.strip():
+        lines += [
+            "", "<details><summary>卡死采样（hang.log）</summary>",
+            "", "```text", hang, "```", "", "</details>",
+        ]
+    if include_actions and actions:
+        shown = [redact(a, keep_urls=include_urls) for a in actions]
+        lines += [
+            "", "<details><summary>最近操作（actions.log）</summary>",
+            "", "```text", "\n".join(shown), "```", "", "</details>",
+        ]
+
+    lines += [
+        "", "<!-- 由 MiteProxy 崩溃诊断上报自动生成 -->",
+    ]
+    return "\n".join(lines)
+
+
+def crash_issue_title(summary: dict) -> str:
+    """标题自动带上版本与类型，方便按版本聚类同一问题。"""
+    version = summary.get("version", "?")
+    parts = []
+    if (summary.get("excerpt") or "").strip():
+        # 优先用栈里最有用的一行：异常类型/故障模块比时间戳有价值得多
+        for line in (summary["excerpt"] or "").splitlines():
+            low = line.strip()
+            if not low:
+                continue
+            if ("fatal exception" in low.lower()
+                    or low.endswith("Error")
+                    or "Exception" in low
+                    or "0x" in low and "exception" in low.lower()):
+                parts.append(low[:90])
+                break
+    if (summary.get("hang") or "").strip():
+        parts.append("界面卡死")
+    elif parts:
+        parts.append("崩溃")
+    detail = " · ".join(parts) or "非正常退出"
+    return f"[自动上报] v{version} {detail}"[:200]

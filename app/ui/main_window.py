@@ -1286,6 +1286,9 @@ class MainWindow(QMainWindow):
         feedback_action = QAction(self.tr("意见反馈…"), self)
         feedback_action.triggered.connect(self._show_feedback)
         menu.addAction(feedback_action)
+        crash_action = QAction(self.tr("发送崩溃诊断报告…"), self)
+        crash_action.triggered.connect(self._show_crash_report)
+        menu.addAction(crash_action)
         about = QAction(self.tr("关于"), self)
         about.triggered.connect(self._show_about)
         menu.addAction(about)
@@ -2224,12 +2227,37 @@ class MainWindow(QMainWindow):
 
     def _open_flow_detail(self, flow) -> None:
         """给定一条 flow，弹出上下结构的请求/响应详情对话框（双击/右键共用）。"""
+        import time
+
+        from app import crashreport
         from app.ui.flow_detail_dialog import FlowDetailDialog
 
-        dlg = FlowDetailDialog(
-            flow, self, wrap_default=self.settings.body_wrap
+        req = getattr(flow, "request", None)
+        res = getattr(flow, "response", None)
+        # 记一条轨迹：崩溃时凭它就能还原「当时点开的是哪条、两个 body 各多大」。
+        # 本次 Windows 崩溃最难查的一环正在于此——大 body 会走流式渲染，
+        # 而 crash.log 里的栈本身不带任何业务上下文。
+        crashreport.note(
+            "open_detail",
+            "{} {} | req={}B resp={}B".format(
+                getattr(req, "method", "-"),
+                getattr(req, "pretty_url", "-"),
+                len(getattr(req, "raw_content", b"") or b""),
+                len(getattr(res, "raw_content", b"") or b""),
+            ),
         )
-        dlg.exec()
+        started = time.monotonic()
+        try:
+            dlg = FlowDetailDialog(
+                flow, self, wrap_default=self.settings.body_wrap
+            )
+            dlg.exec()
+        finally:
+            # exec() 返回后对话框可能已被 WA_DeleteOnClose 销毁，这里只碰局部
+            # 计时变量，绝不访问 dlg（否则会拿到 RuntimeError）。
+            crashreport.note(
+                "close_detail", f"elapsed={time.monotonic() - started:.2f}s"
+            )
 
     # ================================================================ 过滤 / 搜索
 
@@ -3856,6 +3884,53 @@ class MainWindow(QMainWindow):
         from app.ui.feedback_dialog import FeedbackDialog
 
         FeedbackDialog(self).exec()
+
+    # ================================================================ 崩溃诊断上报
+
+    def _maybe_report_crash(self) -> None:
+        """启动时若发现上次异常退出，询问用户是否上报诊断报告。
+
+        只在「上次没走完退出流程」且「本次还没提示过」时弹一次：同一份崩溃
+        反复弹窗只会惹人烦，而摘要会一直留在本地，随时可从帮助菜单补发。
+        """
+        if not getattr(self.settings, "crash_report_prompt", True):
+            return
+        try:
+            from app import crashreport
+
+            summary = crashreport.pending_crash()
+        except Exception:                # noqa: BLE001 - 取证失败不该拦住启动
+            log.exception("读取崩溃摘要失败")
+            return
+        if not summary or summary.get("prompted"):
+            return
+        self._open_crash_report(summary)
+
+    def _show_crash_report(self) -> None:
+        """帮助菜单手动入口：没有待上报摘要时就地采集当前运行证据。"""
+        from app import crashreport
+
+        summary = crashreport.pending_crash() or crashreport.build_summary()
+        if not (summary.get("excerpt") or summary.get("hang")):
+            dialogs.information(
+                self,
+                self.tr("暂无诊断信息"),
+                self.tr("本地还没有崩溃或卡死记录，暂时没有可发送的内容。"),
+            )
+            return
+        self._open_crash_report(summary)
+
+    def _open_crash_report(self, summary: dict) -> None:
+        from app.ui.crash_dialog import CrashReportDialog
+
+        dlg = CrashReportDialog(summary, self)
+        dlg.mute_requested.connect(self._on_crash_report_muted)
+        dlg.exec()
+
+    def _on_crash_report_muted(self) -> None:
+        """用户点「不再提示」：落盘偏好，下次启动不再弹（仍可手动补发）。"""
+        self.settings.crash_report_prompt = False
+        save_settings(self.settings)
 
     # ================================================================ 更新检测
 

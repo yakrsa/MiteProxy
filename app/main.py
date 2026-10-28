@@ -69,69 +69,37 @@ def _setup_file_logging() -> None:
 
 
 def _setup_crash_handlers() -> None:
-    """崩溃取证：段错误栈 / 未捕获异常 / Qt 致命消息统一写进 crash.log。
+    """崩溃取证：段错误栈 / 未捕获异常 / Qt 致命消息 / 操作轨迹。
 
-    打包成 GUI exe（Windows ``console=False``）后 stderr 无处可去，进程一崩就
-    彻底失声——既没有 traceback，也没留下任何线索，事后只能靠猜。这里兜三条路：
-
-    1. ``faulthandler``：段错误（SIGSEGV）等「进程直接消失」时，由解释器把当前
-       各线程的 Python 栈吐出来。``all_threads=True`` 是必需的——崩溃未必发生在
-       主线程，mitmproxy 的抓取线程同样值得看。
-    2. ``sys.excepthook``：槽函数里抛出的异常默认只往 stderr 打一行（有时被
-       PySide6 直接吞掉），写盘才留得住；写完后交回原 hook，控制台行为不变。
-    3. Qt 消息处理器：Qt 自身的 WARNING/CRITICAL/FATAL（非法 QModelIndex、跨线程
-       碰 GUI 等）往往是崩溃前兆，一并留证。Debug/Info 量太大，会淹没证据，跳过。
-
-    追加写、不做滚动：历史崩溃栈是唯一证据，被新日志覆盖就得再崩一次才能重来。
-    只有真崩溃才写，量很小（一次几十 KB），不像普通日志会膨胀。
+    具体实现见 :mod:`app.crashreport`（含后台线程钩子、启动环境快照与
+    非正常退出检测）。这里只做入口，保持启动流程可读。
     """
-    import faulthandler
-    import traceback
-    from datetime import datetime
-
-    from app.ui.log_panel import get_log_path
-
-    path = get_log_path().parent / "crash.log"
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        stream = path.open("a", encoding="utf-8", errors="replace")
-    except OSError:
-        return                       # 连日志目录都开不了，取证无门但不该拖垮启动
+        from app import crashreport
 
-    stream.write(f"\n===== MiteProxy 启动 {datetime.now():%Y-%m-%d %H:%M:%S} =====\n")
-    stream.flush()
-    faulthandler.enable(file=stream, all_threads=True)
+        crashreport.install()
+    except Exception:                # pragma: no cover - 取证失败不该阻止启动
+        logging.getLogger(__name__).exception("崩溃取证初始化失败")
 
-    original_hook = sys.excepthook
 
-    def _on_uncaught(exc_type, exc, tb) -> None:
-        stream.write(f"\n----- 未捕获异常 {datetime.now():%H:%M:%S} -----\n")
-        traceback.print_exception(exc_type, exc, tb, file=stream)
-        stream.flush()
-        original_hook(exc_type, exc, tb)
+def _start_hang_watch(app: QApplication) -> None:
+    """启动界面卡死检测：主线程每 250ms 打心跳，看门狗线程负责判超时。
 
-    sys.excepthook = _on_uncaught
-
+    心跳必须由**主线程的定时器**来打：主线程一旦卡住，定时器就停跳，
+    看门狗据此判定。这条链路的意义在于——卡死时进程还活着，``faulthandler``
+    不会触发，常规异常钩子也不会触发，只有第三方线程才可能察觉。
+    """
     try:
-        from PySide6.QtCore import QtMsgType, qInstallMessageHandler
+        from app import crashreport
 
-        levels = {
-            QtMsgType.QtCriticalMsg: "CRITICAL",
-            QtMsgType.QtFatalMsg: "FATAL",
-            QtMsgType.QtWarningMsg: "WARNING",
-        }
-
-        def _on_qt_message(mode, context, message) -> None:
-            level = levels.get(mode)
-            if level is None:        # Debug/Info 不写，避免淹没真正的证据
-                return
-            where = f" ({context.file}:{context.line})" if context.file else ""
-            stream.write(f"[Qt {level}]{where} {message}\n")
-            stream.flush()
-
-        qInstallMessageHandler(_on_qt_message)
-    except Exception:                # pragma: no cover - 不影响取证主路径
-        pass
+        beat = QTimer(app)            # 挂在 app 上，避免被回收导致心跳停跳
+        beat.setInterval(250)
+        beat.timeout.connect(crashreport.beat)
+        beat.start()
+        crashreport.beat()
+        crashreport.start_watchdog()
+    except Exception:                # pragma: no cover - 看门狗失败不影响抓包
+        logging.getLogger(__name__).exception("卡死看门狗启动失败")
 
 
 def main() -> int:
@@ -147,6 +115,9 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("MiteProxy")
     app.setWindowIcon(_app_icon())
+    # 界面卡死看门狗（主线程心跳 + 后台超时判栈）。越早装越好：启动阶段的
+    # 卡死同样要能留下证据。宽限期由 crashreport 内部给，不会误报。
+    _start_hang_watch(app)
 
     # 国际化：按设置的语言装好翻译器。中文是源语言（源码文案即中文），
     # 不装翻译器即显示中文；英文等需 MiteProxy_<lang>.qm 覆盖。
@@ -177,11 +148,18 @@ def main() -> int:
     window = MainWindow()
     window.show()
     window.start_proxy(verify=True)      # 启动即开代理（对齐 Fiddler 打开即抓包）
-    # 「恢复上次会话」弹窗排在端口变更弹窗之后：start_proxy 里的端口弹窗是
-    # 同步模态（在 app.exec() 之前就弹并等用户关掉），这里再排程会话弹窗，
-    # 事件循环启动后才会处理，保证端口弹窗第一个弹出、会话弹窗在其后。
+
+    def _after_startup_prompts() -> None:
+        """启动弹窗排队：先「恢复上次会话」，再「上次异常退出，是否上报」。
+
+        两者都是模态框，必须串行——并行排队会让第二个叠在第一个上面。
+        端口变更弹窗由 start_proxy 同步弹出，天然排在最前。
+        """
+        window._maybe_restore_autosave()
+        window._maybe_report_crash()
+
     if window.restore_prompt:
-        QTimer.singleShot(0, window._maybe_restore_autosave)
+        QTimer.singleShot(0, _after_startup_prompts)
     app.aboutToQuit.connect(window.stop_proxy)
 
     # 主窗口就绪后再接收后续实例的唤醒请求（把它带到前台）
@@ -193,6 +171,18 @@ def main() -> int:
     single_instance.start_wake_listener(_raise_window)
 
     rc = app.exec()
+    # 正常退出：删掉运行标记。下次启动若发现标记还在，说明这次没走完退出
+    # 流程（崩溃/被杀），crash.log 会据此记一笔，不必等用户回想「哪次崩的」。
+    try:
+        from app import crashreport
+
+        # 先停看门狗：关窗期间主线程要收尾，心跳会短暂停跳，
+        # 不停的话每次正常退出都会在 hang.log 里留一条假卡死。
+        crashreport.stop_watchdog()
+        crashreport.note("app_exit", f"rc={rc}")
+        crashreport.mark_clean_exit()
+    except Exception:                # pragma: no cover
+        pass
     single_instance.release()    # 正常退出释放锁（崩溃场景由探活逻辑兜底）
     return rc
 

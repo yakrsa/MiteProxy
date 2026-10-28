@@ -160,6 +160,10 @@ class Settings:
     #: 左侧导航栏是否被钉住（钉住 = 常驻展开，不随鼠标移开收起）。
     #: 默认 False：默认收起给内容区让版面，想常驻的自己钉一下。
     nav_rail_pinned: bool = False
+    #: 启动时若发现上次异常退出，是否弹窗询问「是否发送诊断报告」。
+    #: 默认 True（默认愿意帮我们定位问题）；用户点「不再提示」后置 False，
+    #: 摘要仍保留在本地，可从菜单手动补发。
+    crash_report_prompt: bool = True
 
     def to_dict(self) -> dict:
         return {
@@ -202,6 +206,7 @@ class Settings:
             ),
             "hidden_columns": list(self.hidden_columns),
             "scripts": dict(self.scripts),
+            "crash_report_prompt": self.crash_report_prompt,
         }
 
     @classmethod
@@ -253,6 +258,7 @@ class Settings:
             hidden_columns=cls._sanitize_columns(data.get("hidden_columns")),
             scripts=cls._sanitize_scripts(data.get("scripts")),
             nav_rail_pinned=bool(data.get("nav_rail_pinned", False)),
+            crash_report_prompt=bool(data.get("crash_report_prompt", True)),
         )
 
     @staticmethod

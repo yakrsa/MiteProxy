@@ -247,3 +247,102 @@ class TestMenuEntry:
         assert help_menu is not None
         texts = [a.text() for a in help_menu.actions() if a.text()]
         assert "意见反馈…" in texts
+
+
+# ---------------------------------------------------------------- 崩溃报告脱敏
+
+class TestRedact:
+    """脱敏是上报的前置条件：漏一个 token 就等于把用户登录态公开到 issue 里。"""
+
+    def test_masks_authorization_header(self):
+        out = fb.redact("Authorization: Bearer abc123\nHost: a.com")
+        assert "Bearer abc123" not in out
+        assert "Host: a.com" in out
+
+    def test_masks_cookie_header(self):
+        out = fb.redact("Cookie: SESSION=deadbeef; uid=1")
+        assert "deadbeef" not in out
+
+    def test_masks_url_query_by_default(self):
+        out = fb.redact("GET https://a.com/api?id=12&token=xyz HTTP/1.1")
+        assert "xyz" not in out
+        assert "id=12" not in out          # query 整体抹掉，不留参数
+        assert "https://a.com/api" in out  # path 保留，便于定位接口
+
+    def test_keeps_param_names_when_asked(self):
+        out = fb.redact("GET https://a.com/api?id=12&token=xyz", keep_urls=True)
+        assert "xyz" not in out
+        assert "id=<已脱敏>" in out
+        assert "token=<已脱敏>" in out
+        assert "https://a.com/api" in out
+
+    def test_masks_bare_secret_params_in_log_body(self):
+        """``access_token`` 这类带前缀的参数曾漏网：``\\btoken`` 匹配不到下划线连接。"""
+        out = fb.redact("access_token=zzz999 and refresh_token=aaa111")
+        assert "zzz999" not in out
+        assert "aaa111" not in out
+
+    def test_leaves_innocent_params_alone(self):
+        out = fb.redact("max_tokens=100 status=404")
+        assert "max_tokens=100" in out
+        assert "status=404" in out
+
+    def test_handles_empty_input(self):
+        assert fb.redact("") == ""
+        assert fb.redact(None) == ""
+
+    def test_idempotent(self):
+        once = fb.redact("Authorization: Bearer abc")
+        assert fb.redact(once) == once
+
+
+# ---------------------------------------------------------------- 崩溃正文
+
+SUMMARY = {
+    "detected_at": "2026-10-29T00:40:00",
+    "started_at": "启动于 2026-10-28 20:40:11 pid=4321",
+    "version": "3.0.1",
+    "excerpt": "Windows fatal exception: access violation",
+    "hang": "=== 界面卡死 20:42:10 ===",
+    "actions": ["20:42:58 open_detail | GET https://a.com/x?token=SECRET 8MB"],
+}
+
+
+class TestCrashBody:
+    def test_body_lists_summary_fields(self):
+        body = fb.build_crash_body(SUMMARY, "版本: 3.0.1")
+        assert "崩溃" in body and "界面卡死" in body
+        assert "2026-10-29T00:40:00" in body
+        assert "pid=4321" in body
+        assert "v3.0.1" in body
+
+    def test_body_hides_token_from_actions(self):
+        body = fb.build_crash_body(SUMMARY, "")
+        assert "SECRET" not in body
+        assert "<已脱敏>" in body
+
+    def test_body_can_omit_actions(self):
+        body = fb.build_crash_body(SUMMARY, "", include_actions=False)
+        assert "最近操作" not in body
+        assert "open_detail" not in body
+
+    def test_body_wraps_evidence_in_details(self):
+        body = fb.build_crash_body(SUMMARY, "")
+        assert "<details>" in body
+        assert "崩溃栈与 Qt 消息" in body
+
+    def test_title_uses_version_and_exception(self):
+        title = fb.crash_issue_title(SUMMARY)
+        assert "v3.0.1" in title
+        assert "access violation" in title.lower()
+        assert title.startswith("[自动上报]")
+
+    def test_title_survives_missing_fields(self):
+        assert fb.crash_issue_title({}).startswith("[自动上报]")
+
+    def test_payload_accepts_custom_labels(self):
+        p = fb.payload("t", "b", labels=["bug"])
+        assert p["labels"] == ["bug"]
+
+    def test_payload_defaults_to_feedback_label(self):
+        assert fb.payload("t", "b")["labels"] == ["feedback"]

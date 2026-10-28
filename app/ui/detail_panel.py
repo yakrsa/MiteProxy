@@ -685,6 +685,14 @@ class BodyPane(QWidget):
         self._stream_text = text
         self._stream_pos = RENDER_TEXT_LIMIT
         self._stream_active = True
+        # 大文本流式渲染是崩溃高危路径（分块 insertText + 反复排版，内存与栈
+        # 都可能被撑爆）。只在跨过 1MB 阈值时记轨迹，低频但恰好覆盖嫌疑场景。
+        try:
+            from app import crashreport
+
+            crashreport.note("body_stream_start", f"{len(text) / 1048576:.2f}MB")
+        except Exception:             # noqa: BLE001 - 取证不该影响渲染
+            pass
         self.body_view.setPlainText(text[:RENDER_TEXT_LIMIT])
         # 流式期间锁 NoWrap：appendPlainText 时开着 WidgetWidth 会让每一块
         # 都触发全文重排（几百 ms/块），加载完再按用户意图恢复换行。
@@ -1095,6 +1103,13 @@ class RawPane(QWidget):
         self._full = full
         self._pos = RENDER_TEXT_LIMIT
         self._active = True
+        # 与 BodyPane 同理：原始报文页的大文本流式同样是高危路径，留一条轨迹。
+        try:
+            from app import crashreport
+
+            crashreport.note("raw_stream_start", f"{len(full) / 1048576:.2f}MB")
+        except Exception:             # noqa: BLE001
+            pass
         self.text.setPlainText(full[:RENDER_TEXT_LIMIT])
         self.text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self._timer.start()

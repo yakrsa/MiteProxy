@@ -42,6 +42,25 @@ class TestGeometryRoundtrip:
         assert settings_mod.Settings.from_dict({}).window_geometry is None
 
 
+class TestCrashReportPromptSetting:
+    """「不再提示崩溃上报」是用户偏好，必须能存下来、也要能默认打开。"""
+
+    def test_defaults_to_enabled(self):
+        assert settings_mod.Settings.from_dict({}).crash_report_prompt is True
+
+    def test_roundtrip(self, tmp_path, monkeypatch):
+        path = tmp_path / "settings.json"
+        monkeypatch.setattr(settings_mod, "SETTINGS_PATH", path)
+        settings_mod.save_settings(settings_mod.Settings(crash_report_prompt=False))
+        assert settings_mod.load_settings().crash_report_prompt is False
+
+    def test_missing_key_keeps_prompt(self):
+        """老版本 settings.json 没有这个键，升级后不能变成不提示。"""
+        assert settings_mod.Settings.from_dict(
+            {"proxy_port": 8888}
+        ).crash_report_prompt is True
+
+
 class TestStreamingRawContent:
     def test_summarize_with_none_raw_content(self):
         """流式响应 raw_content=None 时 summarize 不能抛 TypeError 丢行。"""

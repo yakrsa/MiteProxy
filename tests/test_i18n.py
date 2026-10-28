@@ -129,9 +129,13 @@ class TestTranslationCoverage:
     #: - fixdict.py：FIX 字段字典，中文注释是数据不是界面文案（同 rules.py）
     #: - fixprofile.py：FIX 字典导入的解析诊断（哪行不是数字 / JSON 哪儿错），
     #:   属于数据层文本：界面只显示条数 + 通用提示，原文放 tooltip
-    #: - feedback.py issue 正文 / theme.py QSS：分别面向开发者、是代码
+    #: - feedback.py：GitHub issue 正文 / 诊断信息 / 崩溃报告，面向开发者的
+    #:   纯文本，不进界面（界面提示都走 QCoreApplication.translate）。
+    #:   整文件豁免而非逐行：这类正文随时会增删，逐行号维护必然漂移
+    #: - crashreport.py：崩溃取证写盘文本（日志、环境快照、运行标记），
+    #:   只在本地日志里给排查者看，不进界面、不随语言切换
     _EXEMPT_FILES = {"app/ui/dialogs.py", "app/certserver.py", "app/fixdict.py",
-                     "app/fixprofile.py"}
+                     "app/fixprofile.py", "app/crashreport.py", "app/feedback.py"}
     _EXEMPT_LINES = {
         # flow_store COLUMNS：中文列头走 column_labels() 懒翻译；#6 新增 3 个
         # 可选列（内容类型/开始时刻/备注）追加在末尾，整段都豁免
@@ -160,7 +164,10 @@ class TestTranslationCoverage:
         log_calls = ("debug", "info", "warning", "error", "exception", "critical")
         leftover = []
         for path in sorted(Path("app").rglob("*.py")):
-            rel = str(path)
+            # 必须用 POSIX 分隔符：_EXEMPT_FILES / _EXEMPT_LINES 都按 "app/ui/x.py"
+            # 书写，而 Windows 上 str(Path) 给的是 "app\ui\x.py"，直接比较的话
+            # 整套豁免规则在 Windows 上形同虚设（会误报一堆本该豁免的行）。
+            rel = path.as_posix()
             if "i18n" in rel or rel in TestTranslationCoverage._EXEMPT_FILES:
                 continue
             src = path.read_text(encoding="utf-8")

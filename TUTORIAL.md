@@ -315,7 +315,47 @@ JWT 解码、时间戳互转、MD5 / SHA。「结果转为输入」可连续解�
 | `~/.miteproxy/settings.json` | 本机设置（端口、弱网、映射、窗口位置等） |
 | `~/.miteproxy/sessions/` | 会话文件默认目录 |
 | `~/.miteproxy/last-session.jsonl` | 退出自动快照 |
+| `~/.miteproxy/logs/miteproxy.log` | 运行日志（2MB 滚动，保留 4 份） |
+| `~/.miteproxy/logs/crash.log` | 崩溃现场（不滚动，永久保留） |
+| `~/.miteproxy/logs/hang.log` | 界面卡死现场（主线程栈采样，卡死恢复时记下时长） |
+| `~/.miteproxy/logs/actions.log` | 崩溃前最近 300 步界面操作（环形覆盖） |
+| `~/.miteproxy/logs/crash-watch.running` | 运行标记：正常退出会删除，残留说明上次非正常结束 |
+| `~/.miteproxy/logs/crash-pending.json` | 上次异常退出的摘要（供「是否发送诊断报告」弹窗使用） |
 | `~/.mitmproxy/` | mitmproxy CA 证书 |
+
+### 崩溃了怎么查
+
+程序如果表现成「界面卡一下，然后窗口自己没了」，看 `~/.miteproxy/logs/` 下三个文件：
+
+| 文件 | 能回答什么 |
+|---|---|
+| `crash.log` | 崩在哪个栈。含启动环境快照（版本/系统/Python/Qt/内存）、段错误的各线程 Python 栈、未捕获异常 traceback（主线程与后台线程各一路）、Qt 的 WARNING/CRITICAL/FATAL |
+| `hang.log` | 卡在哪里。主线程心跳超时后由独立看门狗线程抓栈，每 5 秒一次、最多 6 次；恢复后记下卡死时长 |
+| `actions.log` | 崩溃前在做什么。最近 300 步操作，带时间戳、当时内存、关键参数（点开的 URL、请求/响应 body 字节数、渲染耗时） |
+
+三个文件按时间戳对照，就能把「崩在哪个栈」和「当时点开了哪条请求」对上。`crash.log` 每次启动还会写一段快照；如果检测到上次进程没走完退出流程，会直接标出「上次进程未走完退出流程」。
+
+**「界面卡住但没退出」和崩溃是两回事**，`crash.log` 不会有内容——进程还活着，`faulthandler` 不触发。这类问题看 `hang.log`：里面是主线程的 Python 栈采样。多次采样的价值在对比：每次都停在同一帧 = 死锁或阻塞等待；栈顶每次不同 = 死循环；都卡在同一个渲染调用里 = 大 body 排版太慢。一次卡了多久、期间在点哪条请求，也一并记着。
+
+### 一键上报
+
+崩溃或卡死后重启，如果程序发现上次没走完退出流程，会弹窗问「是否发送诊断报告」。弹窗里能直接看到完整内容，两处可调：
+
+- **包含最近的操作记录**（默认勾选）
+- **包含请求地址**（默认不勾选；勾了也只给域名与路径，query 参数值一律抹掉）
+
+`Authorization` / `Cookie` 这类头、以及 `token=` / `password=` 这类参数，无论怎么勾选都会被替换成 `<已脱敏>`。确认无误点「发送诊断报告」，会以公开 issue 形式提交到 GitHub，正文带崩溃栈、卡死采样与操作轨迹（后两者折叠在 `<details>` 里）。
+
+当时点了「稍后再说」也没关系，事后可从菜单 **帮助 → 发送崩溃诊断报告…** 补发（此时提交的是当前这次运行至今的证据）。点过「不再提示」的话，该弹窗不再出现，但手动入口照旧可用。
+
+**想拿到原生调用栈，建议开启 WER 本地 dump**（Windows，管理员 PowerShell 执行一次即可）：
+
+```powershell
+reg add "HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\MiteProxy.exe" /v DumpFolder /t REG_EXPAND_SZ /d "%LOCALAPPDATA%\MiteProxy\crashes" /f
+reg add "HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\MiteProxy.exe" /v DumpType /t REG_DWORD /d 2 /f
+```
+
+默认情况下 Windows 把崩溃 dump 上报完就删，只剩一份没有调用栈的 `Report.wer`。开启后每次崩溃都会在 `%LOCALAPPDATA%\MiteProxy\crashes` 留下完整 minidump，用 WinDbg 打开、或命令行 `cdb -z <dump文件> -c "!analyze -v; q"` 即可看到出错的原生调用栈与模块偏移。不开启也能查——`crash.log` 里的 `faulthandler` 栈已经能定位到具体 Python 行。
 
 ## 13. MCP：把抓包交给 AI
 
