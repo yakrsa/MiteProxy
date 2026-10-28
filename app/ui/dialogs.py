@@ -13,6 +13,7 @@ Qt 的 QMessageBox / QDialogButtonBox 标准按钮默认英文（OK/Cancel/Yes/N
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialogButtonBox, QMessageBox, QWidget
 
 #: 标准按钮 → 中文文案
@@ -77,6 +78,9 @@ def _mk(parent, icon, title, text, buttons, default=None) -> QMessageBox:
     if default is not None:
         box.setDefaultButton(default)
     _cn_std_buttons(box)
+    # 窗口模态而非应用模态：页面可以被拖成独立浮窗，浮窗里弹确认框时若用
+    # 默认的 application modal，会把主窗口一起锁死——两边本来就要同时用。
+    box.setWindowModality(Qt.WindowModality.WindowModal)
     return box
 
 

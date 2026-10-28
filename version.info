@@ -1,11 +1,15 @@
 {
-  "version": "3.0.0",
-  "published_at": "2026-10-27T17:00:00+08:00",
+  "version": "3.0.1",
+  "published_at": "2026-10-28T22:00:00+08:00",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "新增页签拖出浮窗能力：NavRail 按钮和工具子页可按住拖到独立窗口，收回原位还原；详情面板也可拖出",
-      "en": "Detachable panels: drag NavRail buttons or tool sub-tabs to pop out floating windows; detail panel also supports detach"
+      "zh": "修复 3.0.0 中「页签拖出浮窗」实际不可用的问题（底层模块已入库但未接入界面）。现在按住左侧导航按钮往外拖即可把该页拖成独立窗口；工具页五个子页（编码转换 / JSON / 比对 / API 调试 / FIX）也能各自拖出；详情面板的「请求」「响应」页可单独浮出，详情面板整体可从菜单「工具 → 拖出详情面板…」或页签右键拖出，收回时按原分隔比例还原",
+      "en": "Fixed 3.0.0's detached-panel feature being unusable in practice (the module shipped but was never wired into the UI). Drag a nav rail button outward to pop that page into its own window; the five tool sub-tabs (codec / JSON / compare / API / FIX) each detach too; the detail panel's Request and Response tabs float independently, and the whole panel detaches from Tools > Detach detail panel... or the tab context menu, restoring the original split ratio on reattach"
+    },
+    {
+      "zh": "修复浮窗场景下弹窗锁死整个应用：确认框与文件选择框改为窗口模态（只锁发起它的窗口），请求集合对话框改为真非模态并复用同一实例",
+      "en": "Fixed dialogs freezing the whole app while a float window is open: message boxes and file dialogs are now window-modal (blocking only their own window), and the API collections dialog is truly modeless and reuses one instance"
     },
     {
       "zh": "新增 FIX 协议解析工具页（Ctrl+Shift+F）：粘贴报文自动解析成树形表格，字段名与枚举释义、重复组可折叠，自带 BodyLength/CheckSum 校验，多条消息按 tab 分列、错误标红；支持导入各合作方的私有字段字典（协议说明整理成 CSV/JSON，PDF/Word 表格贴进 Excel 另存 CSV 也认），私有 tag 自动显示成业务字段名与枚举释义",

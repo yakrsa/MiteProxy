@@ -106,6 +106,12 @@ from app.jsontree import (
 from app.session import AUTOSAVE_BODY_LIMIT, BODY_TRUNCATED_KEY, BODY_TRUNCATED_SIZE_KEY
 from app.textutil import decode_body
 from app.ui import theme
+from app.ui.detachable import (
+    DRAG_THRESHOLD,
+    FloatWindow,
+    TabDetacher,
+    WidgetFloat,
+)
 from app.ui.filter_panel import FilterPanel
 from app.ui.highlight import JsonHighlighter, is_dark
 from app.ui.json_tree import JsonTreeView
@@ -1821,6 +1827,8 @@ class DetailPanel(QWidget):
     """
 
     wrap_changed = Signal(bool)
+    #: 用户从页签右键菜单里点了「拖出 / 收回详情面板」（主窗口接住做整体浮动）
+    float_toggle_requested = Signal()
 
     def __init__(self, parent=None, wrap_default: bool = True):
         super().__init__(parent)
@@ -1874,6 +1882,20 @@ class DetailPanel(QWidget):
         self._sticky_tab = self.response_index
         self._suppress_tab_signal = False
         self.tabs.currentChanged.connect(self._on_tab_changed)
+
+        # -- 页签拖出：只有「请求」「响应」两页放行
+        # 耗时/过滤/WS/TLS 拖出去反而找不到——尤其过滤页，那是用户改规则的地方。
+        # 拖出后原位留占位页，所以上面按索引定位的 sticky 逻辑不会塌陷。
+        self._pane_detacher = TabDetacher(self.tabs, self, tag_of=self._pane_key)
+        self._pane_detacher.set_allowed(
+            lambda w: w in (self.request_pane, self.response_pane)
+        )
+        self._pane_detacher.enable_drag()
+        self._pane_detacher.changed.connect(self._on_panes_changed)
+        self._tab_menu = None
+        bar = self.tabs.tabBar()
+        bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        bar.customContextMenuRequested.connect(self._on_tab_bar_menu)
 
     def set_wrap_default(self, on: bool) -> None:
         self.wrap_default = on
@@ -1981,6 +2003,10 @@ class DetailPanel(QWidget):
                 if not self.tabs.isTabVisible(target):
                     target = self.response_index
                     self._sticky_tab = target
+                # 目标页已被拖出（原位是占位页）：退到最近的真实页，
+                # 但**不改 sticky**——收回后还要回到用户原本选的那页
+                if self._pane_detacher.index_detached(target):
+                    target = self._pane_detacher.nearest_live(target)
             self.tabs.setCurrentIndex(target)
         finally:
             self._suppress_tab_signal = False
@@ -1989,7 +2015,86 @@ class DetailPanel(QWidget):
         """用户手动切换页签时，把选择记为粘性选择（程序内 set 已被抑制）。"""
         if self._suppress_tab_signal:
             return
+        # 点到占位页（原来是拖出去的那一页）不记为粘性选择：它不是真实内容页，
+        # 记下来会让之后每条流量的定位都落在占位页上。
+        if self._pane_detacher.index_detached(index):
+            return
         self._sticky_tab = index
+
+    # ------------------------------------------------------------ 拖出浮窗
+
+    def _pane_key(self, widget, index: int = -1):
+        """页面 → 业务键（request / response / timings / filter / ws / tls）。"""
+        for key, pane in (
+            ("request", self.request_pane),
+            ("response", self.response_pane),
+            ("timings", self.timings_pane),
+            ("filter", self.filter_panel),
+            ("ws", self.ws_pane),
+            ("tls", self.tls_pane),
+        ):
+            if widget is pane:
+                return key
+        return None
+
+    def _pane_by_key(self, key: str):
+        return {
+            "request": self.request_pane,
+            "response": self.response_pane,
+            "timings": self.timings_pane,
+            "filter": self.filter_panel,
+            "ws": self.ws_pane,
+            "tls": self.tls_pane,
+        }.get(key)
+
+    def detach_pane(self, key: str) -> bool:
+        """把「请求」或「响应」页拖成独立浮窗；其余页不放行，返回 False。"""
+        pane = self._pane_by_key(key)
+        if pane is None:
+            return False
+        return self._pane_detacher.detach(pane, tag=key) is not None
+
+    def is_pane_detached(self, key: str) -> bool:
+        return self._pane_detacher.is_tag_detached(key)
+
+    def pane_window(self, key: str):
+        """取某页的浮窗（没拖出则为 None）。"""
+        return self._pane_detacher.window_for_tag(key)
+
+    def reattach_panes(self) -> None:
+        """把所有被拖出的页签收回原位。"""
+        self._pane_detacher.reattach_all()
+
+    def close_pane_floats(self) -> None:
+        """退出路径：只关浮窗不收回（页面即将随主窗口销毁，不必再插回去）。"""
+        self._pane_detacher.close_all(reattach=False)
+
+    def is_floating(self) -> bool:
+        """本面板当前是否被放进了浮窗（菜单文案据此切换「拖出 / 收回」）。"""
+        return isinstance(self.window(), FloatWindow)
+
+    def _on_panes_changed(self) -> None:
+        """页签插拔后：粘性选择若指向占位页就夹回响应页。"""
+        if self._pane_detacher.index_detached(self._sticky_tab):
+            self._sticky_tab = self.response_index
+
+    def _on_tab_bar_menu(self, pos) -> None:
+        """页签栏右键菜单：整体拖出 / 收回详情面板。"""
+        bar = self.tabs.tabBar()
+        menu = QMenu(self)
+        act = menu.addAction(
+            self.tr("收回详情面板") if self.is_floating()
+            else self.tr("拖出详情面板为独立窗口")
+        )
+        act.triggered.connect(self._emit_float_toggle)
+        self._tab_menu = menu
+        menu.popup(bar.mapToGlobal(pos))
+
+    def _emit_float_toggle(self, *_args) -> None:
+        try:
+            self.float_toggle_requested.emit()
+        except RuntimeError:
+            pass
 
     def _set_current(self, index: int) -> None:
         """程序化切换页签，且不把它误记为用户的粘性选择。"""

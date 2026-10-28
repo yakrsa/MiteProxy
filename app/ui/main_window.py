@@ -106,6 +106,7 @@ from app.ui.breakpoint_dialog import BreakpointDialog
 from app.ui.compare_dialog import CompareDialog
 from app.ui.flow_diff_dialog import FlowDiffDialog
 from app.ui.detail_panel import DetailPanel
+from app.ui.detachable import TabDetacher, WidgetFloat
 from app.ui.filter_model import (
     LIST_BLACK,
     LIST_WHITE,
@@ -650,6 +651,127 @@ class MainWindow(QMainWindow):
                 label,
             )
 
+    # ------------------------------------------------------------ 页面拖出浮窗
+
+    def _tab_key(self, widget, index: int = -1):
+        """顶层页 → 业务键（traffic / mock / network / tools / scripts / log / stats）。"""
+        for key, page in (
+            ("traffic", self.traffic_page),
+            ("mock", self.rules_panel),
+            ("network", self.network_panel),
+            ("tools", self.tool_panel),
+            ("scripts", self.scripts_panel),
+            ("log", self.log_panel),
+            ("stats", self.stats_panel),
+        ):
+            if widget is page:
+                return key
+        return None
+
+    def _on_rail_drag_out(self, index: int) -> None:
+        """导航按钮被拖出来：把对应页签变成独立浮窗。"""
+        page = self.tabs.widget(index)
+        if page is None:
+            return
+        if page is self.traffic_page:
+            # 流量页是主视图，拖走只剩空壳——明确告诉用户，别静默无反应
+            self.status_bar.showMessage(self.tr("流量页不能拖出为浮窗"), 3000)
+            return
+        if self._page_detacher.index_detached(index):
+            # 已经拖出去了：再拖一次就把浮窗提到前面（用户的合理预期）
+            self._page_detacher.raise_detached(index)
+            return
+        self._page_detacher.detach(index)
+
+    def _detach_top_page(self, page) -> bool:
+        """把某个顶层页拖成独立浮窗；流量页与未知页返回 False。
+
+        原位留占位页，所以标签数与导航按钮数都不变、索引不塌陷。
+        """
+        return self._page_detacher.detach(page) is not None
+
+    def _on_nav_index(self, index: int) -> None:
+        """导航点了第 index 页：该页已被拖出就提浮窗，别切到占位页上。"""
+        if self._page_detacher.index_detached(index):
+            self._page_detacher.raise_detached(index)
+            return
+        self.tabs.setCurrentIndex(index)
+
+    def _focus_page(self, page) -> bool:
+        """页面已在浮窗里就把浮窗提到前面并返回 True，否则 False。"""
+        win = self._page_detacher.window_for(page)
+        if win is None:
+            return False
+        win.show()
+        win.raise_()
+        win.activateWindow()
+        return True
+
+    def _reattach_all_pages(self) -> None:
+        """把所有拖出的页面收回原位（顶层页 + 工具子页 + 详情页签）。"""
+        self._page_detacher.reattach_all()
+        self.tool_panel.reattach_pages()
+        self.detail_panel.reattach_panes()
+
+    def _close_all_floats(self) -> None:
+        """退出路径：关掉所有浮窗，只关不收回（页面即将随主窗口销毁）。
+
+        由内向外收：先关内层子页浮窗，再关顶层页浮窗，最后关详情面板浮窗。
+        """
+        try:
+            self.tool_panel.close_floats()
+            self.detail_panel.close_pane_floats()
+            self._page_detacher.close_all(reattach=False)
+            self._detail_floater.close()
+        except Exception:
+            log.exception("退出时回收浮窗失败")
+
+    def _toggle_detail_float(self) -> None:
+        """详情面板整体：拖出为浮窗 / 收回原位置。"""
+        if self._detail_floater.is_detached():
+            self._reattach_detail_panel()
+        else:
+            self._detach_detail_panel()
+
+    def _detach_detail_panel(self) -> None:
+        # 先记下拖走前的分隔比例，收回时按原样还原（否则会挤成一团）
+        self._detail_sizes = self.traffic_splitter.sizes()
+        win = self._detail_floater.detach(self.detail_panel, self.tr("详情"))
+        if win is None:
+            # 拖出失败（理论上不会）：原样塞回去，别留下一个消失的面板
+            self._put_detail_back(self.detail_panel)
+            return
+        self._sync_detail_float_action()
+
+    def _reattach_detail_panel(self) -> None:
+        widget = self._detail_floater.reattach()
+        if widget is not None:
+            self._put_detail_back(widget)
+
+    def _on_detail_attach_requested(self, widget) -> None:
+        """用户直接关掉了详情浮窗（走 WidgetFloat 的 closeEvent）。"""
+        if widget is self.detail_panel:
+            self._put_detail_back(widget)
+
+    def _put_detail_back(self, widget) -> None:
+        """把详情面板放回流量 splitter，并还原拖走前的比例。"""
+        self.traffic_splitter.addWidget(widget)
+        sizes = self._detail_sizes
+        if sizes and len(sizes) == self.traffic_splitter.count():
+            self.traffic_splitter.setSizes(sizes)
+        self._sync_detail_float_action()
+
+    def _sync_detail_float_action(self) -> None:
+        """菜单项文案跟着浮动态切换。"""
+        act = getattr(self, "_detail_float_action", None)
+        if act is None:
+            return
+        act.setText(
+            self.tr("收回详情面板")
+            if self._detail_floater.is_detached()
+            else self.tr("拖出详情面板…")
+        )
+
     def _refresh_icons(self) -> None:
         """主题切换后重取所有图标颜色（图标是内联 SVG，按前景色渲染）。
 
@@ -951,6 +1073,23 @@ class MainWindow(QMainWindow):
         self.nav_rail.set_shortcut_hints(
             [self.tr('Ctrl+{0}').format(i + 1) for i in range(self.tabs.count())]
         )
+
+        # -- 页面拖出浮窗
+        # 流量页不放行：那是主视图，拖走了主窗口就剩个空壳（DESIGN.md 明确排除）。
+        # 主标签栏是隐藏的（导航交给 nav_rail），所以没有「按住标签拖」这条路，
+        # 手势入口挂在 rail 按钮上（见 nav_rail.drag_out_requested）。
+        self._page_detacher = TabDetacher(self.tabs, self, tag_of=self._tab_key)
+        self._page_detacher.set_allowed(lambda w: w is not self.traffic_page)
+        # 详情面板整体浮动：从 traffic_splitter 摘走，收回按拖走前的比例还原
+        self._detail_floater = WidgetFloat(self)
+        self._detail_sizes: list[int] | None = None
+        self._detail_floater.attach_requested.connect(
+            self._on_detail_attach_requested
+        )
+        self.detail_panel.float_toggle_requested.connect(
+            self._toggle_detail_float
+        )
+        self.nav_rail.drag_out_requested.connect(self._on_rail_drag_out)
         # 钉住偏好（上次关掉程序前的选择）恢复；emit=False 免得开屏就写一次盘
         self.nav_rail.set_pinned(
             getattr(self.settings, "nav_rail_pinned", False),
@@ -960,7 +1099,7 @@ class MainWindow(QMainWindow):
         # rail ↔ tabs 双向同步：点 rail 切页；tabs 变了（含 setCurrentWidget）
         # 回灌选中态。currentChanged 里再调 rail.set_current 不会回头触发
         # rail 的 current_changed（idClicked 只在用户点击时发），不成环。
-        self.nav_rail.current_changed.connect(self.tabs.setCurrentIndex)
+        self.nav_rail.current_changed.connect(self._on_nav_index)
         self.tabs.currentChanged.connect(self.nav_rail.set_current)
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self._build_nav_shortcuts()
@@ -1081,6 +1220,12 @@ class MainWindow(QMainWindow):
         fix_action.setShortcut(QKeySequence("Ctrl+Shift+F"))
         fix_action.triggered.connect(lambda: self._goto_tool("fix"))
         tool_menu.addAction(fix_action)
+
+        tool_menu.addSeparator()
+        # 详情面板整体浮动的菜单入口（页签右键菜单里也有一份同样的入口）
+        self._detail_float_action = QAction(self.tr("拖出详情面板…"), self)
+        self._detail_float_action.triggered.connect(self._toggle_detail_float)
+        tool_menu.addAction(self._detail_float_action)
 
         # -- 设置：偏好设置对话框（收拢工具栏/菜单里散落的可配置项）
         settings_menu = self.menuBar().addMenu(self.tr("设置"))
@@ -1232,7 +1377,9 @@ class MainWindow(QMainWindow):
 
     def _goto_tool(self, page: str = "codec") -> None:
         """切到工具页的指定子页并把焦点给输入框。"""
-        self.tabs.setCurrentWidget(self.tool_panel)
+        # 工具页整体被拖成浮窗时切标签页没有意义——把浮窗提到前面
+        if not self._focus_page(self.tool_panel):
+            self.tabs.setCurrentWidget(self.tool_panel)
         self.tool_panel.show_page(page)
         if page == "json":
             editor = self.tool_panel.json_panel.input_edit
@@ -3770,6 +3917,9 @@ class MainWindow(QMainWindow):
         # 先把窗口藏起来——用户感知层面立即退出，清理在后台并行收尾
         # （进程会多存活零点几秒，但没有任何可见窗口）
         self.hide()
+        # 浮窗先收内容再关壳：这些页面是主窗口长期持有的对象（信号槽、退出后
+        # 还要读配置），跟着空壳一起销毁就是野指针
+        self._close_all_floats()
         # 先同步把规则改动落盘（后台线程可能还没写完），避免最后一次编辑丢失
         try:
             self.rule_store.flush_save(timeout=5.0)

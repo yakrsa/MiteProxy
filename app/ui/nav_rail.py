@@ -24,6 +24,7 @@ from __future__ import annotations
 from PySide6.QtCore import (
     QEasingCurve,
     QEvent,
+    QPoint,
     QSize,
     Qt,
     QVariantAnimation,
@@ -50,6 +51,8 @@ MIN_LABEL_WIDTH = 84
 MAX_LABEL_WIDTH = 152
 #: 展开/收起动画时长（毫秒）
 ANIM_MS = 150
+#: 按住导航按钮拖出多少像素算「想把它拖成浮窗」而不是「想点一下切页」
+DRAG_OUT_THRESHOLD = 24
 
 
 class NavRail(QFrame):
@@ -59,6 +62,8 @@ class NavRail(QFrame):
     current_changed = Signal(int)
     #: 用户切换了「钉住」（外部据此持久化偏好）
     pin_toggled = Signal(bool)
+    #: 用户把某一页的导航按钮拖了出来（外部据此把该页变成独立浮窗）
+    drag_out_requested = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -78,6 +83,10 @@ class NavRail(QFrame):
         self._normal_icons: list[QIcon] = []
         self._selected_icons: list[QIcon] = []
         self._current = -1
+        # ---- 拖出手势状态（按住按钮拖出阈值即发 drag_out_requested）
+        self._drag_index = -1
+        self._drag_start = QPoint()
+        self._drag_fired = False
 
         # ---- 展开/收起状态机
         self._label_width = MIN_LABEL_WIDTH
@@ -287,13 +296,56 @@ class NavRail(QFrame):
     # ------------------------------------------------------------ 事件
 
     def eventFilter(self, obj, event) -> bool:  # noqa: N802 - Qt 命名约定
-        if event.type() == QEvent.Type.FocusIn:
+        etype = event.type()
+        if etype == QEvent.Type.FocusIn:
             self._focus = True
             self._update_expanded()
-        elif event.type() == QEvent.Type.FocusOut:
+            return super().eventFilter(obj, event)
+        if etype == QEvent.Type.FocusOut:
             self._focus = False
             self._update_expanded()
+            return super().eventFilter(obj, event)
+
+        index = self._button_index(obj)
+        if index < 0:
+            return super().eventFilter(obj, event)
+
+        if etype == QEvent.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._drag_index = index
+                self._drag_start = event.position().toPoint()
+                self._drag_fired = False
+        elif etype == QEvent.Type.MouseMove:
+            if self._drag_index == index and not self._drag_fired:
+                pos = event.position().toPoint()
+                if (pos - self._drag_start).manhattanLength() >= DRAG_OUT_THRESHOLD:
+                    self._drag_fired = True
+                    # 按钮已被按下：先复位按下态，否则浮窗出来后按钮还是凹的
+                    obj.setDown(False)
+                    try:
+                        self.drag_out_requested.emit(index)
+                    except RuntimeError:
+                        pass
+                    # 吞掉这次移动：页面已被拖走，别让按钮继续按「点一下」处理
+                    return True
+        elif etype == QEvent.Type.MouseButtonRelease:
+            fired = self._drag_fired and self._drag_index == index
+            self._drag_index = -1
+            self._drag_fired = False
+            if fired:
+                # 吞掉释放，否则按钮会再发一次 clicked → 又切回被拖走的那页
+                return True
+        # 注意：**不要**在 Leave 里重置拖拽状态。Windows 上按住鼠标拖出控件
+        # 范围照样会发 Leave（macOS 有 grab 时不发），照它重置会让拖出手势
+        # 在 Windows 上永远失效——这正是 detachable.py 里踩过的坑。
         return super().eventFilter(obj, event)
+
+    def _button_index(self, obj) -> int:
+        """该对象是第几枚导航按钮；不是导航按钮返回 -1。"""
+        for i, btn in enumerate(self._buttons):
+            if btn is obj:
+                return i
+        return -1
 
     def enterEvent(self, event) -> None:  # noqa: N802 - Qt 命名约定
         self._hover = True

@@ -273,9 +273,25 @@ class ApiPanel(QWidget):
         )
         self.resp_label.setText(self.tr("已保存到请求集合"))
 
+    def _collection_dialog(self) -> CollectionDialog:
+        """取（必要时创建）请求集合对话框。
+
+        真非模态 + 对象复用：① 页面可能被拖成独立浮窗，模态框会把整个应用
+        锁死；② 每次重建会重新加载列表、丢掉滚动位置。
+        """
+        dlg = getattr(self, "_collection_dlg", None)
+        if dlg is None:
+            dlg = CollectionDialog(self, on_load=self._load_from_collection)
+            dlg.setWindowModality(Qt.WindowModality.NonModal)
+            dlg.setModal(False)
+            self._collection_dlg = dlg
+        return dlg
+
     def _open_collections(self) -> None:
-        dlg = CollectionDialog(self, on_load=self._load_from_collection)
-        dlg.exec()
+        dlg = self._collection_dialog()
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
 
     def _load_from_collection(self, item: dict) -> None:
         headers = {}

@@ -332,11 +332,19 @@ class FixPanel(QWidget):
             self._parse()
 
     def _import_dict(self) -> None:
-        path, _selected = QFileDialog.getOpenFileName(
-            self, self.tr("导入合作方 FIX 字典"), "",
-            self.tr("FIX 字典 (*.json *.csv *.tsv *.txt);;所有文件 (*)"))
-        if path:
-            self.import_profile(path)
+        # 用实例化的 QFileDialog 而不是静态 getOpenFileName：静态方法内部
+        # exec 的模态由 Qt 定死（应用模态），浮窗里点导入会把主窗口一起锁住。
+        dlg = QFileDialog(self, self.tr("导入合作方 FIX 字典"))
+        dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
+        dlg.setNameFilters([
+            self.tr("FIX 字典 (*.json *.csv *.tsv *.txt)"),
+            self.tr("所有文件 (*)"),
+        ])
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        if dlg.exec():
+            files = dlg.selectedFiles()
+            if files:
+                self.import_profile(files[0])
 
     def import_profile(self, path: str) -> bool:
         """导入一份字典文件（JSON / CSV / TSV），成功后自动切到它。
