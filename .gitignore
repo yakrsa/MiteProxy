@@ -27,3 +27,7 @@ certs/
 
 # 构建/打包日志
 *.log
+
+# 教程派生导出件（源文件是 TUTORIAL.md，HTML 仅供贴 Confluence，按需本地生成）
+TUTORIAL.html
+TUTORIAL-confluence.html
