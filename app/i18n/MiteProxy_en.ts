@@ -1303,6 +1303,16 @@ use the Raw view when you need byte-exact content.</translation>
         <source>全部收起</source>
         <translation>Collapse all</translation>
     </message>
+    <message>
+        <location filename="../ui/detail_panel.py" line="1903"/>
+        <source>收回详情面板</source>
+        <translation>Restore detail panel</translation>
+    </message>
+    <message>
+        <location filename="../ui/detail_panel.py" line="1904"/>
+        <source>把详情面板拖出为独立窗口</source>
+        <translation>Detach detail panel into its own window</translation>
+    </message>
 </context>
 <context>
     <name>FeedbackDialog</name>
@@ -4633,6 +4643,41 @@ Change the bind address and port in Settings → Traffic list → MCP:
         <source>MCP 服务已启动（局域网可见）：{0} —— 抓包含 Cookie / 鉴权头，用完记得关</source>
         <translation>MCP server started (LAN visible): {0} — captures contain cookies/tokens, remember to turn it off</translation>
     </message>
+    <message>
+        <location filename="../ui/main_window.py" line="589"/>
+        <source>把当前页拖出为独立窗口</source>
+        <translation>Detach current page into its own window</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="595"/>
+        <source>拖出当前工具子页</source>
+        <translation>Detach current tool subpage</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="601"/>
+        <source>收回所有拖出的页面</source>
+        <translation>Reattach all detached pages</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="601"/>
+        <source>把请求页拖出为独立窗口</source>
+        <translation>Detach request pane into its own window</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="607"/>
+        <source>把响应页拖出为独立窗口</source>
+        <translation>Detach response pane into its own window</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="613"/>
+        <source>把详情面板拖出为独立窗口</source>
+        <translation>Detach detail panel into its own window</translation>
+    </message>
+    <message>
+        <location filename="../ui/main_window.py" line="3546"/>
+        <source>请求 / 响应详情</source>
+        <translation>Request / response detail</translation>
+    </message>
 </context>
 <context>
     <name>McpServer</name>
@@ -7530,6 +7575,19 @@ Click the status dot at the bottom-left to start capturing, or check whether the
         <location filename="../textutil.py" line="96"/>
         <source>……（diff 超过 {0} 行，已截断）</source>
         <translation>…… (diff exceeds {0} lines; truncated)</translation>
+    </message>
+</context>
+<context>
+    <name>_Placeholder</name>
+    <message>
+        <location filename="../ui/detachable.py" line="66"/>
+        <source>「{0}」已拖出为独立窗口</source>
+        <translation>"{0}" is now a separate window</translation>
+    </message>
+    <message>
+        <location filename="../ui/detachable.py" line="72"/>
+        <source>收回</source>
+        <translation>Restore</translation>
     </message>
 </context>
 </TS>

@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app import api_collections as store
-from app.ui import theme
+from app.ui import dialogs, theme
 
 
 class CollectionDialog(QDialog):
@@ -121,13 +121,17 @@ class CollectionDialog(QDialog):
         it = self._selected_item()
         if it is None:
             return
-        text, ok = QInputDialog.getText(
-            self,
-            self.tr("重命名请求"),
-            self.tr("新名称："),
-            text=it.get("name", ""),
-        )
-        if ok and text.strip():
+        dlg = QInputDialog(self)
+        dlg.setWindowTitle(self.tr("重命名请求"))
+        dlg.setLabelText(self.tr("新名称："))
+        dlg.setTextValue(it.get("name", ""))
+        # 本对话框是非模态的，但取个名字仍是「问完才能继续」的短交互：
+        # 窗口模态只锁住本对话框，主窗口与其它浮窗不受影响
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        if not dlg.exec():
+            return
+        text = dlg.textValue()
+        if text.strip():
             store.rename_collection(it["id"], text.strip())
             self.reload()
 
@@ -135,12 +139,10 @@ class CollectionDialog(QDialog):
         it = self._selected_item()
         if it is None:
             return
-        ret = QMessageBox.question(
+        ret = dialogs.question(
             self,
             self.tr("删除请求"),
             self.tr("确定删除「{0}」吗？此操作不可恢复。").format(it.get("name", "")),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
         )
         if ret == QMessageBox.StandardButton.Yes:
             store.delete_collection(it["id"])

@@ -117,27 +117,36 @@ def test_collection_dialog_empty_state(qapp):
     assert not dlg.load_btn.isEnabled()  # 无选中时按钮禁用
 
 
+def _patch_input_dialog(monkeypatch, text: str, ok: bool = True) -> None:
+    """拦掉取名弹窗（输入法：QInputDialog 实例 + exec）。
+
+    原来用静态 ``QInputDialog.getText``，改成实例 + ``exec()`` 是为了能设
+    windowModality（静态版默认是应用模态，会把整个应用锁死）。所以这里
+    patch 的目标也得跟着换：拦 ``exec`` 定「确认 / 取消」，拦 ``textValue``
+    定输入内容。
+    """
+    monkeypatch.setattr(QInputDialog, "exec", lambda self: ok)
+    monkeypatch.setattr(QInputDialog, "textValue", lambda self: text)
+
+
 def test_collection_dialog_rename(qapp, monkeypatch):
     item = store.add_collection(name="old", url="https://x.test")
-    monkeypatch.setattr(
-        QInputDialog, "getText",
-        lambda *a, **k: ("renamed", True))
+    _patch_input_dialog(monkeypatch, "renamed")
     dlg = CollectionDialog(on_load=lambda it: None)
     dlg.list_widget.setCurrentRow(0)
     dlg._rename_selected()
     assert store.find_collection(item["id"])["name"] == "renamed"
     # 用户取消（ok=False）不改名
-    monkeypatch.setattr(
-        QInputDialog, "getText",
-        lambda *a, **k: ("zzz", False))
+    _patch_input_dialog(monkeypatch, "zzz", ok=False)
     dlg._rename_selected()
     assert store.find_collection(item["id"])["name"] == "renamed"
 
 
 def test_collection_dialog_delete(qapp, monkeypatch):
+    """删除确认走 app.ui.dialogs.question（窗口模态，非静态 QMessageBox）。"""
     item = store.add_collection(name="todel", url="https://x.test")
     monkeypatch.setattr(
-        QMessageBox, "question",
+        "app.ui.dialogs.question",
         lambda *a, **k: QMessageBox.StandardButton.Yes)
     dlg = CollectionDialog(on_load=lambda it: None)
     dlg.list_widget.setCurrentRow(0)
@@ -146,7 +155,7 @@ def test_collection_dialog_delete(qapp, monkeypatch):
     # 选 No 时不删
     item2 = store.add_collection(name="keep", url="https://x.test")
     monkeypatch.setattr(
-        QMessageBox, "question",
+        "app.ui.dialogs.question",
         lambda *a, **k: QMessageBox.StandardButton.No)
     dlg2 = CollectionDialog(on_load=lambda it: None)
     dlg2.list_widget.setCurrentRow(0)
@@ -160,9 +169,7 @@ def test_collection_dialog_delete(qapp, monkeypatch):
 def test_save_to_collection_via_panel(qapp, monkeypatch):
     p = ApiPanel()
     p.load_request("POST", "https://api.test/save", {"K": "V"}, "body-text")
-    monkeypatch.setattr(
-        QInputDialog, "getText",
-        lambda *a, **k: ("我的请求", True))
+    _patch_input_dialog(monkeypatch, "我的请求")
     p._save_to_collection()
     items = store.load_collections()
     assert len(items) == 1
@@ -176,9 +183,7 @@ def test_save_to_collection_via_panel(qapp, monkeypatch):
 def test_save_cancelled_saves_nothing(qapp, monkeypatch):
     p = ApiPanel()
     p.load_request("GET", "https://api.test/x")
-    monkeypatch.setattr(
-        QInputDialog, "getText",
-        lambda *a, **k: ("", False))
+    _patch_input_dialog(monkeypatch, "", ok=False)
     p._save_to_collection()
     assert store.load_collections() == []
 
