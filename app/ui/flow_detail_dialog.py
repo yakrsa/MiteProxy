@@ -27,6 +27,20 @@ class FlowDetailDialog(QDialog):
 
     def __init__(self, flow, parent=None, wrap_default: bool = True) -> None:
         super().__init__(parent)
+        # 窗口级模态：QDialog 的 exec() 默认是**应用模态**，会把整个应用程序
+        # ——包括主窗口和拖出去的浮窗——一起冻住，用户感知就是「打开详情后整个
+        # 界面卡死、点哪都没反应」。这里只锁父窗口，与项目其余对话框一致
+        # （v3.0.1 已把 dialogs / api_panel / fix_panel / collection_dialog 全部
+        # 改成 WindowModal，本对话框是最后漏网的一处）。
+        self.setWindowModality(Qt.WindowModality.WindowModal)
+
+        # 关闭即销毁。本对话框是「每次双击新建一次」，而 Qt 默认只在 parent 析构
+        # 时才清理子对象——不设这个标记，每关一次就留下一整套隐藏的 QDialog，
+        # 连带两个 MessagePane 里已经写满文本的 QTextDocument（大响应可达几百 MB）。
+        # 反复双击几轮内存就只涨不降，Windows 上最终往往是进程被无声杀掉：连
+        # traceback 都没有，外部看就是「卡一下，然后自动退出」——正是本次要查的现象。
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
         req = getattr(flow, "request", None)
         res = getattr(flow, "response", None)
 
@@ -94,3 +108,29 @@ class FlowDetailDialog(QDialog):
         else:
             # pending：请求已发出但响应未到，响应半边给明确占位而非「未选择会话」
             self.response_pane.show_message(self.tr("尚未收到响应…"), {}, None, 0)
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt 的驼峰命名
+        """关闭时立刻掐掉所有流式 QTimer。
+
+        超过 RENDER_TEXT_LIMIT 的文本走 QTimer 分块追加，且 interval=0——每个事件
+        循环 tick 都喂一块。对话框关了而 timer 还在跑的话，它会继续往一个已经
+        看不见的编辑器里把剩下几 MB 全部写完：白烧 CPU，还把整份文档继续扣在
+        内存里。定时器虽随 WA_DeleteOnClose 最终会被回收，但「写一个看不见的窗
+        口」这段时间完全没必要存在。
+        """
+        self._stop_streaming()
+        super().closeEvent(event)
+
+    def _stop_streaming(self) -> None:
+        """停掉请求/响应两侧的流式加载（body + raw 共四处，幂等）。"""
+        for pane in (self.request_pane, self.response_pane):
+            for stop in (
+                getattr(getattr(pane, "body_pane", None), "_stream_stop", None),
+                getattr(getattr(pane, "raw_pane", None), "_stop", None),
+            ):
+                if not callable(stop):
+                    continue
+                try:
+                    stop()
+                except RuntimeError:
+                    pass          # C++ 侧已析构则无需再停，别让收尾反过来崩一次

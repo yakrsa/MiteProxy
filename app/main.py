@@ -68,6 +68,72 @@ def _setup_file_logging() -> None:
     logging.getLogger().addHandler(fh)
 
 
+def _setup_crash_handlers() -> None:
+    """崩溃取证：段错误栈 / 未捕获异常 / Qt 致命消息统一写进 crash.log。
+
+    打包成 GUI exe（Windows ``console=False``）后 stderr 无处可去，进程一崩就
+    彻底失声——既没有 traceback，也没留下任何线索，事后只能靠猜。这里兜三条路：
+
+    1. ``faulthandler``：段错误（SIGSEGV）等「进程直接消失」时，由解释器把当前
+       各线程的 Python 栈吐出来。``all_threads=True`` 是必需的——崩溃未必发生在
+       主线程，mitmproxy 的抓取线程同样值得看。
+    2. ``sys.excepthook``：槽函数里抛出的异常默认只往 stderr 打一行（有时被
+       PySide6 直接吞掉），写盘才留得住；写完后交回原 hook，控制台行为不变。
+    3. Qt 消息处理器：Qt 自身的 WARNING/CRITICAL/FATAL（非法 QModelIndex、跨线程
+       碰 GUI 等）往往是崩溃前兆，一并留证。Debug/Info 量太大，会淹没证据，跳过。
+
+    追加写、不做滚动：历史崩溃栈是唯一证据，被新日志覆盖就得再崩一次才能重来。
+    只有真崩溃才写，量很小（一次几十 KB），不像普通日志会膨胀。
+    """
+    import faulthandler
+    import traceback
+    from datetime import datetime
+
+    from app.ui.log_panel import get_log_path
+
+    path = get_log_path().parent / "crash.log"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        stream = path.open("a", encoding="utf-8", errors="replace")
+    except OSError:
+        return                       # 连日志目录都开不了，取证无门但不该拖垮启动
+
+    stream.write(f"\n===== MiteProxy 启动 {datetime.now():%Y-%m-%d %H:%M:%S} =====\n")
+    stream.flush()
+    faulthandler.enable(file=stream, all_threads=True)
+
+    original_hook = sys.excepthook
+
+    def _on_uncaught(exc_type, exc, tb) -> None:
+        stream.write(f"\n----- 未捕获异常 {datetime.now():%H:%M:%S} -----\n")
+        traceback.print_exception(exc_type, exc, tb, file=stream)
+        stream.flush()
+        original_hook(exc_type, exc, tb)
+
+    sys.excepthook = _on_uncaught
+
+    try:
+        from PySide6.QtCore import QtMsgType, qInstallMessageHandler
+
+        levels = {
+            QtMsgType.QtCriticalMsg: "CRITICAL",
+            QtMsgType.QtFatalMsg: "FATAL",
+            QtMsgType.QtWarningMsg: "WARNING",
+        }
+
+        def _on_qt_message(mode, context, message) -> None:
+            level = levels.get(mode)
+            if level is None:        # Debug/Info 不写，避免淹没真正的证据
+                return
+            where = f" ({context.file}:{context.line})" if context.file else ""
+            stream.write(f"[Qt {level}]{where} {message}\n")
+            stream.flush()
+
+        qInstallMessageHandler(_on_qt_message)
+    except Exception:                # pragma: no cover - 不影响取证主路径
+        pass
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -75,6 +141,8 @@ def main() -> int:
     )
     # 落盘滚动日志（有大小上限，不会无限增长）
     _setup_file_logging()
+    # 崩溃取证（段错误 / 未捕获异常 / Qt 致命消息写 crash.log）
+    _setup_crash_handlers()
 
     app = QApplication(sys.argv)
     app.setApplicationName("MiteProxy")
