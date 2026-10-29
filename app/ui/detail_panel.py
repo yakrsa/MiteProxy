@@ -31,6 +31,7 @@ from PySide6.QtGui import (
     QAction,
     QBrush,
     QFont,
+    QGuiApplication,
     QImage,
     QKeySequence,
     QPainter,
@@ -419,7 +420,7 @@ class BodyPane(QWidget):
         self.max_btn.setAutoRaise(True)
         self.max_btn.setCheckable(True)
         self.max_btn.setToolTip(
-            self.tr("最大化 body 显示区（隐藏工具条与请求头，按 Esc 或再次点击还原）")
+            self.tr("最大化 body 显示区（折叠请求头，按 Esc 或再次点击还原；切换页签/会话自动还原）")
         )
         self.max_btn.toggled.connect(self._on_max_toggle)
         row.addWidget(self.max_btn)
@@ -536,9 +537,15 @@ class BodyPane(QWidget):
 
     def _set_focus_mode(self, on: bool) -> None:
         self._focus_mode = on
-        self.toolbar.setHidden(on)        # 藏起工具条 → body 拿到整块纵向空间
+        # 不再隐藏整个工具条：最大化按钮（"还原"）必须保持可见，否则用户
+        # 找不到恢复入口。body 的主要空间收益来自 MessagePane 折叠 header 列
+        # （横向），工具条仅一行按钮，保留它不影响查看体验。
         self.max_btn.setText(self.tr("还原") if on else self.tr("最大化"))
         self._esc.setEnabled(on)          # 仅最大化时吃 Esc，避免干扰其它对话框
+
+    def exit_focus(self) -> None:
+        """退出 body 最大化（供外层在切换页签/会话时调用）。"""
+        self._exit_focus()
 
     def _exit_focus(self) -> None:
         """Esc 退出最大化（仅最大化时启用）。"""
@@ -1221,6 +1228,7 @@ class MessagePane(QWidget):
         self.headers_table.setShowGrid(False)
         self.headers_table.verticalHeader().setDefaultSectionSize(22)
         self.headers_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.headers_table.cellDoubleClicked.connect(self._on_header_double_clicked)
         splitter.addWidget(self.headers_table)
 
         self.body_pane = BodyPane(wrap_default=wrap_default)
@@ -1306,6 +1314,49 @@ class MessagePane(QWidget):
             if self._saved_detail_sizes:
                 self._splitter.setSizes(self._saved_detail_sizes)
 
+    # ------------------------------------------------------------ 复制 header 值
+    def _on_header_double_clicked(self, row: int, _col: int) -> None:
+        """双击 header 表任意单元格 → 复制该行 Value（请求头/响应头值）到剪贴板。"""
+        item = self.headers_table.item(row, 1)
+        if item is None:
+            return
+        value = item.text()
+        if not value:
+            return
+        QGuiApplication.clipboard().setText(value)
+        preview = value if len(value) <= 60 else value[:60] + "…"
+        self._show_copied_toast(self.tr("已复制：{0}").format(preview))
+
+    def _show_copied_toast(self, text: str) -> None:
+        """非阻塞的轻量提示：面板中央浮层，自动消失（照 rules_panel._toast 写法）。"""
+        old = getattr(self, "_copy_toast_w", None)
+        if old is not None:
+            try:
+                old.deleteLater()
+            except RuntimeError:
+                pass  # 上一条已超时销毁，引用失效，忽略
+        w = QLabel(text, self)
+        w.setStyleSheet(
+            "background:rgba(40,44,52,0.94);color:#fff;border-radius:6px;"
+            "padding:8px 14px;font-size:13px;"
+        )
+        w.setCursor(Qt.CursorShape.PointingHandCursor)
+        w.adjustSize()
+        c = self.rect().center()
+        w.move(c.x() - w.width() // 2, c.y() - w.height() // 2)
+        w.show()
+        w.raise_()
+        self._copy_toast_w = w
+        QTimer.singleShot(2000, lambda: self._expire_copied_toast(w))
+
+    def _expire_copied_toast(self, w) -> None:
+        if self._copy_toast_w is w:
+            self._copy_toast_w = None
+        try:
+            w.deleteLater()
+        except RuntimeError:
+            pass
+
     # ------------------------------------------------------------ 展示
 
     def show_message(self, summary_line: str, headers, body_bytes: bytes | None,
@@ -1352,7 +1403,8 @@ class MessagePane(QWidget):
         for i, (k, v) in enumerate(items):
             self.headers_table.setItem(i, 0, QTableWidgetItem(str(k)))
             value_item = QTableWidgetItem(str(v))
-            value_item.setToolTip(str(v))  # 并排后 header 列较窄，长值靠 tooltip 看全
+            # 并排后 header 列较窄，长值靠 tooltip 看全；附「双击可复制」提示提高可发现性
+            value_item.setToolTip(self.tr("值：{0}\n双击可复制").format(str(v)))
             self.headers_table.setItem(i, 1, value_item)
 
 
@@ -2012,6 +2064,9 @@ class DetailPanel(QWidget):
         self._sticky_tab = self.response_index
         self._suppress_tab_signal = False
         self.tabs.currentChanged.connect(self._on_tab_changed)
+        # 切换页签（请求↔响应↔耗时…）时，把两栏 body 的最大化态还原为默认——
+        # 这样最大化天然是「当次显示有效」，不会卡在展开态，也就不需要单独的恢复按钮。
+        self.tabs.currentChanged.connect(lambda *_: self._reset_focus())
 
         # -- 页签拖出：只有「请求」「响应」两页放行
         # 耗时/过滤/WS/TLS 拖出去反而找不到——尤其过滤页，那是用户改规则的地方。
@@ -2040,6 +2095,11 @@ class DetailPanel(QWidget):
     def refresh_comment(self) -> None:
         """用户在列表里改备注时，若详情面板正看着这条就同步。"""
         self._show_comment(getattr(self._flow, "comment", "") or "")
+
+    def _reset_focus(self) -> None:
+        """切换页签或会话时，把请求/响应两栏的 body 最大化态还原为默认。"""
+        for pane in (self.request_pane, self.response_pane):
+            pane.body_pane.exit_focus()
 
     def show_flow(self, flow) -> None:
         self._flow = flow
@@ -2091,6 +2151,9 @@ class DetailPanel(QWidget):
         # 隐藏「当前页」时 Qt 会自动跳到别的页并触发 currentChanged，
         # 若发生在抑制窗口之外就会把 sticky 污染成自动跳去的页。
         self._apply_tab_layout(flow)
+        # 换会话即还原最大化态（见 _reset_focus）：不同请求/响应体尺寸差异大，
+        # 保留上一会话的展开比例反而碍事，默认态最稳妥。
+        self._reset_focus()
 
     def _apply_tab_layout(self, flow) -> None:
         """按 flow 类型刷新各页签显隐与内容，并定位到目标页。

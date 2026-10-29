@@ -1,8 +1,16 @@
 {
-  "version": "3.0.2",
-  "published_at": "2026-10-29T02:00:00+08:00",
+  "version": "3.0.3",
+  "published_at": "2026-10-29T16:30:00+08:00",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
+    {
+      "zh": "请求/响应详情区大改版：header 与 body 改为左右并排，body 占满整个查看区，大 JSON、长报文一眼看全；顶部新增身份条（蓝「请求」/绿「响应」），页签切换再也不会分不清看的是哪一侧；工具条新增「最大化」按钮一键放大 body（自动折叠请求头列），切换页签或会话时自动还原，Esc 也可退出；header/body 分割位置自动记住，下次启动保持原样",
+      "en": "Major revamp of the request/response inspector: headers and body now sit side by side, with the body taking the full height so long JSON and payloads read at a glance. An identity badge (blue Request / green Response) at the top makes it impossible to mistake which side you are on. A Maximize button blows the body up to fill the pane (folding the header column away); it resets automatically when you switch tabs or flows, and Esc works too. The header/body split position is remembered across launches"
+    },
+    {
+      "zh": "header 表支持双击复制：双击任意一行的值即复制到剪贴板，并弹「已复制」提示；长值可先看悬浮提示（含完整内容与复制提示）再决定",
+      "en": "Header values are now copy-on-double-click: double-click any row to copy its value, confirmed by a 'copied' toast. Long values show their full text in the tooltip first, along with the double-click hint"
+    },
     {
       "zh": "新增界面卡死检测：主线程每 250ms 打心跳，独立看门狗线程超 5 秒收不到心跳就抓主线程栈写 hang.log（每 5 秒一次、最多 6 次），恢复时记下卡死时长。之前「界面卡住」这类问题一条记录都留不下——进程还活着，faulthandler 与异常钩子都不会触发",
       "en": "New UI hang detection: the main thread beats a heartbeat every 250 ms, and an independent watchdog thread dumps the main-thread stack into hang.log when the beat stops for 5 s (sampling every 5 s, at most 6 times), noting the total hang duration on recovery. Previously a frozen UI left no evidence at all, since the process is still alive and neither faulthandler nor the exception hooks fire"
@@ -54,6 +62,10 @@
     {
       "zh": "体验优化：全局控件质感、流量表数值列等宽右对齐、脚本编辑器 Python 语法高亮、JSON 树三列并按层展开、左侧图标导航栏（可钉住、Ctrl+1–9）、请求概览卡、行密度切换与空态引导；FIX 字段树标签列按内容自适应并补全悬浮提示（5 位私有 tag 不再截断），同名字典重复导入直接覆盖更新",
       "en": "Experience polish: overall control styling, right-aligned monospaced numeric columns, Python syntax highlighting in the script editor, a three-column JSON tree with expand-by-depth, an icon nav rail (pinnable, Ctrl+1–9), a request overview card, row-density switching and empty-state guidance; the FIX tag column now sizes to its content with full tooltips (5-digit private tags are no longer truncated), and re-importing a dictionary with the same name overwrites it instead of creating a duplicate"
+    },
+    {
+      "zh": "JSON 树折叠节点改为内联预览（对齐 Fiddler/Charles 风格）：容器显示 {name: \"…\", age: 30, …} 这类内容摘要，不再是 {2}/[3] 裸计数，悬浮提示同样带预览，不展开就能瞄到里面有什么",
+      "en": "The JSON tree now previews collapsed containers inline, Fiddler/Charles style: nodes read {name: \"…\", age: 30, …} instead of a bare {2}/[3] count, and tooltips carry the same preview, so you can peek inside without expanding"
     }
   ]
 }
