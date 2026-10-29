@@ -32,9 +32,11 @@ from PySide6.QtGui import (
     QBrush,
     QFont,
     QImage,
+    QKeySequence,
     QPainter,
     QPalette,
     QPixmap,
+    QShortcut,
     QSyntaxHighlighter,
     QTextCharFormat,
     QTextCursor,
@@ -117,6 +119,7 @@ from app.ui.highlight import JsonHighlighter, is_dark
 from app.ui.json_tree import JsonTreeView
 from app.ui.overview_card import OverviewCard
 from app.ui.tls_pane import TlsPane, has_tls
+from app.settings import load_settings, save_settings
 
 #: 表单表格里命中的单元格底色（与 body 文本高亮同色系，视觉上是一回事）
 
@@ -318,6 +321,7 @@ class BodyPane(QWidget):
     """
 
     wrap_changed = Signal(bool)
+    focus_changed = Signal(bool)      # body 最大化开/关（True=占满，False=还原）
 
     def __init__(self, parent=None, wrap_default: bool = True):
         super().__init__(parent)
@@ -330,7 +334,9 @@ class BodyPane(QWidget):
         self.tree_view = JsonTreeView()
         self.tree_view.setToolTip(QCoreApplication.translate("DetailPanel", BODY_TREE_TIP))
 
-        row = QHBoxLayout()
+        self.toolbar = QWidget()
+        row = QHBoxLayout(self.toolbar)
+        row.setContentsMargins(0, 0, 0, 0)
         # 视图切换：一排互斥按钮（对齐 Fiddler inspector 的选项卡条），不用下拉。
         # 「自动」保持粘性语义：点了别的按钮之后换会话不回弹。
         self.mode_buttons: dict[str, QToolButton] = {}
@@ -406,7 +412,22 @@ class BodyPane(QWidget):
         for btn in (self.expand_btn, self.collapse_btn, self.level_btn):
             btn.setVisible(False)
             row.addWidget(btn)
-        layout.addLayout(row)
+        # 最大化 body：一键让 body 占满查看区（隐藏本工具条 + MessagePane 折叠
+        # header 列）；按 Esc 或再次点击还原。Esc 仅最大化时拦截，避免误关对话框。
+        self.max_btn = QToolButton()
+        self.max_btn.setText(self.tr("最大化"))
+        self.max_btn.setAutoRaise(True)
+        self.max_btn.setCheckable(True)
+        self.max_btn.setToolTip(
+            self.tr("最大化 body 显示区（隐藏工具条与请求头，按 Esc 或再次点击还原）")
+        )
+        self.max_btn.toggled.connect(self._on_max_toggle)
+        row.addWidget(self.max_btn)
+        self._focus_mode = False
+        self._esc = QShortcut(QKeySequence("Esc"), self)
+        self._esc.setEnabled(False)
+        self._esc.activated.connect(self._exit_focus)
+        layout.addWidget(self.toolbar)
 
         self.body_stack = QStackedWidget()
 
@@ -506,6 +527,23 @@ class BodyPane(QWidget):
 
     def set_wrap_default(self, on: bool) -> None:
         self.wrap_cb.setChecked(on)
+
+    # ------------------------------------------------------------ 最大化
+    def _on_max_toggle(self, checked: bool) -> None:
+        """最大化按钮：切换 body 占满模式并广播给外层（折叠 header 列）。"""
+        self._set_focus_mode(checked)
+        self.focus_changed.emit(checked)
+
+    def _set_focus_mode(self, on: bool) -> None:
+        self._focus_mode = on
+        self.toolbar.setHidden(on)        # 藏起工具条 → body 拿到整块纵向空间
+        self.max_btn.setText(self.tr("还原") if on else self.tr("最大化"))
+        self._esc.setEnabled(on)          # 仅最大化时吃 Esc，避免干扰其它对话框
+
+    def _exit_focus(self) -> None:
+        """Esc 退出最大化（仅最大化时启用）。"""
+        if self._focus_mode:
+            self.max_btn.setChecked(False)   # 触发 toggled(False) → _on_max_toggle
 
     @property
     def current_mode(self) -> str:
@@ -1144,16 +1182,25 @@ class RawPane(QWidget):
 class MessagePane(QWidget):
     """单条消息（请求或响应）的 headers 表 + body 视图。"""
 
-    def __init__(self, parent=None, wrap_default: bool = True):
+    def __init__(self, parent=None, wrap_default: bool = True, role: str = "request"):
         super().__init__(parent)
+        self._role = role  # "request" | "response"：决定身份条颜色与文案
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
+        # 身份条：明确当前这一格是「请求」还是「响应」，tab 切换时一眼分清
+        id_row = QHBoxLayout()
+        id_row.setSpacing(6)
+        self.identity_pill = QLabel()
+        self.identity_pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._apply_identity_style()
+        id_row.addWidget(self.identity_pill)
         self.summary_label = QLabel(self.tr("（未选择会话）"))
         self.summary_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
-        layout.addWidget(self.summary_label)
+        id_row.addWidget(self.summary_label, stretch=1)
+        layout.addLayout(id_row)
 
         # 内部 tab：保留原有的「查看」（headers 表 + body 视图，所有结构化能力不动），
         # 新增「原始」对齐 Fiddler 的 Raw inspector —— 一屏看完整报文。
@@ -1162,7 +1209,9 @@ class MessagePane(QWidget):
         inspect = QWidget()
         inspect_layout = QVBoxLayout(inspect)
         inspect_layout.setContentsMargins(0, 0, 0, 0)
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        # header 表在左、body 在右：body 占满整个宽度与高度，放大 JSON 等内容的查看区；
+        # 之前是上下叠，header 吃掉了近一半纵向空间，大 body 很憋屈。
+        splitter = QSplitter(Qt.Orientation.Horizontal)
 
         self.headers_table = QTableWidget(0, 2)
         self.headers_table.setHorizontalHeaderLabels(["Header", "Value"])
@@ -1177,7 +1226,31 @@ class MessagePane(QWidget):
         self.body_pane = BodyPane(wrap_default=wrap_default)
         splitter.addWidget(self.body_pane)
 
-        splitter.setSizes([180, 320])
+        # header 固定可拖、body 占满剩余：初始给 header 约 340px，body 随之展开
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        # header/body 比例记忆：优先用上次拖动后存的比例（请求/响应两页共用），
+        # 落盘失败或首次运行才回退默认。restoreState 会顺带把 childrenCollapsible
+        # 设回默认，故其后重设 False 防止把某边拖到 0 消失。
+        self._splitter = splitter
+        saved = load_settings().detail_split_state
+        if saved:
+            try:
+                splitter.restoreState(saved)
+            except Exception:
+                splitter.setSizes([340, 600])
+        else:
+            splitter.setSizes([340, 600])
+        splitter.setChildrenCollapsible(False)
+        # 拖动分隔条后防抖落盘：避免每次移动都全量写 settings.json
+        self._splitter_save_timer = QTimer(self)
+        self._splitter_save_timer.setInterval(500)
+        self._splitter_save_timer.setSingleShot(True)
+        splitter.splitterMoved.connect(lambda *a: self._splitter_save_timer.start())
+        self._splitter_save_timer.timeout.connect(self._save_detail_split)
+        self._saved_detail_sizes = None
+        # body 最大化：收起/还原 header 列，让 body 占满整个查看区
+        self.body_pane.focus_changed.connect(self._on_body_focus)
         inspect_layout.addWidget(splitter)
         self.view_tabs.addTab(
             inspect, QCoreApplication.translate("DetailPanel", INSPECT_TAB_LABEL)
@@ -1192,6 +1265,46 @@ class MessagePane(QWidget):
         )
 
         layout.addWidget(self.view_tabs, stretch=1)
+
+    # ------------------------------------------------------------ 身份条
+    def _apply_identity_style(self) -> None:
+        """按角色给身份 pill 上色与文案：请求蓝、响应绿。"""
+        self.identity_pill.setMinimumHeight(20)
+        if self._role == "response":
+            bg, text = "#1f9d55", self.tr("响应")
+        else:
+            bg, text = "#2f6fdb", self.tr("请求")
+        self.identity_pill.setText(text)
+        self.identity_pill.setStyleSheet(
+            f"background:{bg};color:#ffffff;border-radius:4px;"
+            f"padding:1px 10px;font-weight:bold;"
+        )
+
+    # ------------------------------------------------------------ 布局持久化 / 最大化
+    def _save_detail_split(self) -> None:
+        """防抖落盘 header/body 分隔条比例（请求/响应两页共用一份）。
+
+        最大化期间 header 被压到 0，此时不写盘——否则下次启动会永久隐藏 header。
+        """
+        if getattr(self.body_pane, "_focus_mode", False):
+            return
+        try:
+            settings = load_settings()
+            settings.detail_split_state = bytes(self._splitter.saveState())
+            save_settings(settings)
+        except Exception:
+            pass
+
+    def _on_body_focus(self, on: bool) -> None:
+        """body 最大化：收起/还原 header 列，让 body 占满整个查看区。"""
+        if on:
+            self._saved_detail_sizes = self._splitter.sizes()
+            self.headers_table.setHidden(True)
+            self._splitter.setSizes([0, max(self._splitter.width(), 600)])
+        else:
+            self.headers_table.setHidden(False)
+            if self._saved_detail_sizes:
+                self._splitter.setSizes(self._saved_detail_sizes)
 
     # ------------------------------------------------------------ 展示
 
@@ -1238,7 +1351,9 @@ class MessagePane(QWidget):
         self.headers_table.setRowCount(len(items))
         for i, (k, v) in enumerate(items):
             self.headers_table.setItem(i, 0, QTableWidgetItem(str(k)))
-            self.headers_table.setItem(i, 1, QTableWidgetItem(str(v)))
+            value_item = QTableWidgetItem(str(v))
+            value_item.setToolTip(str(v))  # 并排后 header 列较窄，长值靠 tooltip 看全
+            self.headers_table.setItem(i, 1, value_item)
 
 
 class WebSocketPane(QWidget):
@@ -1865,8 +1980,8 @@ class DetailPanel(QWidget):
         )
         layout.addWidget(self.comment_label)
         self.tabs = QTabWidget()
-        self.request_pane = MessagePane(wrap_default=wrap_default)
-        self.response_pane = MessagePane(wrap_default=wrap_default)
+        self.request_pane = MessagePane(wrap_default=wrap_default, role="request")
+        self.response_pane = MessagePane(wrap_default=wrap_default, role="response")
         self.timings_pane = TimingsPane()
         self.ws_pane = WebSocketPane(wrap_default=wrap_default)
         self.tabs.addTab(self.request_pane, self.tr("请求"))

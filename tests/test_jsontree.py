@@ -88,10 +88,24 @@ class TestLabelsAndTypes:
         assert root.type_name == type_name
         assert root.value_text == text
 
-    def test_container_summary_shows_direct_child_count(self):
+    def test_container_preview_shows_inline_content(self):
+        # Fiddler / Charles 风格：折叠态也内联预览前几项，而不是只显示 {2} / [3]
         rows = _root({"obj": {"x": 1, "y": 2}, "arr": [1, 2, 3]}).rows()
-        assert rows[0].value_text == "{2}"
-        assert rows[1].value_text == "[3]"
+        assert rows[0].value_text == "{x: 1, y: 2}"
+        assert rows[1].value_text == "[1, 2, 3]"
+
+    def test_preview_caps_items_and_nests(self):
+        # 顶层只取前 3 项 + "…"；嵌套容器只标 {…} / […]，不递归
+        node = _root({"a": 1, "b": [1], "c": {"k": 2}, "d": 4, "e": 5})
+        text = node.preview_text()
+        assert text.startswith("{")
+        assert "…" in text
+        assert "{…}" in text and "[…]" in text
+
+    def test_preview_respects_limit(self):
+        node = _root({"a": 1, "b": 2, "c": 3, "d": 4})
+        assert node.preview_text(limit=2).count(",") == 2   # 2 项 + …
+
 
 
 class TestLongValues:

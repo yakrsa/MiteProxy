@@ -125,14 +125,49 @@ class JsonNode:
 
     @property
     def value_text(self) -> str:
-        """第 2 列显示的文本（可能截断；完整值见 ``full_text``）。"""
+        """第 2 列显示的文本（可能截断；完整值见 ``full_text``）。
+
+        容器节点（对象 / 数组）折叠时也内联预览前几项内容（Fiddler / Charles
+        风格），而不是只显示一个干瘪的数量数字 ``{3}`` / ``[10]`` —— 那样折叠时
+        根本看不出里面是什么。预览不递归实例化子树（嵌套容器只标 ``{…}`` /
+        ``[…]``），保住大文档的懒加载性能。
+        """
         if self.is_container:
-            return "{%d}" % self.child_count if isinstance(self.value, dict) \
-                else "[%d]" % self.child_count
-        text = self._leaf_text()
+            text = self.preview_text()
+        else:
+            text = self._leaf_text()
         if len(text) > VALUE_PREVIEW_LIMIT:
             return text[:VALUE_PREVIEW_LIMIT] + "…"
         return text
+
+    def preview_text(self, limit: int = 3) -> str:
+        """折叠态下的值预览（Fiddler / Charles 风格）。
+
+        只取顶层前 ``limit`` 项内联展示；嵌套容器只标 ``{…}`` / ``[…]`` 不递归，
+        避免为「预览一个折叠行」就把整棵子树实例化出来。
+        """
+        if not self.is_container:
+            return self._leaf_text()
+        if isinstance(self.value, dict):
+            parts = []
+            for i, (k, v) in enumerate(self.value.items()):
+                if i >= limit:
+                    break
+                parts.append(f"{k}: {self._preview_leaf(v)}")
+            if len(self.value) > limit:
+                parts.append("…")
+            return "{" + ", ".join(parts) + "}"
+        items = list(self.value)
+        parts = [self._preview_leaf(v) for v in items[:limit]]
+        if len(items) > limit:
+            parts.append("…")
+        return "[" + ", ".join(parts) + "]"
+
+    @staticmethod
+    def _preview_leaf(v) -> str:
+        if isinstance(v, (dict, list)):
+            return "{…}" if isinstance(v, dict) else "[…]"
+        return json.dumps(v, ensure_ascii=False)
 
     @property
     def full_text(self) -> str:

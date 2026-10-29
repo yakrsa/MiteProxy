@@ -209,7 +209,7 @@ class JsonTreeModel(QAbstractItemModel):
             kind = QCoreApplication.translate("JsonTreeModel", "对象（{0} 个键）") \
                 if isinstance(node.value, dict) else \
                 QCoreApplication.translate("JsonTreeModel", "数组（{0} 项）")
-            return f"{path}\n{kind.format(node.child_count)}"
+            return f"{path}\n{kind.format(node.child_count)}\n{node.preview_text()}"
         text = node.full_text
         if len(text) > VALUE_PREVIEW_LIMIT:
             tail = QCoreApplication.translate(

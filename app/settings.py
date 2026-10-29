@@ -147,6 +147,9 @@ class Settings:
     check_update_on_startup: bool = True
     #: 流量页分隔条位置（QSplitter.saveState()，base64 落盘）
     splitter_state: bytes | None = None
+    #: 详情面板「查看」页里 header 表 与 body 之间的分隔条比例
+    #: （QSplitter.saveState()，base64 落盘）。请求 / 响应两页共用一套比例。
+    detail_split_state: bytes | None = None
     window_geometry: bytes | None = None
     #: 用户脚本启用态 {脚本名: 是否启用}（app/scripts.py）。缺省视为启用——
     #: 文件在 scripts/ 目录里、用户没显式关过就该跑
@@ -196,6 +199,11 @@ class Settings:
             "splitter_state": (
                 base64.b64encode(self.splitter_state).decode("ascii")
                 if self.splitter_state
+                else None
+            ),
+            "detail_split_state": (
+                base64.b64encode(self.detail_split_state).decode("ascii")
+                if self.detail_split_state
                 else None
             ),
             # geometry 是 QByteArray，base64 成文本落盘（启动时恢复窗口位置）
@@ -254,6 +262,7 @@ class Settings:
             language=normalize(data.get("language", DEFAULT_LANG)),
             check_update_on_startup=bool(data.get("check_update_on_startup", True)),
             splitter_state=cls._decode_b64(data.get("splitter_state")),
+            detail_split_state=cls._decode_b64(data.get("detail_split_state")),
             window_geometry=cls._decode_geometry(data.get("window_geometry")),
             hidden_columns=cls._sanitize_columns(data.get("hidden_columns")),
             scripts=cls._sanitize_scripts(data.get("scripts")),

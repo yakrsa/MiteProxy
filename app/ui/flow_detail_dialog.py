@@ -57,8 +57,8 @@ class FlowDetailDialog(QDialog):
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setHandleWidth(6)
 
-        self.request_pane = MessagePane(wrap_default=wrap_default)
-        self.response_pane = MessagePane(wrap_default=wrap_default)
+        self.request_pane = MessagePane(wrap_default=wrap_default, role="request")
+        self.response_pane = MessagePane(wrap_default=wrap_default, role="response")
         splitter.addWidget(self.request_pane)
         splitter.addWidget(self.response_pane)
         splitter.setSizes([360, 360])
