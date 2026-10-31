@@ -93,6 +93,7 @@ from app.settings import (
     save_settings,
 )
 from app.updater import CURRENT_VERSION, UpdateChecker, is_newer
+from app import releases_stats
 from app.bodyview import BODY_PREVIEW_LIMIT as BODY_SEND_LIMIT
 from app import sysproxy
 from app.textutil import decode_body
@@ -279,6 +280,9 @@ class MainWindow(QMainWindow):
         theme.apply(getattr(self.settings, "theme", "system"))
         theme.add_listener(self._update_status)   # 切主题时状态栏重染色
         QApplication.instance().installEventFilter(self)
+
+        # -- 统计：启动时无感上报使用人数（零依赖、免费）
+        self._init_stats()
 
         self._apply_filter_config(self.settings.filter)
         # 栏位控件也要加载持久化配置：此前只推了代理模型，重启后过滤栏
@@ -1161,6 +1165,42 @@ class MainWindow(QMainWindow):
         self.traffic_table.edit_replay_requested.connect(
             lambda: self._replay_selected(edit=True)
         )
+
+    # ================================================================ 统计上报
+
+    def _init_stats(self) -> None:
+        """初始化统计上报（启动时无感触发）。"""
+        # 检查是否启用统计 & 是否需要上报
+        if not releases_stats.is_stats_enabled():
+            log.debug("统计上报功能已禁用")
+            return
+
+        if not releases_stats.should_report():
+            log.debug("本次无需上报（24小时内已上报或版本未变）")
+            return
+
+        # 异步触发统计检查与上报
+        try:
+            self._stats_checker = releases_stats.async_report(parent=self)
+            log.info("统计上报已触发（版本 %s）", f"v{releases_stats.__version__}")
+        except Exception:
+            log.exception("统计上报启动失败")
+
+    def _toggle_stats(self, enabled: bool) -> None:
+        """切换统计上报开关。"""
+        if enabled:
+            releases_stats.enable_stats()
+            log.info("用户手动启用了统计上报")
+        else:
+            releases_stats.disable_stats()
+            log.info("用户手动禁用了统计上报")
+
+    def _reset_stats(self) -> None:
+        """重置统计状态（用于调试或用户主动要求）。"""
+        if releases_stats.reset_stats():
+            log.info("统计状态已重置")
+        else:
+            log.warning("重置统计状态失败")
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu(self.tr("文件"))
