@@ -167,6 +167,11 @@ class Settings:
     #: 默认 True（默认愿意帮我们定位问题）；用户点「不再提示」后置 False，
     #: 摘要仍保留在本地，可从菜单手动补发。
     crash_report_prompt: bool = True
+    #: 内存守护：按内存增长定时执行 gc.collect()，绕开 CPython 3.14.0~3.14.4
+    #: 增量 GC 不回收循环垃圾的缺陷（详见 app/memguard.py）。
+    #: 默认 True——关掉它长时间抓包会一路涨到 GB 级并在 GC 里崩掉。
+    #: 升级到 3.14.5+ 后可以关，但开着也无额外开销（增长慢就不触发）。
+    auto_gc: bool = True
 
     def to_dict(self) -> dict:
         return {
@@ -215,6 +220,7 @@ class Settings:
             "hidden_columns": list(self.hidden_columns),
             "scripts": dict(self.scripts),
             "crash_report_prompt": self.crash_report_prompt,
+            "auto_gc": self.auto_gc,
         }
 
     @classmethod
@@ -268,6 +274,7 @@ class Settings:
             scripts=cls._sanitize_scripts(data.get("scripts")),
             nav_rail_pinned=bool(data.get("nav_rail_pinned", False)),
             crash_report_prompt=bool(data.get("crash_report_prompt", True)),
+            auto_gc=bool(data.get("auto_gc", True)),
         )
 
     @staticmethod

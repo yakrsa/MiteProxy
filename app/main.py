@@ -102,6 +102,26 @@ def _start_hang_watch(app: QApplication) -> None:
         logging.getLogger(__name__).exception("卡死看门狗启动失败")
 
 
+def _start_mem_guard(enabled: bool) -> None:
+    """启动内存守护：按内存增长定时 gc.collect()。
+
+    针对 CPython 3.14.0~3.14.4 增量 GC 不回收循环垃圾的缺陷（详见
+    :mod:`app.memguard`）。抓包主路径会持续产生循环引用的对象图，有缺陷的
+    版本里内存只涨不降，堆到 GB 级后会在 GC 遍历中空指针崩溃。
+
+    失败不该影响抓包：这里吞掉全部异常，最坏结果是回到「没有这层保护」。
+    """
+    if not enabled:
+        logging.getLogger(__name__).info("内存守护已关闭（设置项 auto_gc=false）")
+        return
+    try:
+        from app import memguard
+
+        memguard.start()
+    except Exception:                # pragma: no cover - 守护失败不影响抓包
+        logging.getLogger(__name__).exception("内存守护启动失败")
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -125,7 +145,12 @@ def main() -> int:
     from app.i18n import load_language
     from app.settings import load_settings
 
-    load_language(app, load_settings().language)
+    settings = load_settings()
+    load_language(app, settings.language)
+    # 内存守护：绕开 Python 3.14.0 增量 GC 不回收循环垃圾的缺陷。
+    # 放在 QApplication 之后、MainWindow 之前：线程与界面无关，但越早开始
+    # 累计基线，越能尽早发现异常增长。
+    _start_mem_guard(settings.auto_gc)
 
     # 单实例：第二个实例不启动主界面，唤醒已运行实例的主窗口后退出。
     # 多开没有任何收益——只会抢代理/证书端口、互相覆盖系统代理设置。
@@ -181,6 +206,13 @@ def main() -> int:
         crashreport.stop_watchdog()
         crashreport.note("app_exit", f"rc={rc}")
         crashreport.mark_clean_exit()
+    except Exception:                # pragma: no cover
+        pass
+    # 内存守护也要停：退出阶段没必要再跑一次全量回收拖慢关闭
+    try:
+        from app import memguard
+
+        memguard.stop()
     except Exception:                # pragma: no cover
         pass
     single_instance.release()    # 正常退出释放锁（崩溃场景由探活逻辑兜底）

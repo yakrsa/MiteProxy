@@ -134,8 +134,11 @@ class TestTranslationCoverage:
     #:   整文件豁免而非逐行：这类正文随时会增删，逐行号维护必然漂移
     #: - crashreport.py：崩溃取证写盘文本（日志、环境快照、运行标记），
     #:   只在本地日志里给排查者看，不进界面、不随语言切换
+    #: - memguard.py：内存守护的回收日志（回收前后内存、耗时、原因），
+    #:   同样只进日志文件，不进界面
     _EXEMPT_FILES = {"app/ui/dialogs.py", "app/certserver.py", "app/fixdict.py",
-                     "app/fixprofile.py", "app/crashreport.py", "app/feedback.py"}
+                     "app/fixprofile.py", "app/crashreport.py", "app/feedback.py",
+                     "app/memguard.py"}
     _EXEMPT_LINES = {
         # flow_store COLUMNS：中文列头走 column_labels() 懒翻译；#6 新增 3 个
         # 可选列（内容类型/开始时刻/备注）追加在末尾，整段都豁免
