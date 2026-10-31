@@ -198,3 +198,55 @@ def test_raw_pane_searchable(qapp):
     hits = p.request_pane.highlight("example.com", case_sensitive=False)
     assert hits > 0
     p.deleteLater()
+
+
+def test_splitter_synced_between_request_and_response(qapp):
+    """bug：请求/响应两栏各记一份分隔条，拖动其一后切到另一栏会跳变。
+
+    修复后任一栏拖动的分隔条比例应实时同步到另一栏，切页签不再跳动。
+    """
+    p = DetailPanel()
+    p.resize(700, 500)
+    p.show()
+    p.show_flow(_http_flow(with_response=True))
+    qapp.processEvents()
+
+    # 拖动「请求」栏分隔条（程序化 setSizes 等价于用户拖拽，会触发 splitterMoved）
+    p.request_pane._splitter.setSizes([520, 180])
+    # 触发布局持久化（emit splitter_moved → DetailPanel 同步到「响应」栏）
+    p.request_pane._save_detail_split()
+    qapp.processEvents()
+
+    req = p.request_pane._splitter.sizes()
+    res = p.response_pane._splitter.sizes()
+    # 关键不变量：两栏的"分割线位置"（header 宽）一致，切页签不再跳动。
+    # body 宽因两栏实际像素宽细微差异会被 QSplitter 各自夹紧，不比较它。
+    assert res[0] == req[0] == 520
+    # 已落盘，重启语义下同一比例可被读到（用实际像素宽算 body，不写死）
+    assert res[0] + res[1] == req[0] + req[1]
+    p.deleteLater()
+
+
+def test_body_min_width_allows_wide_header(qapp):
+    """bug：BodyPane 工具条太宽把 body 最小宽度撑到 ~568px，QSplitter 据此
+    把 header 锁死在「总宽 - 568」以内，header 拖不宽、看不全头字段。
+
+    修复后工具条改为可滚动容器，body 最小宽度应大幅降低，header 能被拖到很宽。
+    """
+    from app.ui.detail_panel import BodyPane
+
+    bp = BodyPane()
+    bp.show_body({}, b"{}")
+    # 修复前约 568；修复后工具条可滚动，应远小于此
+    assert bp.minimumSizeHint().width() < 300
+
+    p = DetailPanel()
+    p.resize(700, 500)
+    p.show_flow(_http_flow(with_response=True))
+    qapp.processEvents()
+    sp = p.request_pane._splitter
+    # 把 header 拖到占面板 ~85%（body 压到 ~100px），应能生效而非被弹回
+    sp.setSizes([600, 100])
+    header_w = sp.sizes()[0]
+    assert header_w >= 500, f"header 应能拖到很宽，实际仅 {header_w}"
+    p.deleteLater()

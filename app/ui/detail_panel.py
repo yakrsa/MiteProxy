@@ -26,7 +26,15 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QTimer, Signal, QCoreApplication, QT_TRANSLATE_NOOP
+from PySide6.QtCore import (
+    QByteArray,
+    QSize,
+    Qt,
+    QTimer,
+    Signal,
+    QCoreApplication,
+    QT_TRANSLATE_NOOP,
+)
 from PySide6.QtGui import (
     QAction,
     QBrush,
@@ -55,6 +63,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QScrollArea,
+    QFrame,
     QSplitter,
     QStackedWidget,
     QTableWidget,
@@ -314,6 +323,29 @@ class ImageView(QScrollArea):
         self._label.resize(w, h)
 
 
+class _MinCappedScrollArea(QScrollArea):
+    """工具条横向可滚动容器。
+
+    模式按钮一排较多（8 个视图模式 + 换行 + 最大化），整行自然宽度约 560px，
+    会撑大 BodyPane 的 minimumSizeHint。QSplitter 不允许某栏小于其
+    minimumSizeHint，于是 header 栏被锁死在「总宽 - 560」以内，根本拖不宽
+    （见 header/body 分隔条的 bug 1）。这里把容器最小宽度压到 ~220px：
+    body 窄到一定程度只出横向滚动条，header 因此能被拖到任意宽度去看全头字段。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+
+    def minimumSizeHint(self):
+        hint = super().minimumSizeHint()
+        # 仅压最小宽度；高度仍按内容（一行的按钮高度）给，避免把工具条压扁
+        return QSize(min(hint.width(), 220), hint.height())
+
+
 class BodyPane(QWidget):
     """body 视图（模式切换 + 文本/表单/图片/十六进制 四种渲染）。
 
@@ -338,6 +370,10 @@ class BodyPane(QWidget):
         self.toolbar = QWidget()
         row = QHBoxLayout(self.toolbar)
         row.setContentsMargins(0, 0, 0, 0)
+        # 工具条整行太宽会撑大 body 最小宽度、锁死 header 拖拽；放进可滚动容器
+        # （最小宽度被 _MinCappedScrollArea 压住），窄屏只出滚动条，放行 header 拖宽。
+        self._toolbar_scroll = _MinCappedScrollArea()
+        self._toolbar_scroll.setWidget(self.toolbar)
         # 视图切换：一排互斥按钮（对齐 Fiddler inspector 的选项卡条），不用下拉。
         # 「自动」保持粘性语义：点了别的按钮之后换会话不回弹。
         self.mode_buttons: dict[str, QToolButton] = {}
@@ -428,7 +464,7 @@ class BodyPane(QWidget):
         self._esc = QShortcut(QKeySequence("Esc"), self)
         self._esc.setEnabled(False)
         self._esc.activated.connect(self._exit_focus)
-        layout.addWidget(self.toolbar)
+        layout.addWidget(self._toolbar_scroll)
 
         self.body_stack = QStackedWidget()
 
@@ -1189,9 +1225,14 @@ class RawPane(QWidget):
 class MessagePane(QWidget):
     """单条消息（请求或响应）的 headers 表 + body 视图。"""
 
+    # 分隔条比例变化（bytes 即 saveState 结果），供外层在「请求/响应」两栏间实时同步，
+    # 保证切到另一栏时分割线位置一致（修复 bug：两栏各记一份、互不跟随导致跳动）。
+    splitter_moved = Signal(bytes)
+
     def __init__(self, parent=None, wrap_default: bool = True, role: str = "request"):
         super().__init__(parent)
         self._role = role  # "request" | "response"：决定身份条颜色与文案
+        self._applying_remote = False   # 正在应用另一栏同步过来的比例，抑制回写避免死循环
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
@@ -1254,7 +1295,7 @@ class MessagePane(QWidget):
         self._splitter_save_timer = QTimer(self)
         self._splitter_save_timer.setInterval(500)
         self._splitter_save_timer.setSingleShot(True)
-        splitter.splitterMoved.connect(lambda *a: self._splitter_save_timer.start())
+        splitter.splitterMoved.connect(self._on_splitter_moved)
         self._splitter_save_timer.timeout.connect(self._save_detail_split)
         self._saved_detail_sizes = None
         # body 最大化：收起/还原 header 列，让 body 占满整个查看区
@@ -1289,19 +1330,48 @@ class MessagePane(QWidget):
         )
 
     # ------------------------------------------------------------ 布局持久化 / 最大化
+    def _on_splitter_moved(self, *args) -> None:
+        """本地拖动分隔条：最大化态下忽略（比例由 _on_body_focus 接管），
+        否则防抖落盘，并在落盘后广播给外层做「另一栏」同步。"""
+        if getattr(self, "_applying_remote", False):
+            return
+        if getattr(self.body_pane, "_focus_mode", False):
+            return
+        self._splitter_save_timer.start()
+
     def _save_detail_split(self) -> None:
         """防抖落盘 header/body 分隔条比例（请求/响应两页共用一份）。
 
         最大化期间 header 被压到 0，此时不写盘——否则下次启动会永久隐藏 header。
+        落盘后通过 splitter_moved 广播，外层据此把同一比例同步到另一栏。
         """
         if getattr(self.body_pane, "_focus_mode", False):
             return
         try:
             settings = load_settings()
-            settings.detail_split_state = bytes(self._splitter.saveState())
+            data = bytes(self._splitter.saveState())
+            settings.detail_split_state = data
             save_settings(settings)
+            self.splitter_moved.emit(data)
         except Exception:
             pass
+
+    def _apply_remote_splitter(self, data: bytes) -> None:
+        """应用外层（另一栏拖动 / 切换页签）同步过来的分隔条比例。
+
+        幂等且**不回写**：用 _applying_remote 抑制 restoreState 触发的
+        splitterMoved，避免两栏互相推送成死循环；最大化态下忽略（不被另一栏的
+        正常比例覆盖成隐藏 header）。
+        """
+        if getattr(self.body_pane, "_focus_mode", False):
+            return
+        self._applying_remote = True
+        try:
+            self._splitter.restoreState(QByteArray(data))
+        except Exception:
+            pass
+        finally:
+            self._applying_remote = False
 
     def _on_body_focus(self, on: bool) -> None:
         """body 最大化：收起/还原 header 列，让 body 占满整个查看区。"""
@@ -2058,6 +2128,15 @@ class DetailPanel(QWidget):
             pane.body_pane.wrap_changed.connect(self.wrap_changed)
         self.ws_pane.body_pane.wrap_changed.connect(self.wrap_changed)
 
+        # 请求/响应两栏的分隔条比例实时同步：任一栏拖动后，把同一比例同步到
+        # 另一栏，保证切到另一栏时分割线位置一致（修复「切换请求/响应页签跳变」）。
+        self.request_pane.splitter_moved.connect(
+            lambda s: self._sync_detail_splitter(self.response_pane, s)
+        )
+        self.response_pane.splitter_moved.connect(
+            lambda s: self._sync_detail_splitter(self.request_pane, s)
+        )
+
         self._flow = None
         # 粘性页签：启动默认停在「响应」页；用户手动切换后，当次运行内记住该选择
         # （后续选流不再强制拉回响应）。重启程序重新初始化，回到默认响应页。
@@ -2100,6 +2179,12 @@ class DetailPanel(QWidget):
         """切换页签或会话时，把请求/响应两栏的 body 最大化态还原为默认。"""
         for pane in (self.request_pane, self.response_pane):
             pane.body_pane.exit_focus()
+
+    def _sync_detail_splitter(self, other: "MessagePane", sizes_bytes: bytes) -> None:
+        """把某一栏刚改动的分隔条比例应用到另一栏（另一栏正最大化时不动）。"""
+        if getattr(other.body_pane, "_focus_mode", False):
+            return
+        other._apply_remote_splitter(sizes_bytes)
 
     def show_flow(self, flow) -> None:
         self._flow = flow
