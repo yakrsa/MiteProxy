@@ -6,6 +6,9 @@
 
 from __future__ import annotations
 
+import re
+from functools import lru_cache
+
 from PySide6.QtCore import QSortFilterProxyModel, Qt
 
 from app.textutil import decode_for_search
@@ -54,12 +57,15 @@ def add_domains(entries: list[str], domains) -> list[str]:
 def host_matches(host: str, entry: str) -> bool:
     """判断 ``host`` 是否命中名单条目 ``entry``。
 
-    两条语义，按条目是否带点自动分流：
+    三类语义，按条目形态分流：
 
-    - 带点（``example.com``）：域名语义，命中自身或其子域
+    - 含 ``*``：通配符匹配（``*`` 匹配任意字符序列，含空、含点）。
+      ``*.apple.com`` 命中 ``ocsp2.apple.com`` 等所有子域，**并额外涵盖根域**
+      ``apple.com``（DNS 式 ``*.`` 前缀不要求前导子域）；``api.*.com``、
+      ``*.apple.*``、``*foo.com`` 等也按通配符整串匹配。
+    - 带点、不含 ``*``（``example.com``）：域名语义，命中自身或其子域
       （``example.com`` → ``api.example.com``），但不命中
-      ``notexample.com`` / ``example.com.evil.net``——域名黑名单按子串
-      匹配会把同后缀的无关域名一起埋了。
+      ``notexample.com`` / ``example.com.evil.net``。
     - 不带点（``google``）：关键字语义，退化为子串匹配，兼容老版本
       手输片段词的行为。
     """
@@ -67,9 +73,34 @@ def host_matches(host: str, entry: str) -> bool:
     e = (entry or "").strip().rstrip(".").lower()
     if not h or not e:
         return False
+    if "*" in e:
+        return _wildcard_match(h, e)
     if "." in e:
         return h == e or h.endswith("." + e)
     return e in h
+
+
+@lru_cache(maxsize=512)
+def _wildcard_pattern(pattern: str) -> "re.Pattern":
+    """把 ``*`` 当作 ``.*`` 的通配符，转义其余正则元字符后编译（带锚点）。
+
+    缓存编译结果：名单条目数量有限，每次过滤判定都重建正则没必要。
+    """
+    body = re.escape(pattern).replace("\\*", ".*")
+    return re.compile("^" + body + "$")
+
+
+def _wildcard_match(host: str, pattern: str) -> bool:
+    """通配符整串匹配；``*.example.com`` 这类前缀写法额外涵盖根域。"""
+    if _wildcard_pattern(pattern).fullmatch(host):
+        return True
+    # ``*.example.com`` 在 fullmatch 下要求 * 匹配到前导子域，根域自身不被命中；
+    # DNS 习惯里 *.example.com 通常也指 example.com 本身，这里补上。
+    if pattern.startswith("*."):
+        suffix = pattern[2:]
+        if "." in suffix:
+            return host == suffix or host.endswith("." + suffix)
+    return False
 
 
 class FilterConfig:

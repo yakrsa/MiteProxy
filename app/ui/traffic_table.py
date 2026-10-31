@@ -200,11 +200,11 @@ class FilterBar(QWidget):
             self.keywords_edit.setPlaceholderText(self.tr("域名过滤已关闭"))
         elif data == "whitelist":
             self.keywords_edit.setPlaceholderText(
-                self.tr("白名单域名，逗号分隔；留空 = 不过滤")
+                self.tr("白名单域名，逗号分隔；支持通配符 *（如 *.apple.com）")
             )
         else:
             self.keywords_edit.setPlaceholderText(
-                self.tr("黑名单域名，逗号分隔；留空 = 不过滤")
+                self.tr("黑名单域名，逗号分隔；支持通配符 *（如 *.apple.com）")
             )
 
 

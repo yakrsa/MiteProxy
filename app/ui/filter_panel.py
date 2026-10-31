@@ -53,6 +53,8 @@ HINT_TEXT = QT_TRANSLATE_NOOP(
     "• 白名单：只显示命中域名的请求，其余全部隐藏；\n"
     "写 example.com 会同时覆盖 api.example.com 这类子域；"
     "写不带点的词（如 google）则按关键字子串匹配。\n"
+    "支持通配符 *：*.apple.com 隐藏 apple.com 全部子域（含根域），"
+    "api.*.com、*.apple.* 等同理。\n"
     "在流量列表里右键任意请求，可以直接把它所属域名加进来。"
 )
 
@@ -71,7 +73,13 @@ def _host_suffixes(host: str) -> list[str]:
 
 
 def _apply_counts(table: QTableWidget, host_counts: dict) -> None:
-    """把每行的命中数写进第 1 列（索引化，见 ``update_counts`` 的说明）。"""
+    """把每行的命中数写进第 1 列（索引化，见 ``update_counts`` 的说明）。
+
+    匹配口径必须与 ``host_matches`` 完全一致：带点且不含 ``*`` 的条目走后缀
+    字典查表（O(1)），含 ``*`` 的通配符条目与不带点的关键字条目走线性判定
+    （``host_matches`` / 子串）——否则会出现「列表已隐藏，命中数却显示 0」的
+    不一致。
+    """
     rows = table.rowCount()
     if rows == 0:
         return
@@ -82,19 +90,22 @@ def _apply_counts(table: QTableWidget, host_counts: dict) -> None:
                 item.setText("")
         return
 
-    # 先按行登记：带点条目进后缀字典，不带点条目（关键字）进列表
+    # 登记：带点且不含 * 的条目进后缀字典（查询 O(1)）；
+    # 含 * 的条目与不带点的关键字条目进线性列表，逐个 host 判定。
     dotted: dict[str, list[int]] = {}
-    keywords: list[tuple[str, int]] = []
+    linear: list[tuple[str, int]] = []
     for r in range(rows):
         name = table.item(r, 0)
         entry = normalize_domain(name.text()) if name is not None else ""
         if not entry:
             continue
-        if "." in entry:
+        if "*" in entry:
+            linear.append((entry, r))
+        elif "." in entry:
             dotted.setdefault(entry, []).append(r)
         else:
-            keywords.append((entry, r))
-    if not dotted and not keywords:
+            linear.append((entry, r))
+    if not dotted and not linear:
         return
 
     totals = [0] * rows
@@ -106,9 +117,11 @@ def _apply_counts(table: QTableWidget, host_counts: dict) -> None:
         for suffix in _host_suffixes(h):
             for r in dotted.get(suffix, ()):
                 hit_rows.add(r)
-        # 不带点的条目按关键字做子串匹配（兼容手输 google 这类片段词的老用法）
-        for entry, r in keywords:
-            if entry in h:
+        for entry, r in linear:
+            if "*" in entry:
+                if host_matches(h, entry):
+                    hit_rows.add(r)
+            elif entry in h:
                 hit_rows.add(r)
         for r in hit_rows:
             totals[r] += n
@@ -382,8 +395,12 @@ class FilterPanel(QWidget):
         row.setSpacing(6)
         edit = QLineEdit()
         edit.setClearButtonEnabled(True)
-        edit.setPlaceholderText(self.tr("域名，如 example.com，回车添加"))
-        edit.setToolTip(self.tr("回车或点「添加」追加；域名会同时覆盖它的子域"))
+        edit.setPlaceholderText(
+            self.tr("域名，如 example.com 或 *.apple.com，回车添加")
+        )
+        edit.setToolTip(
+            self.tr("回车或点「添加」追加；域名会同时覆盖它的子域。支持通配符 *（如 *.apple.com）")
+        )
         edit.returnPressed.connect(lambda: self._on_add(which))
         add_btn = QPushButton(self.tr("添加"))
         add_btn.setToolTip(self.tr("追加到列表（增量，不会覆盖已有内容）"))

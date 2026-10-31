@@ -207,6 +207,36 @@ class TestDomainFilter:
         )
         assert model.rowCount() == 2
 
+    def test_blacklist_wildcard_hides_subdomains(self, qapp):
+        """黑名单写 *.apple.com，把所有 apple.com 子域（含根域）藏起来。"""
+        model, _ = _make_model(
+            [
+                _row(id="a", host="ocsp2.apple.com"),
+                _row(id="b", host="api.apple.com"),
+                _row(id="c", host="apple.com"),
+                _row(id="d", host="example.com"),
+            ]
+        )
+        model.set_filter_config(
+            FilterConfig(blacklist=["*.apple.com"], enabled=True)
+        )
+        assert model.rowCount() == 1  # 只剩 example.com
+
+    def test_whitelist_wildcard_shows_only_match(self, qapp):
+        """白名单写 *.apple.*，只显示 apple 任意 TLD 的子域。"""
+        model, _ = _make_model(
+            [
+                _row(id="a", host="ocsp2.apple.com"),
+                _row(id="b", host="ocsp2.apple.org"),
+                _row(id="c", host="example.com"),
+            ]
+        )
+        model.set_filter_config(
+            FilterConfig(whitelist=["*.apple.*"], enabled=True,
+                         active_list="whitelist")
+        )
+        assert model.rowCount() == 2
+
 
 class TestDomainHelpers:
     def test_host_matches_subdomain(self):
@@ -222,6 +252,22 @@ class TestDomainHelpers:
     def test_host_matches_keyword(self):
         assert host_matches("www.google.com", "google")
         assert not host_matches("example.com", "google")
+
+    def test_host_matches_wildcard_subdomains(self):
+        """*.apple.com 命中所有 apple.com 子域，并额外涵盖根域。"""
+        assert host_matches("ocsp2.apple.com", "*.apple.com")
+        assert host_matches("api.foo.apple.com", "*.apple.com")
+        assert host_matches("apple.com", "*.apple.com")  # 根域也命中
+        assert not host_matches("api.apple.com.evil.net", "*.apple.com")
+        assert not host_matches("notapple.com", "*.apple.com")
+
+    def test_host_matches_wildcard_variants(self):
+        """api.*.com / *.apple.* / *foo.com 等通配符整串匹配。"""
+        assert host_matches("api.foo.com", "api.*.com")
+        assert host_matches("ocsp2.apple.org", "*.apple.*")
+        assert host_matches("evilfoo.com", "*foo.com")
+        assert host_matches("foo.com", "*foo.com")
+        assert not host_matches("myapi.foo.net", "api.*.com")
 
     def test_normalize_domain(self):
         assert normalize_domain("  Example.com.  ") == "example.com"
