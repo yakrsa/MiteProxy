@@ -2228,9 +2228,16 @@ class DetailPanel(QWidget):
                 res_first,
             )
         else:
-            # 请求已发出、响应还没回来（pending）：响应半边给一个明确占位，
-            # 而不是 show_message 默认的「未选择会话」（那样像没选中，其实只是没响应）。
-            self.response_pane.show_message(self.tr("尚未收到响应…"), {}, None, 0)
+            error_obj = getattr(flow, "error", None)
+            error_text = str(getattr(error_obj, "msg", "") or error_obj or "")
+            if error_text:
+                self.response_pane.show_message(
+                    self.tr("请求失败：{0}").format(error_text), {}, None, 0
+                )
+            else:
+                # 请求已发出、响应还没回来（pending）：响应半边给一个明确占位，
+                # 而不是 show_message 默认的「未选择会话」。
+                self.response_pane.show_message(self.tr("尚未收到响应…"), {}, None, 0)
 
         # 页签显隐 + 定位必须整体抑制 currentChanged：setTabVisible(False)
         # 隐藏「当前页」时 Qt 会自动跳到别的页并触发 currentChanged，

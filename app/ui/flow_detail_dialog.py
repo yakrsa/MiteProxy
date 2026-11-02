@@ -106,8 +106,15 @@ class FlowDetailDialog(QDialog):
                 res_first,
             )
         else:
-            # pending：请求已发出但响应未到，响应半边给明确占位而非「未选择会话」
-            self.response_pane.show_message(self.tr("尚未收到响应…"), {}, None, 0)
+            error_obj = getattr(flow, "error", None)
+            error_text = str(getattr(error_obj, "msg", "") or error_obj or "")
+            if error_text:
+                self.response_pane.show_message(
+                    self.tr("请求失败：{0}").format(error_text), {}, None, 0
+                )
+            else:
+                # pending：请求已发出但响应未到，响应半边给明确占位而非误导
+                self.response_pane.show_message(self.tr("尚未收到响应…"), {}, None, 0)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt 的驼峰命名
         """关闭时立刻掐掉所有流式 QTimer。

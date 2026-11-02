@@ -352,6 +352,8 @@ class FlowStore(QAbstractTableModel):
                 tip += f"\n{row['marked']}"
             if row.get("throttle_ms"):
                 tip += self.tr("\n弱网延迟: {0} ms").format(round(row["throttle_ms"], 1))
+            if row.get("error"):
+                tip += self.tr("\n请求失败: {0}").format(row["error"])
             if row.get("is_websocket"):
                 tip += (
                     self.tr("\nWebSocket：{0} 条消息").format(row.get("ws_messages", 0))

@@ -252,14 +252,16 @@ class ApiPanel(QWidget):
         """把当前请求存进集合（先取名；URL 为空时用 URL 兜底命名）。"""
         url = self.url_edit.text().strip()
         graphql = self._current_body_kind() == "graphql"
-        name, ok = QInputDialog.getText(
-            self,
-            self.tr("保存到请求集合"),
-            self.tr("名称："),
-            text=url or self.tr("未命名请求"),
-        )
-        if not ok:
+        dlg = QInputDialog(self)
+        dlg.setWindowTitle(self.tr("保存到请求集合"))
+        dlg.setLabelText(self.tr("名称："))
+        dlg.setTextValue(url or self.tr("未命名请求"))
+        # 这是一个只影响当前窗口的短交互，不能使用静态 getText() 的
+        # 应用模态实现，否则独立工具浮窗和全量 UI 测试都会被锁死。
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        if not dlg.exec():
             return
+        name = dlg.textValue()
         headers = self._collect_headers()
         # headers 表是有序 dict 语义，存成 [[k, v], ...] 保序
         store.add_collection(
