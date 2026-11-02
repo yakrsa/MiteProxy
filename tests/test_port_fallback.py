@@ -1,6 +1,7 @@
 """端口被占用自动顺延：CertServer 与 ProxyService 的端口回退行为。"""
 
 import socket
+import sys
 
 import pytest
 
@@ -88,3 +89,45 @@ class TestCertServerPortFallback:
             assert server.port == port
         finally:
             server.stop()
+
+
+def _make_time_wait() -> int:
+    """造一个处于 TIME_WAIT 的端口并返回它。
+
+    服务端 accept 后由服务端主动 close，该连接所在的本地端口即进入
+    TIME_WAIT。后续裸 bind 该端口会 EADDRINUSE，带 SO_REUSEADDR 才能绑。
+    """
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", 0))
+    port = srv.getsockname()[1]
+    srv.listen(1)
+    cli = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    cli.connect(("127.0.0.1", port))
+    conn, _ = srv.accept()
+    conn.close()          # 服务端主动关闭 -> port 进入 TIME_WAIT
+    srv.close()
+    cli.close()
+    return port
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows 上探测刻意不带 SO_REUSEADDR，TIME_WAIT 仍会被判占用（与 asyncio 口径一致）",
+)
+class TestTimeWaitNotMisjudged:
+    """TIME_WAIT 残留不该被当成「端口被占用」。
+
+    回归 v3.0.4 的严重体验 bug：``_port_bindable`` 用裸 socket 探测，
+    TIME_WAIT 期间 bind 失败，被误判成占用，于是重启代理时自动切端口并
+    弹「端口被占用」——用户看到的就是「上次的端口没释放」。
+    """
+
+    def test_time_wait_port_is_bindable(self):
+        port = _make_time_wait()
+        assert _port_bindable("127.0.0.1", port) is True
+
+    def test_pick_port_keeps_requested_after_time_wait(self):
+        port = _make_time_wait()
+        svc = ProxyService(host="127.0.0.1", port=port)
+        assert svc._pick_port() == port

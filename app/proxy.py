@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket
+import sys
 import threading
 import time
 from typing import Optional
@@ -27,9 +28,23 @@ PORT_SCAN_TRIES = 100
 
 
 def _port_bindable(host: str, port: int) -> bool:
-    """探测端口能否绑定（bind 后立即关，不监听，只用来查占用）。"""
+    """探测端口能否绑定（bind 后立即关，不监听，只用来查占用）。
+
+    必须与 mitmproxy 实际监听的「口径」一致：mitmproxy 用 asyncio 监听，
+    Unix 下默认带 ``SO_REUSEADDR``，端口上残留的 TIME_WAIT 连接不影响它
+    bind。探测若用裸 socket，TIME_WAIT 期间会被判成「占用」，于是每次重启
+    代理都误切端口并弹「端口被占用」——用户感知为「上次端口没释放」。
+    实测日志表现为间隔 1.4 秒可用、间隔 16 秒反而被占。
+
+    带上 ``SO_REUSEADDR`` 只放行 TIME_WAIT，不会放行真正处于 bind/listen
+    状态的端口（macOS 实测两者仍 EADDRINUSE），对真实占用的判断不变。
+    Windows 上该选项语义相反（允许抢占已 bind 的端口），必须跳过——
+    那里 asyncio 监听默认也不带它，保持裸探测反而与之一致。
+    """
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
+        if sys.platform != "win32":
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind((host, port))
         return True
     except OSError:
