@@ -393,3 +393,85 @@ def recover_if_needed(run=_run, port: int | None = None) -> bool:
     ok, msg = restore(run, port=port)
     log.info("崩溃恢复系统代理: %s", msg)
     return ok
+
+
+def current_proxy(run=_run) -> dict:
+    """读取当前系统代理的实际状态（跨平台），供「未接管时显示真实代理信息」。
+
+    返回 ``{"enabled": bool, "server": str, "auto_config": str}``：
+    - enabled：是否启用代理（Windows 下 ProxyEnable=1，或 AutoConfigURL 有值即 PAC）；
+    - server：代理地址（如 ``127.0.0.1:7890``），未设置则空串；
+    - auto_config：PAC 自动配置脚本地址，未设置则空串。
+    """
+    if platform.system() == "Windows":
+        return _win_current_full(run)
+    return _macos_current_full(run)
+
+
+def _win_current_full(run) -> dict:
+    rc, out, _ = run(["reg", "query", _WIN_KEY, "/v", "ProxyEnable"])
+    enabled = rc == 0 and "0x1" in out
+    rc, out, _ = run(["reg", "query", _WIN_KEY, "/v", "ProxyServer"])
+    server = ""
+    if rc == 0:
+        for line in out.splitlines():
+            if "ProxyServer" in line and "REG_SZ" in line:
+                server = line.rsplit(None, 1)[-1].strip()
+    rc, out, _ = run(["reg", "query", _WIN_KEY, "/v", "AutoConfigURL"])
+    auto_config = ""
+    if rc == 0:
+        for line in out.splitlines():
+            if "AutoConfigURL" in line and "REG_SZ" in line:
+                auto_config = line.rsplit(None, 1)[-1].strip()
+    # Windows：ProxyEnable=0 但配了 PAC 也视为「有代理」
+    return {"enabled": enabled or bool(auto_config), "server": server, "auto_config": auto_config}
+
+
+def _macos_current_full(run) -> dict:
+    for svc in _macos_services(run):
+        for secure in (False, True):
+            st = _macos_get_proxy(run, svc, secure)
+            if st.get("enabled"):
+                host = st.get("server") or ""
+                port = st.get("port") or 0
+                return {
+                    "enabled": True,
+                    "server": f"{host}:{port}" if host else "",
+                    "auto_config": "",
+                }
+    return {"enabled": False, "server": "", "auto_config": ""}
+
+
+def reset(run=_run) -> tuple[bool, str]:
+    """彻底关闭系统代理，使系统不走任何代理（含其他程序的代理配置）。
+
+    会清除用户现有的代理设置（如第三方科学上网工具），仅用于用户主动
+    「重置系统代理」——调用方应先弹确认框说明后果。同时清掉接管快照，
+    避免下次启动 recover_if_needed 又把代理接管回来。
+    """
+    if platform.system() == "Windows":
+        ok, msg = _win_reset(run)
+    else:
+        ok, msg = _macos_reset(run)
+    if ok:
+        STATE_PATH.unlink(missing_ok=True)
+    return ok, msg
+
+
+def _win_reset(run) -> tuple[bool, str]:
+    # ProxyEnable=0 是关代理的关键；地址/PAC 清空是锦上添花，清不掉也不致命
+    rc, _, err = run([
+        "reg", "add", _WIN_KEY, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "0", "/f",
+    ])
+    if rc != 0:
+        return False, QCoreApplication.translate("sysproxy", "重置系统代理失败: {0}").format(err.strip() or rc)
+    for key in ("ProxyServer", "AutoConfigURL"):
+        run(["reg", "add", _WIN_KEY, "/v", key, "/t", "REG_SZ", "/d", "", "/f"])
+    return True, QCoreApplication.translate("sysproxy", "已重置系统代理（当前不走代理）")
+
+
+def _macos_reset(run) -> tuple[bool, str]:
+    for svc in _macos_services(run):
+        for secure in (False, True):
+            _macos_set(run, svc, secure, "", 0, False)
+    return True, QCoreApplication.translate("sysproxy", "已重置系统代理（当前不走代理）")

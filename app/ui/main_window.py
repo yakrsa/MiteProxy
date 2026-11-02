@@ -1133,6 +1133,14 @@ class MainWindow(QMainWindow):
         self.capture_label.mousePressEvent = lambda _ev: self._on_capture_clicked()
         self.status_bar.insertWidget(0, self.capture_label)
 
+        # 「重置系统代理」：关闭系统所有代理（含第三方工具），使系统直连
+        self.reset_proxy_btn = QPushButton(self.tr("重置系统代理"))
+        self.reset_proxy_btn.setToolTip(
+            self.tr("关闭系统代理并清除所有代理设置（含第三方工具），使系统不走代理")
+        )
+        self.reset_proxy_btn.clicked.connect(self._on_reset_system_proxy)
+        self.status_bar.insertWidget(1, self.reset_proxy_btn)
+
         # Ctrl+F 归「工具 → 搜索会话」的 QAction 管（避免和 QShortcut 重复绑定
         # 触发 Qt 的 Ambiguous shortcut 警告）
         from PySide6.QtGui import QShortcut
@@ -3937,7 +3945,17 @@ class MainWindow(QMainWindow):
                     self.capture_label.dot_style("ok", "font-weight: bold;")
                 )
             else:
-                self.capture_label.setText(self.tr("抓包暂停（未接管系统代理）"))
+                proxy = self._get_system_proxy_info()
+                if proxy["enabled"]:
+                    if proxy["auto_config"]:
+                        detail = self.tr("当前代理 PAC: {0}").format(proxy["auto_config"])
+                    elif proxy["server"]:
+                        detail = self.tr("当前代理 {0}").format(proxy["server"])
+                    else:
+                        detail = self.tr("当前系统已启用代理")
+                else:
+                    detail = self.tr("当前系统未设置代理")
+                self.capture_label.setText(self.tr("抓包暂停（{0}）").format(detail))
                 self.capture_label.set_dot("warn")
                 self.capture_label.setStyleSheet(
                     self.capture_label.dot_style("warn")
@@ -3959,6 +3977,45 @@ class MainWindow(QMainWindow):
             self.sysproxy_cb.setChecked(not self.sysproxy_cb.isChecked())
         else:
             self.start_proxy()
+
+    def _get_system_proxy_info(self) -> dict:
+        """读取当前系统真实代理状态（带 3s 缓存，避免频繁读注册表/PList）。"""
+        now = time.monotonic()
+        cached = getattr(self, "_sys_proxy_cache", None)
+        if cached is not None and now - getattr(self, "_sys_proxy_cache_ts", 0) < 3:
+            return cached
+        try:
+            info = sysproxy.current_proxy()
+        except Exception as e:  # 读代理失败不应崩 UI
+            log.warning("读取系统代理信息失败: %s", e)
+            info = {"enabled": False, "server": "", "auto_config": ""}
+        self._sys_proxy_cache = info
+        self._sys_proxy_cache_ts = now
+        return info
+
+    def _on_reset_system_proxy(self) -> None:
+        """重置系统代理：关闭系统代理并清掉所有代理设置（含第三方工具）。
+
+        会清除用户现有的代理（如科学上网），先确认再执行。
+        """
+        from PySide6.QtWidgets import QMessageBox
+
+        answer = QMessageBox.question(
+            self,
+            self.tr("重置系统代理"),
+            self.tr(
+                "将关闭系统代理并清除所有代理设置（包括 Clash 等其他程序的代理）。\n"
+                "确定继续吗？"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        ok, msg = sysproxy.reset()
+        QMessageBox.information(self, self.tr("重置系统代理"), msg)
+        self._sys_proxy_cache = None  # 清缓存，立即反映最新状态
+        self._update_capture_status()
 
     def _on_rules_changed(self) -> None:
         """规则库变了 → 表格跟着变。
