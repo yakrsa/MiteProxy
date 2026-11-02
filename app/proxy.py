@@ -49,7 +49,7 @@ class ProxyService:
     def __init__(
         self,
         host: str = "0.0.0.0",
-        port: int = 8080,
+        port: int = 8888,
         addons: list | None = None,
         options: dict | None = None,
         on_state_change=None,
@@ -61,6 +61,9 @@ class ProxyService:
         self._thread: Optional[threading.Thread] = None
         self._master: Optional[DumpMaster] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        # start/stop 必须串行：停止超时后旧线程仍可能占用 socket，不能马上
+        # 清空引用并创建第二个 DumpMaster。
+        self._lifecycle_lock = threading.RLock()
         #: 用户脚本 addon（app/scripts.py）：热替换时先摘旧的再挂新的
         self._script_addons: list = []
         #: 生命周期回调 ``(running: bool, message: str)``。在 asyncio 线程里
@@ -77,30 +80,34 @@ class ProxyService:
         return self._thread is not None and self._thread.is_alive()
 
     def start(self) -> None:
-        """启动代理线程（幂等；已在运行则直接返回）。
+        """启动代理线程（幂等；已在运行或正在收尾则直接返回）。
 
-        启动前先探测端口：被占用就自动顺延到下一个可用端口（实际端口
-        回写 self.port）。mitmproxy 是异步绑定、失败只能靠事后 verify
-        兜底，这里把绝大多数端口冲突在启动前就消化掉。
-        找不到任何可用端口时抛 OSError，由调用方统一收尾。
+        启动前先探测端口：被占用就自动顺延到下一个可用端口。真正 bind
+        仍在 DumpMaster 线程中完成，调用方通过生命周期回调确认最终状态。
         """
-        if self.running:
-            return
-        requested = self.port
-        chosen = self._pick_port()
-        if chosen is None:
-            raise OSError(
-                QCoreApplication.translate("ProxyService", '从端口 {0} 起连续 {1} 个端口均不可用').format(requested, PORT_SCAN_TRIES)
+        with self._lifecycle_lock:
+            if self._thread is not None:
+                if self._thread.is_alive():
+                    return
+                # 上一次异常退出但没有经过 stop()，清掉已经死亡的线程引用。
+                self._thread = None
+                self._master = None
+                self._loop = None
+            requested = self.port
+            chosen = self._pick_port()
+            if chosen is None:
+                raise OSError(
+                    QCoreApplication.translate("ProxyService", '从端口 {0} 起连续 {1} 个端口均不可用').format(requested, PORT_SCAN_TRIES)
+                )
+            self.port = chosen
+            self._exit_reason = ""
+            if chosen != requested:
+                log.warning("端口 %s 被占用，代理自动改用 %s", requested, chosen)
+            self._thread = threading.Thread(
+                target=self._thread_main, name="mitmproxy-proxy", daemon=True
             )
-        self.port = chosen
-        self._exit_reason = ""
-        if chosen != requested:
-            log.warning("端口 %s 被占用，代理自动改用 %s", requested, chosen)
-        self._thread = threading.Thread(
-            target=self._thread_main, name="mitmproxy-proxy", daemon=True
-        )
-        self._thread.start()
-        log.info("代理线程已启动: %s:%s", self.host, self.port)
+            self._thread.start()
+            log.info("代理线程已启动: %s:%s", self.host, self.port)
 
     def _pick_port(self) -> Optional[int]:
         """从 self.port 起找一个可绑定端口；找不到返回 None。"""
@@ -112,32 +119,37 @@ class ProxyService:
                 return candidate
         return None
 
-    def stop(self, timeout: float = 5.0) -> None:
-        """优雅停止代理；超时未退出也不阻塞主流程（daemon 线程会随进程退出）。"""
-        master, loop, thread = self._master, self._loop, self._thread
-        if thread is None:
-            return
-        # 线程刚 start 还没跑到 `self._master = master` 时，master/loop 都是
-        # None——直接 join 的话 shutdown 没人投递，线程会永久滞留（DumpMaster
-        # 一直 run）。先短等 master 就绪再投递（正常路径 master 已就绪，零等待）
-        deadline = time.monotonic() + 2.0
-        while master is None and thread.is_alive() and time.monotonic() < deadline:
-            time.sleep(0.02)
-            master, loop = self._master, self._loop
-        if master is not None and loop is not None:
-            try:
-                loop.call_soon_threadsafe(master.shutdown)
-            except RuntimeError:
-                # 事件循环已关闭
-                pass
-        thread.join(timeout)
-        if thread.is_alive():
-            log.warning("代理线程未在 %ss 内退出", timeout)
-        else:
+    def stop(self, timeout: float = 5.0) -> bool:
+        """优雅停止代理；返回是否确认线程已经退出。
+
+        超时后保留线程引用和 master/loop 状态，阻止调用方立即创建第二个
+        代理实例。调用方可以稍后重试，而不会让旧线程和新线程并存。
+        """
+        with self._lifecycle_lock:
+            master, loop, thread = self._master, self._loop, self._thread
+            if thread is None:
+                return True
+            # 线程刚 start 还没跑到 `self._master = master` 时，master/loop 都是
+            # None——直接 join 的话 shutdown 没人投递，先短等 master 就绪。
+            deadline = time.monotonic() + 2.0
+            while master is None and thread.is_alive() and time.monotonic() < deadline:
+                time.sleep(0.02)
+                master, loop = self._master, self._loop
+            if master is not None and loop is not None:
+                try:
+                    loop.call_soon_threadsafe(master.shutdown)
+                except RuntimeError:
+                    pass
+            thread.join(timeout)
+            if thread.is_alive():
+                log.warning("代理线程未在 %ss 内退出，保留生命周期引用", timeout)
+                return False
             log.info("代理线程已停止")
-        self._thread = None
-        self._master = None
-        self._loop = None
+            if self._thread is thread:
+                self._thread = None
+                self._master = None
+                self._loop = None
+            return True
 
     def update_options(self, **opts) -> bool:
         """热更新 mitmproxy 选项（如 map_remote / connection_strategy）。

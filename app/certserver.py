@@ -91,7 +91,7 @@ class _Handler(BaseHTTPRequestHandler):
     # 由外部注入
     ca_pem: bytes = b""
     ca_der: bytes | None = None
-    proxy_port: int = 8080
+    proxy_port: int = 8888
 
     def do_GET(self):  # noqa: N802 (http.server 命名约定)
         path = self.path.split("?", 1)[0]
@@ -212,7 +212,7 @@ def load_ca() -> tuple[bytes, bytes | None]:
 class CertServer:
     """证书下载 HTTP 服务（线程内运行）。"""
 
-    def __init__(self, port: int = DEFAULT_PORT, proxy_port: int = 8080):
+    def __init__(self, port: int = DEFAULT_PORT, proxy_port: int = 8888):
         self.port = port
         self.proxy_port = proxy_port
         self._server: ThreadingHTTPServer | None = None

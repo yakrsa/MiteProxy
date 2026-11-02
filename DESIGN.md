@@ -1163,7 +1163,7 @@ miteproxy/
 |---|---|---|---|
 | T1.1 | venv 安装 mitmproxy、PySide6、PyInstaller；冻结 `requirements.txt` | 依赖清单 | `python -c "import mitmproxy, PySide6"` 通过 |
 | T1.2 | 按第 5 节建目录；`main.py` 空窗口能跑 | 骨架 | `python app/main.py` 弹出空窗口 |
-| T1.3 | `proxy.py`：DumpMaster 内嵌启动，curl 验证代理通 | 最小代理 | `curl -x 127.0.0.1:8080 http://example.com` 200 |
+| T1.3 | `proxy.py`：DumpMaster 内嵌启动，curl 验证代理通 | 最小代理 | `curl -x 127.0.0.1:8888 http://example.com` 200 |
 
 **Gate 1**：桌面窗口 + 后台代理同时运行，curl 抓到 example.com。
 

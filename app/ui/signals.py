@@ -34,6 +34,9 @@ class FlowBridge(QObject):
     proxy_state_changed = Signal(bool, str)
     #: 系统代理接管/还原结果（后台线程 → 主线程状态栏提示）
     sysproxy_done = Signal(bool, str)
+    #: 启动前的系统代理恢复结果（后台 worker → 主线程）。恢复完成后才启动
+    #: DumpMaster，避免恢复命令阻塞 UI 或与新代理接管发生顺序竞态。
+    proxy_recovery_done = Signal(bool, str)
     #: 断点命中：(flow, phase) —— 代理线程挂住了这条会话，等 UI 改完放行
     flow_intercepted = Signal(object, str)
 

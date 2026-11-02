@@ -162,6 +162,26 @@ def _win_current(run) -> dict:
 
 # ------------------------------------------------------------------ 对外接口
 
+def _win_apply_saved(run, saved: dict) -> tuple[bool, str]:
+    """逐条恢复 Windows 代理设置，返回首个失败命令的错误。"""
+    server = str(saved.get("server") or "")
+    if server:
+        rc, _, err = run([
+            "reg", "add", _WIN_KEY, "/v", "ProxyServer",
+            "/t", "REG_SZ", "/d", server, "/f",
+        ])
+        if rc != 0:
+            return False, err.strip() or str(rc)
+    enabled = "1" if saved.get("enabled") else "0"
+    rc, _, err = run([
+        "reg", "add", _WIN_KEY, "/v", "ProxyEnable",
+        "/t", "REG_DWORD", "/d", enabled, "/f",
+    ])
+    if rc != 0:
+        return False, err.strip() or str(rc)
+    return True, ""
+
+
 def takeover(port: int, run=_run, elevate: bool = False) -> tuple[bool, str]:
     """把系统代理指向 127.0.0.1:<port>。返回 (是否成功, 说明)。
 
@@ -223,14 +243,22 @@ def _win_takeover(port: int, run) -> tuple[bool, str]:
         "reg", "add", _WIN_KEY, "/v", "ProxyServer", "/t", "REG_SZ", "/d", server, "/f",
     ])
     if rc != 0:
-        return False, QCoreApplication.translate("sysproxy", '写注册表失败: {0}').format(err.strip())
-    run(["reg", "add", _WIN_KEY, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f"])
+        return False, QCoreApplication.translate("sysproxy", '写注册表失败: {0}').format(err.strip() or rc)
+    rc, _, err = run([
+        "reg", "add", _WIN_KEY, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f",
+    ])
+    if rc != 0:
+        _win_apply_saved(run, saved)
+        return False, QCoreApplication.translate("sysproxy", '启用系统代理失败: {0}').format(err.strip() or rc)
     try:
         _write_state({"platform": "windows", "port": port, "saved": saved})
     except OSError as e:
-        log.error("接管状态落盘失败: %s", e)
+        log.error("接管状态落盘失败，回滚 Windows 系统代理: %s", e)
+        rollback_ok, rollback_err = _win_apply_saved(run, saved)
+        if not rollback_ok:
+            log.error("Windows 系统代理回滚失败: %s", rollback_err)
         return False, QCoreApplication.translate(
-            "sysproxy", '接管状态无法写入（{0}），请手动检查系统代理').format(e)
+            "sysproxy", '接管状态无法写入（{0}），已尝试回滚').format(e)
     return True, QCoreApplication.translate("sysproxy", "已接管系统代理")
 
 
@@ -241,44 +269,58 @@ def restore(run=_run, port: int | None = None) -> tuple[bool, str]:
     知道接管前的原始设置，但可以识别「当前代理仍指向 127.0.0.1:port
     （我们自己的端口）」并直接关闭——这只可能移除我们自己的接管，不会
     碰用户手动配置的其他代理。
+
+    只有所有还原命令都成功时才删除快照。失败时保留快照，下一次启动可以
+    继续恢复，避免把用户的系统代理永久留在已经停止的端口上。
     """
     if not STATE_PATH.exists():
         if port is not None:
-            # 只对外暴露 (ok, 文案)；第三位"是否真的动了"是内部判断用
             ok, msg, _cleared = _clear_local_proxy(run, port)
             return ok, msg
         return True, QCoreApplication.translate("sysproxy", "无接管记录")
     try:
         state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
+        # 快照内容不可解析，无法安全推断原始代理。删除损坏文件，避免
+        # 每次启动重复弹同一个无法恢复的记录；真正的命令失败仍保留有效快照。
         STATE_PATH.unlink(missing_ok=True)
         if port is not None:
             ok, msg, _cleared = _clear_local_proxy(run, port)
-            return ok, msg
+            if not ok:
+                return False, msg
         return False, QCoreApplication.translate("sysproxy", '接管记录损坏，跳过还原: {0}').format(e)
 
+    failures: list[str] = []
     if state.get("platform") == "windows":
-        saved = state.get("saved", {})
-        if saved.get("enabled") and saved.get("server"):
-            run(["reg", "add", _WIN_KEY, "/v", "ProxyServer",
-                 "/t", "REG_SZ", "/d", saved["server"], "/f"])
-            run(["reg", "add", _WIN_KEY, "/v", "ProxyEnable",
-                 "/t", "REG_DWORD", "/d", "1", "/f"])
-        else:
-            run(["reg", "add", _WIN_KEY, "/v", "ProxyEnable",
-                 "/t", "REG_DWORD", "/d", "0", "/f"])
+        ok, err = _win_apply_saved(run, state.get("saved") or {})
+        if not ok:
+            failures.append(err)
     else:
         services = _macos_services(run)
-        for svc, schemes in state.get("services", {}).items():
+        for svc, schemes in (state.get("services") or {}).items():
             if svc not in services:
                 continue  # 服务已被删除（如拔掉的网卡），无从还原
             for key, secure in (("web", False), ("secure", True)):
                 orig = schemes.get(key) or {}
-                _macos_set(
+                rc, err = _macos_set(
                     run, svc, secure,
                     orig.get("server", ""), orig.get("port", 0),
                     bool(orig.get("enabled")),
                 )
+                if rc != 0:
+                    failures.append(
+                        f"{svc} {'HTTPS' if secure else 'HTTP'}: {err.strip() or rc}"
+                    )
+
+    if failures:
+        detail = "; ".join(failures[:3])
+        if len(failures) > 3:
+            detail += f" (+{len(failures) - 3})"
+        log.error("系统代理还原失败，保留快照: %s", detail)
+        return False, QCoreApplication.translate(
+            "sysproxy", "系统代理还原失败，恢复记录已保留：{0}"
+        ).format(detail)
+
     STATE_PATH.unlink(missing_ok=True)
     return True, QCoreApplication.translate("sysproxy", "已还原系统代理")
 
@@ -294,6 +336,7 @@ def _clear_local_proxy(run, port: int) -> tuple[bool, str, bool]:
     消失，判断恒假——程序行为不该随语言变化。
     """
     changed = 0
+    failures: list[str] = []
     if platform.system() == "Windows":
         current = _win_current(run)
         server = str(current.get("server") or "")
@@ -301,9 +344,12 @@ def _clear_local_proxy(run, port: int) -> tuple[bool, str, bool]:
             server.endswith(f":{port}")
             and server.split(":")[0] in ("127.0.0.1", "localhost")
         ):
-            run(["reg", "add", _WIN_KEY, "/v", "ProxyEnable",
-                 "/t", "REG_DWORD", "/d", "0", "/f"])
-            changed += 1
+            rc, _, err = run(["reg", "add", _WIN_KEY, "/v", "ProxyEnable",
+                              "/t", "REG_DWORD", "/d", "0", "/f"])
+            if rc != 0:
+                failures.append(err.strip() or str(rc))
+            else:
+                changed += 1
     else:
         for svc in _macos_services(run):
             for secure in (False, True):
@@ -311,8 +357,22 @@ def _clear_local_proxy(run, port: int) -> tuple[bool, str, bool]:
                 if (cur.get("enabled")
                         and cur.get("server") in ("127.0.0.1", "localhost")
                         and cur.get("port") == port):
-                    _macos_set(run, svc, secure, "", 0, False)
-                    changed += 1
+                    result = _macos_set(run, svc, secure, "", 0, False)
+                    # 兼容测试/第三方替身只执行命令、不返回状态的旧签名。
+                    rc, err = result if result is not None else (0, "")
+                    if rc != 0:
+                        failures.append(
+                            f"{svc} {'HTTPS' if secure else 'HTTP'}: {err.strip() or rc}"
+                        )
+                    else:
+                        changed += 1
+    if failures:
+        detail = "; ".join(failures[:3])
+        if len(failures) > 3:
+            detail += f" (+{len(failures) - 3})"
+        return False, QCoreApplication.translate(
+            "sysproxy", "关闭本应用代理失败：{0}"
+        ).format(detail), bool(changed)
     if changed:
         return True, QCoreApplication.translate(
             "sysproxy", '已还原系统代理（无接管记录，按端口 {0} 兜底关闭）'

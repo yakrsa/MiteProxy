@@ -253,6 +253,9 @@ class MainWindow(QMainWindow):
         # 整应用退出标记：closeEvent 里停代理时，代理线程收尾会 emit
         # proxy_state_changed(False)，那是正常退出不是"意外退出"，不能弹窗
         self._exiting = False
+        #: 启动前异步恢复系统代理的状态，避免 Qt 主线程同步等待
+        #: networksetup/reg。恢复完成后由 proxy_recovery_done 继续启动。
+        self._proxy_start_pending = False
 
         # ---- 重放并对比（DESIGN 3.6）：pending 等重放响应到达后关联弹框
         self._pending_compare: list[dict] = []
@@ -1181,8 +1184,9 @@ class MainWindow(QMainWindow):
 
         # 异步触发统计检查与上报
         try:
+            from app.version import __version__
             self._stats_checker = releases_stats.async_report(parent=self)
-            log.info("统计上报已触发（版本 %s）", f"v{releases_stats.__version__}")
+            log.info("统计上报已触发（版本 v%s）", __version__)
         except Exception:
             log.exception("统计上报启动失败")
 
@@ -1448,6 +1452,7 @@ class MainWindow(QMainWindow):
         self.bridge.rule_hit.connect(self.rules_panel.update_hit)
         self.bridge.rule_error.connect(self.rules_panel.update_rule_error)
         self.bridge.sysproxy_done.connect(self._on_sysproxy_done)
+        self.bridge.proxy_recovery_done.connect(self._on_proxy_recovery_done)
         self.bridge.flow_intercepted.connect(self._on_flow_intercepted)
         self.bridge.proxy_state_changed.connect(self._on_proxy_state_changed)
         self.filter_bar.changed.connect(self._on_filter_changed)
@@ -1561,45 +1566,74 @@ class MainWindow(QMainWindow):
             self.start_proxy(verify=True)
             
     def start_proxy(self, verify: bool = False) -> bool:
-        """启动代理（幂等）。verify=True 时异步校验是否真正监听成功。
-
-        入口 main() 用 verify=True：若端口被占用，代理线程会立刻退出，
-        由 _verify_proxy_started 收尾复位按钮并提示，避免出现
-        "界面显示运行中、实际没有代理" 的假象。
-        请求端口被占用时 ProxyService 会自动顺延到下一个可用端口——
-        实际端口在这里同步回设置/端口框，系统代理也指向真实端口。
-        """
-        if self.proxy.running:
+        """异步恢复系统代理后启动代理，避免启动阶段阻塞 Qt 主线程。"""
+        if self.proxy.running or self._proxy_start_pending:
             return True
-        # 上次异常退出没还原的系统代理，先补还原（幂等，无记录时 no-op；
-        # 快照丢失时按我们的端口兜底扫描关闭）
-        sysproxy.recover_if_needed(port=self.settings.proxy_port)
+        self._proxy_start_pending = True
+        self._proxy_verify_after_recovery = verify
+        self.proxy_btn.setText(self.tr("启动中…"))
+
+        def work():
+            had_snapshot = sysproxy.STATE_PATH.exists()
+            try:
+                with self._sysproxy_lock:
+                    recovered = sysproxy.recover_if_needed(
+                        port=self.settings.proxy_port
+                    )
+                # recover_if_needed(False) 也表示「没有需要恢复的记录」；只有
+                # 原本确有快照却恢复失败时才阻止启动，避免覆盖旧快照。
+                ok = recovered or not had_snapshot
+                msg = "" if ok else "上次系统代理恢复失败，已保留恢复记录"
+            except Exception as e:  # noqa: BLE001 - 启动失败必须回到 UI
+                log.exception("启动前恢复系统代理失败")
+                ok = False
+                msg = f"{type(e).__name__}: {e}"
+            self.bridge.proxy_recovery_done.emit(ok, msg)
+
+        threading.Thread(
+            target=work, daemon=True, name="sysproxy-recover-start"
+        ).start()
+        return True
+
+    def _on_proxy_recovery_done(self, ok: bool, message: str) -> None:
+        self._proxy_start_pending = False
+        if self._exiting or self._restarting:
+            return
+        if not ok:
+            self.proxy_btn.setText(self.tr("启动代理"))
+            self.proxy_btn.setChecked(False)
+            self._update_status()
+            dialogs.critical(
+                self,
+                self.tr("系统代理恢复失败"),
+                self.tr(
+                    "上次接管的系统代理没有成功恢复，代理暂未启动。\n\n{0}\n"
+                    "请修复网络代理后重试。"
+                ).format(message or self.tr("恢复记录已保留")),
+            )
+            return
+        self._start_proxy_after_recovery(self._proxy_verify_after_recovery)
+
+    def _start_proxy_after_recovery(self, verify: bool = False) -> bool:
+        """系统代理恢复完成后执行原有的代理装配和启动流程。"""
         self.proxy.port = self.settings.proxy_port
         self.rule_store.load()      # 启动前重载规则（支持外部编辑 rules.json）
-        # load() 会重建全部 Rule 对象，规则页表格还是旧引用——不刷新的话
-        # 用户点「编辑/删除」时行号会映射到新列表的另一条规则上，静默改错
         self.rules_panel.refresh()
         try:
             self.proxy.start()
         except OSError:
-            # 从请求端口起连续 N 个端口都不可用（极端情况）
             log.warning("代理启动失败：无可用端口", exc_info=True)
             self._proxy_start_failed()
             return False
-        # 端口被占用时自动顺延：把实际端口同步回设置与界面，
-        # 系统代理接管读 self.proxy.port（已是真实端口），无需额外处理
         requested = self.settings.proxy_port
         actual = self.proxy.port
         if actual != requested:
             self.settings.proxy_port = actual
             save_settings(self.settings)
-            # MockAddon 的重定向死循环校验按真实端口判断
             self.mock.proxy_addr = ("127.0.0.1", actual)
             self.status_bar.showMessage(
                 self.tr('端口 {0} 被占用，代理已自动改用 {1}').format(requested, actual), 6000
             )
-            # 端口被占用顺延到别的端口：弹窗明确告知（静默改端口用户发现不了，
-            # 会以为还在原端口监听，系统代理/客户端可能指向死端口）
             dialogs.information(
                 self,
                 self.tr("端口被占用，已自动切换"),
@@ -1618,8 +1652,20 @@ class MainWindow(QMainWindow):
 
     def stop_proxy(self) -> None:
         """停止代理（幂等），同时收掉证书服务。"""
-        if self.proxy.running:
-            self.proxy.stop()
+        if self._proxy_start_pending:
+            self._exiting = True
+            self._proxy_start_pending = False
+            self.proxy_btn.setText(self.tr("启动代理"))
+            self.proxy_btn.setChecked(False)
+            return
+        stopped = self.proxy.stop() if self.proxy.running else True
+        if not stopped:
+            self.proxy_btn.setText(self.tr("停止代理"))
+            self.proxy_btn.setChecked(True)
+            self.status_bar.showMessage(
+                self.tr("代理线程仍在退出，暂不能重新启动"), 8000
+            )
+            return
         self._stop_cert_server()
         self.proxy_btn.setText(self.tr("启动代理"))
         self.proxy_btn.setChecked(False)
@@ -1900,7 +1946,11 @@ class MainWindow(QMainWindow):
     def _restart_proxy_on_port(self, port: int) -> None:
         """运行中按新端口重启代理 + 系统代理重接管 + 证书服务静默重启。"""
         self.status_bar.showMessage(self.tr('正在重启代理，切换到 127.0.0.1:{0} …').format(port), 4000)
-        self.proxy.stop(timeout=2.0)
+        if not self.proxy.stop(timeout=5.0):
+            self.status_bar.showMessage(
+                self.tr("代理线程仍在退出，端口切换已取消，请稍后重试"), 8000
+            )
+            return
         self.proxy = self._make_proxy(port)
         try:
             self.proxy.start()
@@ -1950,7 +2000,10 @@ class MainWindow(QMainWindow):
 
         def work():
             with self._sysproxy_lock:
-                sysproxy.restore()
+                restored, restore_msg = sysproxy.restore()
+                if not restored:
+                    self.bridge.sysproxy_done.emit(False, restore_msg)
+                    return
                 ok, msg = sysproxy.takeover(port)
             self.bridge.sysproxy_done.emit(ok, msg)
 
@@ -4032,6 +4085,8 @@ class MainWindow(QMainWindow):
         # 先把窗口藏起来——用户感知层面立即退出，清理在后台并行收尾
         # （进程会多存活零点几秒，但没有任何可见窗口）
         self.hide()
+        self._exiting = True
+        self._proxy_start_pending = False
         # 浮窗先收内容再关壳：这些页面是主窗口长期持有的对象（信号槽、退出后
         # 还要读配置），跟着空壳一起销毁就是野指针
         self._close_all_floats()
@@ -4067,4 +4122,10 @@ class MainWindow(QMainWindow):
             if worker is not None:
                 worker.join(10.0)    # 快照没写完就退出会丢；还原没完成会断网
         self._save_geometry()
+        # 清理统计检查器（避免未完成请求泄漏）
+        if hasattr(self, "_stats_checker") and self._stats_checker:
+            self._stats_checker.deleteLater()
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
         super().closeEvent(event)
