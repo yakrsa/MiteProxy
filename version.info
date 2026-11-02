@@ -1,19 +1,27 @@
 {
   "version": "3.0.4",
-  "published_at": "2026-10-31T20:00:00+08:00",
+  "published_at": "2026-11-02T09:00:00+08:00",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "修复长时间后台抓包后进程无声退出。根因是构建所用 Python 3.14.0 的增量式垃圾回收缺陷：循环引用不再被定时回收，内存只涨不降（实测运行 5 小时 49 分涨到 1878MB），回收器遍历到已损坏的对象时触发访问违规，进程直接消失，且不留任何 Python 栈。现已把构建解释器升级到 Python 3.14.10（该缺陷在 3.14.5 已由官方回滚），并新增内存守护：按内存增长触发回收，日志中可见「内存回收：1180.3MB → 402.1MB（释放 …，回收 N 个循环，耗时 …）」；设置项 auto_gc 可关闭",
-      "en": "Fixed the silent process exit after hours of background capture. The root cause was the incremental garbage collector in the Python 3.14.0 build: cyclic garbage stopped being collected on schedule and memory only grew (1,878 MB after 5h49m in testing). The collector then walked a corrupted object, hit an access violation and took the process down with no Python traceback at all. The build interpreter is now Python 3.14.10 (the defect was rolled back upstream in 3.14.5), plus a new memory guard that collects on growth and logs entries such as 'memory reclaimed: 1180.3MB -> 402.1MB'. It can be turned off with the auto_gc setting"
+      "zh": "新增抓包内存硬上限：单条报文的 body 超过 16MB 时不再完整缓存，全部记录累计 body 超过 256MB 时按「条数或字节」双条件淘汰旧记录。此前仅限制记录条数（5000 条），一次大文件下载或长时间挂机即可将内存推高至数百 MB。连接失败与超时的请求同样会结束占位行并释放缓存",
+      "en": "New hard caps on capture memory: bodies above 16 MB are no longer cached in full, and once accumulated bodies pass 256 MB records are evicted on either count or bytes. Previously only the record count was limited (5,000 entries), so a single large download or a long session could push memory into the hundreds of MB. Failed and timed-out connections now close their placeholder row and release cached data as well"
     },
     {
-      "zh": "域名过滤支持通配符：*.apple.com、*.apple.*、api.*.com、*foo.com 均可直接填写。此前 * 被当作普通字符，填了只会一条都匹配不到；命中数统计同步支持通配符，不再出现「列表已隐藏但命中数显示 0」的不一致",
+      "zh": "域名过滤支持通配符：*.apple.com、*.apple.*、api.*.com、*foo.com 均可直接填写。此前 * 被当作普通字符，填写后无法匹配任何域名；命中数统计同步支持通配符，不再出现「列表已隐藏但命中数显示 0」的不一致",
       "en": "Wildcards in domain filters: *.apple.com, *.apple.*, api.*.com and *foo.com now work as expected. Previously * was treated as a literal character and matched nothing at all. The hit counter understands wildcards too, so the 'hidden but zero count' inconsistency is gone"
     },
     {
-      "zh": "修复详情面板右侧 header 的拖拽范围过窄，以及请求/响应分隔条在切换页签时位置跳变",
-      "en": "Fixed the narrow drag area on the detail panel headers and the request/response splitter jumping to a different position when switching tabs"
+      "zh": "修复长时间后台抓包后进程无声退出。根因为构建所用 Python 3.14.0 的增量式垃圾回收缺陷：循环引用不再被定时回收，内存只涨不降（实测运行 5 小时 49 分涨至 1878MB），回收器遍历到已损坏的对象时触发访问违规，进程直接消失且不留 Python 栈。该缺陷已于 3.14.5 由官方回滚，Windows 构建解释器随之升级至 Python 3.14.10；macOS 包本次改用 Python 3.13.18（该版本不含增量式回收，不存在此缺陷），并同步获得 OpenSSL 3.5.9 安全补丁。同时新增内存守护：按内存增长触发回收，日志中可见「内存回收：1180.3MB → 402.1MB（释放 …，回收 N 个循环，耗时 …）」，设置项 auto_gc 可关闭",
+      "en": "Fixed the silent process exit after hours of background capture. The root cause was the incremental garbage collector in the Python 3.14.0 build: cyclic garbage stopped being collected on schedule and memory only grew (1,878 MB after 5h49m in testing). The collector then walked a corrupted object, hit an access violation and took the process down with no Python traceback at all. The defect was rolled back upstream in 3.14.5, so the Windows build interpreter is now Python 3.14.10; the macOS package moves to Python 3.13.18 (no incremental collector, hence not affected) and picks up the OpenSSL 3.5.9 security fixes. A memory guard is also new: it collects on growth and logs entries such as 'memory reclaimed: 1180.3MB -> 402.1MB'. It can be turned off with the auto_gc setting"
+    },
+    {
+      "zh": "修复代理启停竞态与系统代理还原可靠性问题。停止超时后不再允许立即启动第二个实例（旧线程仍占用监听端口），启动与停止改为串行执行；启动前恢复系统代理的操作移至后台线程，界面不再长时间无响应。系统代理还原失败时保留快照并在下次启动继续重试，不会将系统代理永久指向已停止的端口；Windows 逐项回滚并汇总失败项",
+      "en": "Fixed a start/stop race in the proxy service, along with system proxy restoration reliability. After a timed-out stop the app no longer allows a second instance to start while the old thread still holds the listening socket, and start/stop are serialized. Restoring the system proxy before start now runs on a background thread, so the UI no longer freezes. When restoration fails the snapshot is kept and retried on the next launch instead of leaving the OS proxy pointed at a dead port; Windows rolls back each setting individually and reports aggregated failures"
+    },
+    {
+      "zh": "体验优化：默认代理端口由 8080 调整为 8888；详情面板对已失败的请求显示具体失败原因，不再与「尚未收到响应」混同；修复右侧 header 拖拽范围过窄、请求与响应分隔条在切换页签时位置跳变；修复版本检查在 Python 3.8 及以上环境无法获取 Linux 发行版名称、以及 v3.0.4-beta 一类预发布版本号匹配失败的问题",
+      "en": "Refinements: the default proxy port is now 8888 (was 8080); the detail panel shows the actual failure reason for failed requests instead of lumping them together with 'no response yet'; fixed the narrow drag area on the right-hand headers and the request/response splitter jumping when switching tabs; fixed version checks failing to read the Linux distribution name on Python 3.8+ and failing to match pre-release tags such as v3.0.4-beta"
     }
   ]
 }
