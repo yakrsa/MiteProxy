@@ -172,6 +172,9 @@ class Settings:
     #: 默认 True——关掉它长时间抓包会一路涨到 GB 级并在 GC 里崩掉。
     #: 升级到 3.14.5+ 后可以关，但开着也无额外开销（增长慢就不触发）。
     auto_gc: bool = True
+    #: GitHub Releases 统计上报状态（版本、上报时间、下载量、累计上报次数等）。
+    #: 由 releases_stats 模块读写，不在设置 UI 中直接暴露。
+    release_stats: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -221,6 +224,7 @@ class Settings:
             "scripts": dict(self.scripts),
             "crash_report_prompt": self.crash_report_prompt,
             "auto_gc": self.auto_gc,
+            "release_stats": dict(self.release_stats),
         }
 
     @classmethod
@@ -275,6 +279,7 @@ class Settings:
             nav_rail_pinned=bool(data.get("nav_rail_pinned", False)),
             crash_report_prompt=bool(data.get("crash_report_prompt", True)),
             auto_gc=bool(data.get("auto_gc", True)),
+            release_stats=dict(data.get("release_stats") or {}),
         )
 
     @staticmethod

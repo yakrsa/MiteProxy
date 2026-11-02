@@ -40,6 +40,12 @@ REQUEST_TIMEOUT_MS = 15_000
 STATS_SETTINGS_KEY = "release_stats"
 
 
+def _version_match(tag: str, current: str) -> bool:
+    """比较版本号：仅比较数字段，忽略 prerelease 后缀（如 -beta, -rc）。"""
+    import re
+    return re.findall(r"\d+", tag) == re.findall(r"\d+", current)
+
+
 # ==================================================================== 数据模型
 
 class StatsReport:
@@ -73,7 +79,16 @@ class StatsReport:
         elif system == "Windows":
             return f"Windows-{machine}{' (bundled)' if frozen else ''}"
         elif system == "Linux":
-            distro = plat.linux_distribution(best=True)[0] if hasattr(plat, 'linux_distribution') else "Unknown"
+            # 读 /etc/os-release（标准、无依赖、兼容 Python 3.10+）
+            distro = "Unknown"
+            try:
+                with open("/etc/os-release") as f:
+                    for line in f:
+                        if line.startswith("PRETTY_NAME="):
+                            distro = line.split("=", 1)[1].strip().strip('"')
+                            break
+            except OSError:
+                pass
             return f"Linux-{distro}-{machine}{' (bundled)' if frozen else ''}"
         else:
             return f"{system}-{machine}{' (bundled)' if frozen else ''}"
@@ -153,12 +168,12 @@ class StatsChecker(QObject):
             self._finish("", 0, "releases API 响应格式异常")
             return
 
-        # 查找当前版本的下载量
+        # 查找当前版本的下载量（兼容 prerelease 如 v3.0.4-beta）
         version = f"v{__version__}"
         download_count = 0
         for release in data:
             tag = release.get("tag_name", "")
-            if tag.lstrip("vV") == __version__:
+            if _version_match(tag, __version__):
                 download_count = release.get("download_count", 0)
                 break
 
@@ -280,39 +295,6 @@ def record_report(download_count: int = 0) -> bool:
     """
     try:
         settings = load_settings()
-        stats_cfg = settings.to_dict().get(STATS_SETTINGS_KEY, {})
-
-        current_version = f"v{__version__}"
-        stats_cfg["version"] = current_version
-        stats_cfg["last_reported_at"] = datetime.now(timezone.utc).isoformat()
-        stats_cfg["download_count"] = download_count
-        stats_cfg["total_reports"] = int(stats_cfg.get("total_reports", 0)) + 1
-
-        if not settings.to_dict().get(STATS_SETTINGS_KEY):
-            settings_to_update = settings.to_dict()
-            settings_to_update[STATS_SETTINGS_KEY] = stats_cfg
-            settings_from_dict = Settings.__new__(Settings)
-            settings_from_dict.__dict__ = settings_to_update
-            return save_settings(settings_from_dict)
-
-        # 更新配置
-        existing = settings.to_dict()
-        existing[STATS_SETTINGS_KEY] = stats_cfg
-
-        # 重建 Settings 对象并保存
-        from app.settings import Settings as SettingsCls
-        new_settings = SettingsCls.from_dict(existing)
-        return save_settings(new_settings)
-
-    except Exception:
-        log.exception("记录统计上报失败")
-        return False
-
-
-def record_report_v2(download_count: int = 0) -> bool:
-    """记录一次上报（改进版）。"""
-    try:
-        settings = load_settings()
         d = settings.to_dict()
 
         # 初始化 stats_cfg
@@ -329,9 +311,9 @@ def record_report_v2(download_count: int = 0) -> bool:
         # 更新回 d
         d[STATS_SETTINGS_KEY] = stats_cfg
 
-        # 直接更新 settings 对象的 __dict__ 并保存
-        settings.__dict__.update(d)
-        return save_settings(settings)
+        # 正确方式：通过 from_dict 重建 Settings 对象，再 save
+        new_settings = Settings.from_dict(d)
+        return save_settings(new_settings)
 
     except Exception:
         log.exception("记录统计上报失败")
@@ -361,7 +343,7 @@ def report_usage(download_count: int = 0, platform: str | None = None) -> tuple[
     )
 
     # 记录上报
-    if record_report_v2(download_count):
+    if record_report(download_count):
         msg = f"使用统计已上报（版本 {report.version}，下载量 {download_count}）"
         return True, msg
     else:
@@ -393,7 +375,7 @@ def _on_stats_checked(version: str, download_count: int, error: str) -> None:
     if error:
         log.info("统计检查完成（有网络错误，稍后重试）：%s", error)
     else:
-        record_report_v2(download_count)
+        record_report(download_count)
         log.info("统计检查完成：版本 %s，下载量 %d", version, download_count)
 
 
