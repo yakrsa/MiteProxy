@@ -640,3 +640,116 @@ class TestProxyBind:
         """手机/局域网抓包：代理必须监听 0.0.0.0，只绑 127.0.0.1 的话
         本机能用、手机连不上（2026-10-15 用户现场踩坑）。"""
         assert window.proxy.host == "0.0.0.0"
+
+
+# ====================================================================== 真实代理信息 / 重置（v3.0.4）
+
+class TestCurrentProxy:
+    @staticmethod
+    def _win_run(enable="0x0", server="", auto=""):
+        def run(cmd, timeout=15):
+            if cmd[0] == "reg" and cmd[1] == "query":
+                val = cmd[cmd.index("/v") + 1]
+                if val == "ProxyEnable":
+                    return 0, f"    ProxyEnable    REG_DWORD    {enable}\n", ""
+                if val == "ProxyServer":
+                    return (0, f"    ProxyServer    REG_SZ    {server}\n", "") if server else (1, "", "")
+                if val == "AutoConfigURL":
+                    return (0, f"    AutoConfigURL    REG_SZ    {auto}\n", "") if auto else (1, "", "")
+            if cmd[0] == "reg" and cmd[1] == "add":
+                return 0, "", ""
+            return 0, "", ""
+        return run
+
+    def test_no_proxy(self, monkeypatch):
+        monkeypatch.setattr(sysproxy.platform, "system", lambda: "Windows")
+        assert sysproxy.current_proxy(run=self._win_run()) == {
+            "enabled": False, "server": "", "auto_config": "",
+        }
+
+    def test_enabled_with_server(self, monkeypatch):
+        monkeypatch.setattr(sysproxy.platform, "system", lambda: "Windows")
+        info = sysproxy.current_proxy(run=self._win_run("0x1", "127.0.0.1:7890"))
+        assert info["enabled"] is True
+        assert info["server"] == "127.0.0.1:7890"
+
+    def test_pac_only_counts_as_enabled(self, monkeypatch):
+        monkeypatch.setattr(sysproxy.platform, "system", lambda: "Windows")
+        info = sysproxy.current_proxy(run=self._win_run("0x0", "", "http://pac/x.pac"))
+        assert info["enabled"] is True
+        assert info["auto_config"] == "http://pac/x.pac"
+
+
+class TestResetSystemProxy:
+    def test_reset_disables_proxy(self, monkeypatch, state_path):
+        monkeypatch.setattr(sysproxy.platform, "system", lambda: "Windows")
+        calls = []
+        def run(cmd, timeout=15):
+            calls.append(cmd)
+            return 0, "", ""
+        ok, msg = sysproxy.reset(run=run)
+        assert ok is True
+        pe = [c for c in calls if c[1] == "add" and c[c.index("/v") + 1] == "ProxyEnable"]
+        assert pe and pe[0][pe[0].index("/d") + 1] == "0"
+        assert "已重置" in msg
+
+    def test_reset_propagates_failure(self, monkeypatch, state_path):
+        monkeypatch.setattr(sysproxy.platform, "system", lambda: "Windows")
+        def run(cmd, timeout=15):
+            if cmd[1] == "add" and cmd[cmd.index("/v") + 1] == "ProxyEnable":
+                return 1, "", "access denied"
+            return 0, "", ""
+        ok, msg = sysproxy.reset(run=run)
+        assert ok is False
+        assert "失败" in msg
+
+
+class TestSystemProxyUI:
+    def _stub_proxy_ops(self, monkeypatch):
+        import app.sysproxy as sp_mod
+        monkeypatch.setattr(sp_mod, "takeover", lambda *a, **k: (True, "ok"))
+        monkeypatch.setattr(sp_mod, "restore", lambda *a, **k: (True, "ok"))
+
+    def test_label_shows_real_proxy(self, window, monkeypatch):
+        import app.sysproxy as sp_mod
+        self._stub_proxy_ops(monkeypatch)
+        monkeypatch.setattr(sp_mod, "current_proxy", lambda: {
+            "enabled": True, "server": "127.0.0.1:7890", "auto_config": "",
+        })
+        try:
+            window.start_proxy()
+            window.sysproxy_cb.setChecked(False)
+            window._update_capture_status()
+            assert "127.0.0.1:7890" in window.capture_label.text()
+            assert "未接管系统代理" not in window.capture_label.text()
+        finally:
+            window.stop_proxy()
+
+    def test_label_shows_no_proxy(self, window, monkeypatch):
+        import app.sysproxy as sp_mod
+        self._stub_proxy_ops(monkeypatch)
+        monkeypatch.setattr(sp_mod, "current_proxy", lambda: {
+            "enabled": False, "server": "", "auto_config": "",
+        })
+        try:
+            window.start_proxy()
+            window.sysproxy_cb.setChecked(False)
+            window._update_capture_status()
+            assert "未设置代理" in window.capture_label.text()
+        finally:
+            window.stop_proxy()
+
+    def test_reset_button_invokes_reset(self, window, monkeypatch):
+        from PySide6.QtWidgets import QMessageBox
+        import app.sysproxy as sp_mod
+        monkeypatch.setattr(sp_mod, "reset", lambda: (True, "已重置系统代理（当前不走代理）"))
+        monkeypatch.setattr(
+            QMessageBox, "question",
+            staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes),
+        )
+        monkeypatch.setattr(
+            QMessageBox, "information", staticmethod(lambda *a, **k: None),
+        )
+        window._sys_proxy_cache = {"enabled": True, "server": "x", "auto_config": ""}
+        window._on_reset_system_proxy()
+        assert window._sys_proxy_cache is None  # 缓存被清，立即反映最新状态

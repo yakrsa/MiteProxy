@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QObject, QTimer, QUrl, Signal
 from PySide6.QtNetwork import (
     QNetworkAccessManager,
+    QNetworkProxy,
     QNetworkReply,
     QNetworkRequest,
 )
@@ -187,7 +188,14 @@ class UpdateChecker(QObject):
         super().__init__(parent)
         self._url = url
         self._timeout_ms = timeout_ms
-        self._nam = nam if nam is not None else QNetworkAccessManager(self)
+        if nam is not None:
+            self._nam = nam
+        else:
+            self._nam = QNetworkAccessManager(self)
+            # 检查更新必须直连，不能跟随系统代理：MiteProxy 的「接管系统代理」会把
+            # 系统代理指向本机 8888，一旦代理服务没监听，版本检查就会被拒
+            # （"Proxy connection refused"）。强制 bypass 自身代理，保证代理开/关都能查更新。
+            self._nam.setProxy(QNetworkProxy(QNetworkProxy.ProxyType.NoProxy))
         self._reply: QNetworkReply | None = None
         self._busy = False
         self._timer = QTimer(self)
