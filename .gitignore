@@ -1,6 +1,8 @@
 # 构建产物
 build/
 dist/
+# 本地打包输出（pyinstaller --distpath out/dist --workpath out/build 的落点）
+out/
 # PyInstaller 在仓库根目录生成的 .app 副产物（打包时向后兼容旧习惯生成的，
 # 实际交付物是根目录的 *.zip；绝不进 git）
 MiteProxy.app/
@@ -9,6 +11,8 @@ MiteProxy.app/
 __pycache__/
 *.py[cod]
 .venv/
+# 重建 venv 时留的旧环境备份（换解释器排查用，确认稳定后删）
+.venv.broken*/
 *.egg-info/
 
 # 测试

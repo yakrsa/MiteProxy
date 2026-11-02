@@ -13,6 +13,14 @@ import urllib.request
 
 import pytest
 
+_LOCAL_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def _local_urlopen(request, *args, **kwargs):
+    """访问测试服务时显式直连，不受开发机系统代理影响。"""
+    return _LOCAL_OPENER.open(request, *args, **kwargs)
+
+
 from app.mcpserver import (
     MAX_LIMIT,
     McpServer,
@@ -205,7 +213,7 @@ def test_http_post_mcp(mcp_server):
         server.url, data=body,
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=5) as resp:
+    with _local_urlopen(req, timeout=5) as resp:
         payload = json.loads(resp.read().decode())
     inner = json.loads(payload["result"]["content"][0]["text"])
     assert inner["total"] == 1
@@ -213,7 +221,7 @@ def test_http_post_mcp(mcp_server):
 
 def test_http_rest_flows(mcp_server):
     server, _ = mcp_server
-    with urllib.request.urlopen(
+    with _local_urlopen(
         f"http://127.0.0.1:{server._bound_port}/api/flows?header=abc", timeout=5
     ) as resp:
         payload = json.loads(resp.read().decode())
@@ -269,7 +277,7 @@ def test_bind_wildcard_is_reachable_on_localhost():
             f"http://127.0.0.1:{server._bound_port}/mcp", data=body,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with _local_urlopen(req, timeout=5) as resp:
             payload = json.loads(resp.read().decode())
         inner = json.loads(payload["result"]["content"][0]["text"])
         assert inner["total"] == 1
@@ -396,7 +404,7 @@ def test_resolve_flow_prefers_injected_getter():
 def test_rest_detail_endpoint(mcp_server):
     server, flows = mcp_server
     fid = flows[0].id
-    with urllib.request.urlopen(
+    with _local_urlopen(
         f"http://127.0.0.1:{server._bound_port}/api/flows/{fid}", timeout=5
     ) as resp:
         payload = json.loads(resp.read().decode())
@@ -409,7 +417,7 @@ def test_rest_detail_missing_is_404(mcp_server):
 
     server, _ = mcp_server
     with pytest.raises(urllib.error.HTTPError) as exc:
-        urllib.request.urlopen(
+        _local_urlopen(
             f"http://127.0.0.1:{server._bound_port}/api/flows/nope", timeout=5
         )
     assert exc.value.code == 404
@@ -464,7 +472,7 @@ def test_get_stats_empty_flows():
 
 def test_rest_stats_endpoint(mcp_server):
     server, _ = mcp_server
-    with urllib.request.urlopen(
+    with _local_urlopen(
         f"http://127.0.0.1:{server._bound_port}/api/stats?url=api", timeout=5
     ) as resp:
         payload = json.loads(resp.read().decode())
@@ -477,7 +485,7 @@ def test_rest_stats_bad_top_n_is_400(mcp_server):
 
     server, _ = mcp_server
     with pytest.raises(urllib.error.HTTPError) as exc:
-        urllib.request.urlopen(
+        _local_urlopen(
             f"http://127.0.0.1:{server._bound_port}/api/stats?top_n=abc", timeout=5
         )
     assert exc.value.code == 400
@@ -587,7 +595,7 @@ def test_http_tools_list_reflects_write_flag():
                 server.url, data=body,
                 headers={"Content-Type": "application/json"},
             )
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with _local_urlopen(req, timeout=5) as resp:
                 return json.loads(resp.read().decode())
 
         names = [t["name"] for t in _post("tools/list")["result"]["tools"]]

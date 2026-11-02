@@ -92,6 +92,8 @@ def window(tmp_path, monkeypatch):
     yield win
     win.proxy.stop()
     sysproxy.restore(run=FakeRunner())
+    win.deleteLater()
+    QApplication.processEvents()
 
 
 class TestExitNoFalseDialog:
@@ -189,6 +191,8 @@ def capturing_window(tmp_path, monkeypatch):
     yield win
     win.proxy.stop()
     sysproxy.restore(run=FakeRunner())
+    win.deleteLater()
+    QApplication.processEvents()
 
 
 class TestStartupDialogOrder:

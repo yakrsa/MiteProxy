@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 # 让测试可以 import app / addons 包
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -22,6 +24,31 @@ def store(tmp_path):
     """指向临时文件的空 RuleStore。"""
     s = rules_mod.RuleStore(path=tmp_path / "rules.json")
     return s
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cleanup_qt_at_session_end():
+    """集中销毁测试创建的 Qt 顶层窗口，避免 PySide6 退出时悬空 QObject。"""
+    yield
+    try:
+        from PySide6.QtCore import QCoreApplication, QEvent
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is None:
+            return
+        for widget in list(app.topLevelWidgets()):
+            try:
+                widget.close()
+                widget.deleteLater()
+            except RuntimeError:
+                pass
+        app.processEvents()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
+    except Exception:
+        # 测试收尾不能因为 Qt 已开始销毁而再次抛异常。
+        pass
 
 
 @pytest.fixture(autouse=True)

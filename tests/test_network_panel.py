@@ -212,6 +212,8 @@ def window(tmp_path, monkeypatch):
     win = MainWindow(restore_prompt=False)
     yield win
     win.proxy.stop()
+    win.deleteLater()
+    QApplication.processEvents()
 
 
 class TestMainWindowWiring:
