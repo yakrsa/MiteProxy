@@ -17,6 +17,11 @@ log = logging.getLogger(__name__)
 
 MAX_FLOWS = 5000  # 默认保留条数（UI 可调，见 app/settings.FLOW_LIMIT_CHOICES）
 BODY_INDEX_LIMIT = 512 * 1024  # body 索引/预览上限 512KB（见 3.2.2 大 body 策略）
+# Capture 持有完整 mitmproxy flow，不能只按条数限制：单个大响应或一批大
+# 响应都可能让桌面进程占用数百 MB。超过单条上限的 flow 仍会发摘要，
+# 但不再被完整缓存，详情页可继续看到后续普通流量。
+MAX_CAPTURE_FLOW_BODY_BYTES = 16 * 1024 * 1024
+MAX_CAPTURE_BODY_BYTES = 256 * 1024 * 1024
 
 
 def _is_ip(value: str) -> bool:
@@ -228,6 +233,10 @@ class CaptureAddon:
         on_update: Optional[Callable[[dict], None]] = None,
     ):
         self.flows: dict[str, object] = {}  # flow.id -> flow 对象（UI 按 id 回查）
+        self._flow_body_sizes: dict[str, int] = {}
+        self._body_bytes = 0
+        self._max_flow_body_bytes = MAX_CAPTURE_FLOW_BODY_BYTES
+        self._max_body_bytes = MAX_CAPTURE_BODY_BYTES
         self._on_flow = on_flow
         self._on_update = on_update
         self._max_flows = max_flows
@@ -235,30 +244,20 @@ class CaptureAddon:
     # ------------------------------------------------------------ mitmproxy hook
 
     def request(self, flow) -> None:
-        """请求一发出就进列表（pending 可见）；响应回来再走 update 原地补完。
-
-        配合 flow_store 的 append（请求）→ update（响应）语义：response 必晚于
-        request，列表里已有同 id 的 pending 行，update 按 id 原地替换，不会重复。
-
-        **插入端也要淘汰**：只有 `response()` 淘汰的话，永远收不到响应的
-        会话（HTTPS 的 CONNECT 隧道、连接被重置/超时走 error 的请求）会
-        永久驻留在这个 dict 里——列表那边有 5000 上限，这里没有，长时间
-        抓 HTTPS 站点就是实打实的内存泄漏。
-        """
-        self.flows[flow.id] = flow
-        self._evict()
+        """请求一发出就进列表（pending 可见），响应回来再走 update 原地补完。"""
+        self._cache_flow(flow)
         self._emit_flow(flow)
 
     def response(self, flow) -> None:
-        self.flows[flow.id] = flow
-        self._evict()
+        self._cache_flow(flow)
         # response 必晚于 request：列表里已有同 id 的 pending 行，这里走「更新」
         # 通道（flow_store.update 按 id 原地替换），不会新增重复行。
-        if self._on_update is not None:
-            try:
-                self._on_update(self.summarize(flow))
-            except Exception:
-                log.exception("flow 更新回调异常")
+        self._emit_update(flow)
+
+    def error(self, flow) -> None:
+        """连接层失败也要结束 pending 行并释放缓存压力。"""
+        self._cache_flow(flow)
+        self._emit_update(flow)
 
     def _emit_flow(self, flow) -> None:
         if self._on_flow is not None:
@@ -274,14 +273,12 @@ class CaptureAddon:
         `flow.websocket` 在调用 `response` 之前就已挂上，所以首行由 `response`
         产出，之后每条消息在这里**增量更新同一行**。
         """
-        self.flows.setdefault(flow.id, flow)
-        self._evict()
+        self._cache_flow(flow)
         self._emit_update(flow)
 
     def websocket_end(self, flow) -> None:
         """连接关闭：补上关闭码与最终耗时。"""
-        self.flows.setdefault(flow.id, flow)
-        self._evict()
+        self._cache_flow(flow)
         self._emit_update(flow)
 
     def _emit_update(self, flow) -> None:
@@ -328,6 +325,8 @@ class CaptureAddon:
             size = len(res.raw_content or b"") if res is not None else 0
 
         status = res.status_code if res is not None else 0
+        error_obj = getattr(flow, "error", None)
+        error = str(getattr(error_obj, "msg", "") or error_obj or "")
         content_type = ""
         if res is not None:
             content_type = res.headers.get("content-type", "") or ""
@@ -349,6 +348,7 @@ class CaptureAddon:
             # 畸形 URL（详见 app/replay.py 的说明）
             "url": format_request_url(req),
             "status": status,
+            "error": error,
             "size": size,
             "req_size": req_size,
             "duration_ms": round(duration_ms, 1),
@@ -390,10 +390,15 @@ class CaptureAddon:
         items = [f for f in (flows or []) if f is not None]
         if self._max_flows > 0 and len(items) > self._max_flows:
             items = items[-self._max_flows:]
-        self.flows = {f.id: f for f in items}
+        self.flows = {}
+        self._flow_body_sizes = {}
+        self._body_bytes = 0
+        for flow in items:
+            self._cache_flow(flow)
+        self._evict()
         return len(self.flows)
 
-    # ------------------------------------------------------------ 容量（保存条数）
+    # ------------------------------------------------------------ 容量（保存条数 / body 字节）
 
     def set_max_flows(self, limit: int, trim_now: bool = False) -> None:
         """改保留条数上限。
@@ -408,9 +413,53 @@ class CaptureAddon:
 
     # ------------------------------------------------------------ 内部
 
+    @staticmethod
+    def _body_size(flow) -> int:
+        """计算 flow 中会被 Capture 引用的原始 body 字节数。"""
+        total = 0
+        for message in (
+            getattr(flow, "request", None), getattr(flow, "response", None)
+        ):
+            try:
+                total += len(getattr(message, "raw_content", None) or b"")
+            except Exception:
+                pass
+        ws = getattr(flow, "websocket", None)
+        for message in (list(getattr(ws, "messages", None) or []) if ws else []):
+            try:
+                total += len(getattr(message, "content", None) or b"")
+            except Exception:
+                pass
+        return total
+
+    def _remove_flow(self, flow_id: str) -> None:
+        self.flows.pop(flow_id, None)
+        self._body_bytes -= self._flow_body_sizes.pop(flow_id, 0)
+        if self._body_bytes < 0:
+            self._body_bytes = 0
+
+    def _cache_flow(self, flow) -> bool:
+        """更新 flow 缓存并执行单条/总 body 预算。"""
+        flow_id = flow.id
+        body_size = self._body_size(flow)
+        # 先扣除同一 flow 的 pending/旧 WebSocket 版本，避免重复计数。
+        self._remove_flow(flow_id)
+        if body_size > self._max_flow_body_bytes:
+            log.warning(
+                "flow %s body %d bytes 超过单条缓存上限 %d，跳过完整缓存",
+                flow_id, body_size, self._max_flow_body_bytes,
+            )
+            return False
+        self.flows[flow_id] = flow
+        self._flow_body_sizes[flow_id] = body_size
+        self._body_bytes += body_size
+        self._evict()
+        return flow_id in self.flows
+
     def _evict(self) -> None:
-        if len(self.flows) <= self._max_flows:
-            return
-        # dict 保序，删最旧
-        for flow_id in list(self.flows.keys())[: len(self.flows) - self._max_flows]:
-            del self.flows[flow_id]
+        """按到达顺序同时执行条数和 body 总字节预算。"""
+        while self.flows and (
+            len(self.flows) > self._max_flows
+            or self._body_bytes > self._max_body_bytes
+        ):
+            self._remove_flow(next(iter(self.flows)))
