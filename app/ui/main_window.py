@@ -1582,7 +1582,15 @@ class MainWindow(QMainWindow):
         self.proxy_btn.setText(self.tr("启动中…"))
 
         def work():
+            # 先不加锁检查快照：正常停止后快照已被删除，直接跳过恢复，
+            # 避免与 _restore_sysproxy_async() 竞争 _sysproxy_lock 导致死等。
             had_snapshot = sysproxy.STATE_PATH.exists()
+            if not had_snapshot:
+                # 无快照 = 无需恢复，直接放行启动
+                self.bridge.proxy_recovery_done.emit(True, "")
+                return
+
+            # 有快照（异常退出残留）：需加锁做恢复，防止并发写注册表
             try:
                 with self._sysproxy_lock:
                     recovered = sysproxy.recover_if_needed(
