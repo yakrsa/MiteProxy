@@ -371,7 +371,13 @@ class TestJsonPathErrors:
 
 # ================================================================ 面板接线
 
-from app.ui.json_panel import JsonPanel, VIEW_PATH, VIEW_TEXT, VIEW_TREE  # noqa: E402
+from app.ui.json_panel import (  # noqa: E402
+    VIEW_PATH,
+    VIEW_PATH_TEXT,
+    VIEW_TEXT,
+    VIEW_TREE,
+    JsonPanel,
+)
 from app.ui.tool_panel import ToolPanel  # noqa: E402
 
 
@@ -551,6 +557,168 @@ class TestJsonPanel:
         assert panel.path_table.rowCount() == 3
         assert panel.path_table.item(0, 2).text() == "张三"
         assert "共 3 处匹配" in panel.status_label.text()
+
+    def test_view_switcher_moved_into_result_box(self):
+        """视图类型放结果页面上方：不在顶层工具栏，且在结果内容之上。"""
+        panel = _panel()
+        panel.show()
+        try:
+            assert panel.view_combo.parent() is not panel
+            assert panel.view_combo.parent() is panel.out_stack.parent()
+            assert panel.view_combo.y() < panel.out_stack.y()
+            assert [panel.view_combo.itemText(i)
+                    for i in range(panel.view_combo.count())] == [
+                "格式化文本", "树形", "JSONPath 表格", "JSONPath 文本",
+            ]
+        finally:
+            panel.close()
+
+    def test_path_text_view_shows_pretty_matches(self):
+        """提取结果也能按格式化文本看：匹配值序列化成 JSON 数组。"""
+        panel = _panel()
+        panel.input_edit.setPlainText(json.dumps(DATA, ensure_ascii=False))
+        panel.format_btn.click()
+        panel.path_edit.setText("$.data.list[*].name")
+        panel.path_btn.click()
+        panel.view_combo.setCurrentIndex(panel.view_combo.findData(VIEW_PATH_TEXT))
+        assert panel.out_stack.currentWidget() is panel.path_text_view
+        text = panel.path_text_view.toPlainText()
+        assert json.loads(text) == ["张三", "李四", "王五"]
+        assert "\n  " in text            # 带缩进，不是压缩单行
+        assert panel._path_highlighter.enabled
+
+    def test_path_text_view_follows_indent(self):
+        """缩进切换对提取结果的文本形态同样生效。"""
+        panel = _panel()
+        panel.input_edit.setPlainText('{"a":[1,2]}')
+        panel.format_btn.click()
+        panel.path_edit.setText("$.a[*]")
+        panel.path_btn.click()
+        panel.view_combo.setCurrentIndex(panel.view_combo.findData(VIEW_PATH_TEXT))
+        panel.indent_combo.setCurrentIndex(2)      # Tab
+        assert "\n\t1" in panel.path_text_view.toPlainText()
+
+    def test_path_text_view_after_reextract_keeps_view(self):
+        """在文本形态下再次提取，仍停在文本形态（不被打回表格）。"""
+        panel = _panel()
+        panel.input_edit.setPlainText('{"a":1,"b":2}')
+        panel.format_btn.click()
+        panel.path_edit.setText("$.a")
+        panel.path_btn.click()
+        panel.view_combo.setCurrentIndex(panel.view_combo.findData(VIEW_PATH_TEXT))
+        panel.path_edit.setText("$.b")
+        panel.path_btn.click()
+        assert panel.out_stack.currentWidget() is panel.path_text_view
+        assert json.loads(panel.path_text_view.toPlainText()) == [2]
+
+    def test_clearing_path_expr_shows_full_json(self):
+        """清空提取条件再点提取：回到全量内容的格式化文本，不留空白。"""
+        panel = _panel()
+        panel.input_edit.setPlainText('{"a":1,"b":[1,2]}')
+        panel.format_btn.click()
+        panel.path_edit.setText("$.a")
+        panel.path_btn.click()
+        assert panel.out_stack.currentWidget() is panel.path_table
+        panel.path_edit.clear()
+        panel.path_btn.click()
+        assert panel.out_stack.currentWidget() is panel.text_view
+        assert panel.text_view.toPlainText() == '{\n  "a": 1,\n  "b": [\n    1,\n    2\n  ]\n}'
+        assert "已清空提取条件" in panel.status_label.text()
+
+    def test_clearing_path_expr_keeps_error_status(self):
+        """输入本身不合法时清空提取条件：保留解析错误，不谎报"已清空"。"""
+        panel = _panel()
+        panel.input_edit.setPlainText("{bad json")
+        panel.path_btn.click()
+        assert "第 1 行" in panel.status_label.text()
+        assert not panel.goto_btn.isHidden()
+        panel.path_btn.click()      # 表达式仍是空的
+        assert "第 1 行" in panel.status_label.text()
+        assert not panel.goto_btn.isHidden()
+        assert panel.out_stack.currentWidget() is panel.text_view
+        assert panel.text_view.toPlainText() == "{bad json"
+
+    def test_copy_result_in_path_text_view(self, monkeypatch):
+        panel = _panel()
+        copied = {}
+        monkeypatch.setattr(
+            QApplication, "clipboard", staticmethod(lambda: _Clipboard(copied))
+        )
+        panel.input_edit.setPlainText('{"a":[1,2]}')
+        panel.format_btn.click()
+        panel.path_edit.setText("$.a[*]")
+        panel.path_btn.click()
+        panel.view_combo.setCurrentIndex(panel.view_combo.findData(VIEW_PATH_TEXT))
+        assert panel.copy_result() is True
+        assert json.loads(copied["text"]) == [1, 2]
+
+    def test_check_keeps_path_text_view(self):
+        """校验只报合法性，不能把正在看的提取结果切走。"""
+        panel = _panel()
+        panel.input_edit.setPlainText('{"a":[1,2]}')
+        panel.format_btn.click()
+        panel.path_edit.setText("$.a[*]")
+        panel.path_btn.click()
+        panel.view_combo.setCurrentIndex(panel.view_combo.findData(VIEW_PATH_TEXT))
+        panel.check_btn.click()
+        assert panel.out_stack.currentWidget() is panel.path_text_view
+        assert "合法 JSON" in panel.status_label.text()
+
+    def test_indent_change_keeps_path_text_view(self):
+        """缩进是渲染参数：改缩进重渲染，但视图和匹配数都得留住。"""
+        panel = _panel()
+        panel.input_edit.setPlainText('{"a":[1,2]}')
+        panel.format_btn.click()
+        panel.path_edit.setText("$.a[*]")
+        panel.path_btn.click()
+        panel.view_combo.setCurrentIndex(panel.view_combo.findData(VIEW_PATH_TEXT))
+        panel.indent_combo.setCurrentIndex(2)      # Tab
+        assert panel.out_stack.currentWidget() is panel.path_text_view
+        assert "\n\t1" in panel.path_text_view.toPlainText()
+        assert "共 2 处匹配" in panel.status_label.text()
+
+    def test_copy_result_in_table_view_copies_matches(self, monkeypatch):
+        """表格视图看到的是提取值，复制不能给全量 JSON。"""
+        panel = _panel()
+        copied = {}
+        monkeypatch.setattr(
+            QApplication, "clipboard", staticmethod(lambda: _Clipboard(copied))
+        )
+        panel.input_edit.setPlainText('{"a":[1,2],"b":3}')
+        panel.format_btn.click()
+        panel.path_edit.setText("$.b")
+        panel.path_btn.click()
+        assert panel.out_stack.currentWidget() is panel.path_table
+        assert panel.copy_result() is True
+        assert json.loads(copied["text"]) == [3]
+
+    def test_empty_input_extract_gives_hint(self):
+        """输入为空时点提取要有反馈，不能一片空白。"""
+        panel = _panel()
+        panel.path_btn.click()
+        assert "输入为空" in panel.status_label.text()
+
+    def test_input_change_invalidates_matches(self):
+        """改输入后旧提取结果必须作废，不能显示已经不存在的数据。"""
+        panel = _panel()
+        panel.input_edit.setPlainText('{"a":1}')
+        panel.format_btn.click()
+        panel.path_edit.setText("$.a")
+        panel.path_btn.click()
+        assert panel.path_table.rowCount() == 1
+        panel.input_edit.setPlainText('{"b":2}')      # textChanged → 作废
+        assert panel._matches == []
+        assert panel.path_table.rowCount() == 0
+        assert panel.path_text_view.toPlainText() == ""
+
+    def test_output_count_matches_table_view(self):
+        """表格视图的计数报匹配数，不是全量字节数。"""
+        panel = _panel()
+        panel.input_edit.setPlainText('{"a":1,"b":2}')
+        panel.format_btn.click()
+        panel.path_edit.setText("$.a")
+        panel.path_btn.click()
+        assert "1 处匹配" in panel.output_count.text()
 
     def test_jsonpath_no_match(self):
         panel = _panel()

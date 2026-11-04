@@ -9,6 +9,9 @@
 - **深嵌套不会崩**：`RecursionError` 不是 `ValueError` 子类，解析与树遍历
   都做了防护（遍历本身也用迭代实现）。
 - **提示文案不叠加**：状态区每次整体重画（`_paint_status`），不在旧文本上追加。
+- **提取结果不只有表格**：「JSONPath 结果」分表格 / 格式化文本两种形态，
+  文本形态把匹配值序列化成 JSON 数组（同样带截断与换行闸门）；清空提取
+  条件再点「提取」则回到全量内容的格式化文本，不会留一片空白。
 """
 
 from __future__ import annotations
@@ -70,6 +73,7 @@ INDENT_ITEMS = (
 VIEW_TEXT = "text"
 VIEW_TREE = "tree"
 VIEW_PATH = "path"
+VIEW_PATH_TEXT = "path_text"
 
 JSONPATH_TIP = QT_TRANSLATE_NOOP(
     "JsonPanel",
@@ -100,6 +104,7 @@ class JsonPanel(QWidget):
         self._last_error = None
         self._tree_nodes_built = 0   # 懒加载计数（见 _fill_children）
         self._tree_truncated = False
+        self._last_path_view = VIEW_PATH   # JSONPath 两种形态里上次看的那个
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -126,11 +131,11 @@ class JsonPanel(QWidget):
         row.setSpacing(6)
 
         self.format_btn = QPushButton(self.tr("格式化"))
-        self.format_btn.clicked.connect(lambda: self.run(mode="pretty"))
+        self.format_btn.clicked.connect(lambda: self.run(mode="pretty", reset_view=True))
         row.addWidget(self.format_btn)
 
         self.minify_btn = QPushButton(self.tr("压缩"))
-        self.minify_btn.clicked.connect(lambda: self.run(mode="minify"))
+        self.minify_btn.clicked.connect(lambda: self.run(mode="minify", reset_view=True))
         row.addWidget(self.minify_btn)
 
         self.check_btn = QPushButton(self.tr("校验"))
@@ -145,16 +150,8 @@ class JsonPanel(QWidget):
             self.indent_combo.addItem(
                 QCoreApplication.translate("JsonPanel", label), value)
         self.indent_combo.setCurrentIndex(0)
-        self.indent_combo.currentIndexChanged.connect(lambda *_: self.run())
+        self.indent_combo.currentIndexChanged.connect(self._on_indent_changed)
         row.addWidget(self.indent_combo)
-
-        row.addWidget(QLabel(self.tr("视图:")))
-        self.view_combo = QComboBox()
-        self.view_combo.addItem(self.tr("格式化文本"), VIEW_TEXT)
-        self.view_combo.addItem(self.tr("树形"), VIEW_TREE)
-        self.view_combo.addItem(self.tr("JSONPath 结果"), VIEW_PATH)
-        self.view_combo.currentIndexChanged.connect(self._on_view_changed)
-        row.addWidget(self.view_combo)
 
         self.expand_btn = QPushButton(self.tr("展开全部"))
         self.expand_btn.clicked.connect(self._expand_all)
@@ -199,6 +196,19 @@ class JsonPanel(QWidget):
 
         out_box = QGroupBox(self.tr("结果"))
         out_layout = QVBoxLayout(out_box)
+        # 视图选择放结果页上方：它决定右边这块区域看什么，跟输入区的操作栏分开
+        view_bar = QHBoxLayout()
+        view_bar.setSpacing(6)
+        view_bar.addWidget(QLabel(self.tr("视图:")))
+        self.view_combo = QComboBox()
+        self.view_combo.addItem(self.tr("格式化文本"), VIEW_TEXT)
+        self.view_combo.addItem(self.tr("树形"), VIEW_TREE)
+        self.view_combo.addItem(self.tr("JSONPath 表格"), VIEW_PATH)
+        self.view_combo.addItem(self.tr("JSONPath 文本"), VIEW_PATH_TEXT)
+        self.view_combo.currentIndexChanged.connect(self._on_view_changed)
+        view_bar.addWidget(self.view_combo)
+        view_bar.addStretch(1)
+        out_layout.addLayout(view_bar)
         self.out_stack = QStackedWidget()
 
         self.text_view = QPlainTextEdit()
@@ -232,6 +242,16 @@ class JsonPanel(QWidget):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.out_stack.addWidget(self.path_table)
+
+        # JSONPath 结果的格式化文本形态：匹配值序列化成 JSON 数组
+        self.path_text_view = QPlainTextEdit()
+        self.path_text_view.setReadOnly(True)
+        self.path_text_view.setFont(self._font)
+        self.path_text_view.setPlaceholderText(
+            self.tr("执行 JSONPath 提取后，这里按格式化文本显示匹配结果")
+        )
+        self._path_highlighter = JsonHighlighter(self.path_text_view.document())
+        self.out_stack.addWidget(self.path_text_view)
 
         out_layout.addWidget(self.out_stack)
         out_bar = QHBoxLayout()
@@ -295,15 +315,22 @@ class JsonPanel(QWidget):
     def set_text(self, text: str) -> None:
         """外部灌入内容（右键菜单「在 JSON 工具里打开 body」）。"""
         self.input_edit.setPlainText(text)
-        self.run(mode="pretty")
+        self.run(mode="pretty", reset_view=True)
 
     @property
     def current_view(self) -> str:
         return self.view_combo.currentData() or VIEW_TEXT
 
-    def run(self, mode: str = "pretty") -> None:
-        """按 mode 处理：pretty（格式化）/ minify（压缩）/ check（只校验）。"""
+    def run(self, mode: str = "pretty", *, reset_view: bool = False) -> None:
+        """按 mode 处理：pretty（格式化）/ minify（压缩）/ check（只校验）。
+
+        `reset_view` 只在「这条命令的结果一定是完整输入」时才传（格式化/压缩/
+        自动格式化/外部灌入）——校验与缩进切换不改变输出语义，不该把用户正
+        在看的 JSONPath 结果切走（踩过：点校验把提取结果顶掉）。
+        """
         self._timer.stop()
+        if reset_view and self.current_view == VIEW_PATH_TEXT:
+            self.view_combo.setCurrentIndex(self.view_combo.findData(VIEW_TEXT))
         text = self.input_edit.toPlainText()
         if not text.strip():
             self._parsed = None
@@ -375,10 +402,23 @@ class JsonPanel(QWidget):
         self._update_counts()
 
     def run_jsonpath(self) -> None:
-        """执行 JSONPath：结果进「JSONPath 结果」视图。"""
+        """执行 JSONPath：结果进「JSONPath 结果」视图（表格 / 格式化文本）。"""
         expr = self.path_edit.text().strip()
         if not expr:
-            self._set_status(self.tr("请输入 JSONPath 表达式（如 $.data.list[0]）"), error=False)
+            # 清空了提取条件：回到全量内容的格式化文本，而不是留一片空白
+            self._matches = []
+            self._fill_path_table([])
+            self.path_text_view.clear()
+            self.view_combo.setCurrentIndex(self.view_combo.findData(VIEW_TEXT))
+            self.run(mode="pretty")
+            if self._value is None:
+                # 输入也是空的/不合法的：run() 已写了错误状态，只补空输入这一种
+                if not self.input_edit.toPlainText().strip():
+                    self._set_status(
+                        self.tr("输入为空，粘贴 JSON 后再点「提取」"), error=False
+                    )
+                return
+            self._set_status(self.tr("已清空提取条件，显示完整内容"), error=False)
             return
         if self._value is None:
             # 输入框内容还没解析过就先解析一次
@@ -394,17 +434,28 @@ class JsonPanel(QWidget):
             return
         self._matches = matches
         self._fill_path_table(matches)
-        self.view_combo.setCurrentIndex(self.view_combo.findData(VIEW_PATH))
+        # 文本形态先渲染好再切视图：切过去就是完整内容，不是空白
+        wrap_note = self._show_path_text(matches)
+        self.view_combo.setCurrentIndex(self.view_combo.findData(self._last_path_view))
         if not matches:
-            self._set_status(self.tr("没有匹配到任何内容"), error=False)
+            status = self.tr("没有匹配到任何内容")
+            self._set_status(
+                f"{status} · {wrap_note}" if wrap_note else status, error=False
+            )
             return
         label = self.tr('共 {0} 处匹配').format(len(matches))
         if note:
             label += f" {note}"
+        if wrap_note:
+            label += f" · {wrap_note}"
         self._set_status(label, error=False, ok=True)
 
     def copy_result(self) -> bool:
-        text = self.text_view.toPlainText()
+        # 表格视图看到的是提取值，复制也必须是提取值——所见即所复制
+        if self.current_view == VIEW_PATH:
+            return self.copy_path_result()
+        view = self._current_text_view()
+        text = view.toPlainText()
         if not text:
             self._set_status(self.tr("结果为空，无可复制内容"), error=False)
             return False
@@ -416,7 +467,9 @@ class JsonPanel(QWidget):
         if not self._matches:
             self._set_status(self.tr("没有可复制的提取结果"), error=False)
             return False
-        ok, text = dumps_json([m.value for m in self._matches], indent=2)
+        ok, text = dumps_json(
+            [m.value for m in self._matches], indent=self.indent_combo.currentData()
+        )
         if not ok:
             self._set_status(text, error=True)
             return False
@@ -429,7 +482,35 @@ class JsonPanel(QWidget):
 
     # ------------------------------------------------------------ 内部
 
+    def _current_text_view(self) -> QPlainTextEdit:
+        """当前视图对应的文本控件（JSONPath 文本形态用 path_text_view）。"""
+        if self.current_view == VIEW_PATH_TEXT:
+            return self.path_text_view
+        return self.text_view
+
+    def _invalidate_matches(self) -> None:
+        """输入变了，之前的提取结果就作废——宁可空白也不能显示已经不存在的数据。"""
+        if not self._matches:
+            return
+        self._matches = []
+        self._fill_path_table([])
+        self.path_text_view.clear()
+
+    def _on_indent_changed(self, *_args) -> None:
+        """缩进切换：全量文本与提取文本都按新缩进重渲染，但**不切视图**。"""
+        note = self._show_path_text(self._matches) if self._matches else ""
+        self.run()
+        if self._matches and self.current_view in (VIEW_PATH, VIEW_PATH_TEXT):
+            # 停在提取结果上，状态别被全量文本的节点数顶掉
+            label = self.tr('共 {0} 处匹配').format(len(self._matches))
+            self._set_status(
+                f"{label} · {note}" if note else label, error=False, ok=True
+            )
+        elif note:
+            self._append_note(note)
+
     def _schedule(self) -> None:
+        self._invalidate_matches()
         self._update_counts()
         if len(self.input_edit.toPlainText().encode("utf-8")) > LIVE_LIMIT:
             self._timer.stop()
@@ -441,7 +522,8 @@ class JsonPanel(QWidget):
         self._timer.start()
 
     def _auto_format(self) -> None:
-        self.run(mode="pretty")
+        # 输入变了，之前提取的结果必然陈旧，跟着回到全量文本
+        self.run(mode="pretty", reset_view=True)
 
     def _show_text(self, text: str, *, colored: bool) -> str:
         """渲染文本，返回换行闸门的说明（没有就给空串）。
@@ -458,13 +540,43 @@ class JsonPanel(QWidget):
         # 着色是渲染侧最贵的一环（2 万行 ≈ 260ms），超阈值就关掉
         use_color = colored and len(shown) <= HIGHLIGHT_LIMIT
         self._highlighter.set_enabled(use_color, dark=is_dark(self.text_view))
-        return self._apply_wrap()
+        return self._apply_wrap(self.text_view)
 
-    def _apply_wrap(self) -> str:
+    def _show_path_text(self, matches: list) -> str:
+        """把 JSONPath 匹配值序列化成 JSON 数组，渲染到「JSONPath 文本」视图。
+
+        返回换行/截断说明（没有就给空串）：调用方要往状态区拼别的说明，
+        这里直接写会被随后的一次 `_set_status` 整段覆盖掉。
+        """
+        if not matches:
+            self.path_text_view.clear()
+            self._path_highlighter.set_enabled(
+                False, dark=is_dark(self.path_text_view))
+            return ""
+        ok, dumped = dumps_json(
+            [m.value for m in matches], indent=self.indent_combo.currentData()
+        )
+        if not ok:
+            self.path_text_view.setPlainText(dumped)
+            self._path_highlighter.set_enabled(
+                False, dark=is_dark(self.path_text_view))
+            return dumped
+        shown = dumped
+        if len(shown) > RENDER_TEXT_LIMIT:
+            shown = shown[:RENDER_TEXT_LIMIT] + truncation_note(
+                len(dumped), limit=RENDER_TEXT_LIMIT
+            )
+        self.path_text_view.setPlainText(shown)
+        use_color = len(shown) <= HIGHLIGHT_LIMIT
+        self._path_highlighter.set_enabled(use_color, dark=is_dark(self.path_text_view))
+        return self._apply_wrap(self.path_text_view)
+
+    def _apply_wrap(self, view: QPlainTextEdit | None = None) -> str:
         want = self.wrap_cb.isChecked()
-        longest = longest_line(self.text_view.toPlainText())
+        view = view or self._current_text_view()
+        longest = longest_line(view.toPlainText())
         wrap = want and longest <= WRAP_MAX_LINE_CHARS
-        self.text_view.setLineWrapMode(
+        view.setLineWrapMode(
             QPlainTextEdit.LineWrapMode.WidgetWidth
             if wrap else QPlainTextEdit.LineWrapMode.NoWrap
         )
@@ -591,11 +703,14 @@ class JsonPanel(QWidget):
 
     def _on_view_changed(self, *_args) -> None:
         view = self.current_view
+        if view in (VIEW_PATH, VIEW_PATH_TEXT):
+            self._last_path_view = view
         self.out_stack.setCurrentWidget(
             {
                 VIEW_TEXT: self.text_view,
                 VIEW_TREE: self.tree_view,
                 VIEW_PATH: self.path_table,
+                VIEW_PATH_TEXT: self.path_text_view,
             }[view]
         )
         tree_mode = view == VIEW_TREE
@@ -605,6 +720,7 @@ class JsonPanel(QWidget):
             note = self._render_tree()
             if note:
                 self._append_note(note)
+        self._update_counts()
 
     def _expand_all(self) -> None:
         self.tree_view.expandAll()
@@ -618,6 +734,7 @@ class JsonPanel(QWidget):
         self.text_view.clear()
         self.tree_view.clear()
         self.path_table.setRowCount(0)
+        self.path_text_view.clear()
         self._matches = []
         self._set_status("", error=False)
         self._update_counts()
@@ -652,6 +769,9 @@ class JsonPanel(QWidget):
         self._highlighter.set_enabled(
             self._highlighter.enabled, dark=is_dark(self.text_view)
         )
+        self._path_highlighter.set_enabled(
+            self._path_highlighter.enabled, dark=is_dark(self.path_text_view)
+        )
 
     def _append_note(self, note: str) -> None:
         """追加一条说明——**不叠加**：以状态区当前文本为基准重画一次。"""
@@ -667,7 +787,12 @@ class JsonPanel(QWidget):
             return QCoreApplication.translate("JsonPanel", "{0} 字符 / {1} 字节").format(len(text), len(text.encode("utf-8")))
 
         self.input_count.setText(describe(self.input_edit.toPlainText()))
-        self.output_count.setText(describe(self.text_view.toPlainText()))
+        if self.current_view == VIEW_PATH:
+            # 表格视图里是提取结果，报全量字节数对不上眼前看到的东西
+            self.output_count.setText(self.tr('{0} 处匹配').format(len(self._matches)))
+        else:
+            self.output_count.setText(
+                describe(self._current_text_view().toPlainText()))
 
 
 def _type_name(value: object) -> str:
