@@ -1,11 +1,23 @@
 {
-  "version": "3.0.5",
-  "published_at": "2026-11-02T22:15:00+08:00",
+  "version": "3.0.6",
+  "published_at": "2026-11-04T08:00:00+08:00",
   "download_url": "https://github.com/yakrsa/MiteProxy/releases/latest",
   "changes": [
     {
-      "zh": "修复关闭后重新打开提示「上次的端口已被占用」的问题。根因为端口探测与实际监听的方式不一致：探测使用未开启地址复用的裸 socket，上一次会话残留的 TIME_WAIT 连接会让它误判端口仍被占用，于是自动改用下一个端口并弹窗；而代理自身通过 asyncio 监听（默认开启地址复用），本可直接复用原端口。现两者口径已统一，TIME_WAIT 期间直接沿用原端口，不再切换、不再弹窗。真正被其他程序占用的端口仍会被正确识别并顺延",
-      "en": "Fixed the 'last port still in use' prompt shown when relaunching MiteProxy. The cause was a mismatch between port probing and actual listening: the probe used a plain socket without address reuse, so TIME_WAIT connections left by the previous session made it treat the port as busy, and the app switched to the next port and showed a dialog - even though the proxy itself listens via asyncio (address reuse enabled) and could have reused the original port. Probing and listening now agree, so the original port is reused during TIME_WAIT with no port switch and no dialog. Ports genuinely held by other programs are still detected and skipped as before"
+      "zh": "JSON 工具页「视图类型」下拉移至「结果」框上方，视图选择与结果区一一对应，操作更直观",
+      "en": "Moved the JSON tool panel's view-type selector into the 'Result' box, so the view choice maps directly to the result area"
+    },
+    {
+      "zh": "JSONPath 提取结果新增「格式化文本」视图，可将匹配值序列化为 JSON 数组美观展示，并复用大体积截断、语法高亮与长行换行闸门",
+      "en": "Added a 'JSON text' view for JSONPath results that pretty-prints matched values as a JSON array, reusing the large-payload truncation, syntax highlighting and long-line wrapping safeguards"
+    },
+    {
+      "zh": "修复 JSON 工具页若干交互缺陷：在提取结果视图点「校验/缩进」被误顶回全量视图；表格视图「复制结果」复制的是全量 JSON 而非所见提取值；空输入点「提取」状态区零反馈；改输入后提取结果仍显示陈旧数据",
+      "en": "Fixed several JSON tool panel interaction bugs: clicking 'Validate'/'Indent' in a result view wrongly reset to the full view; 'Copy result' in table view copied the whole JSON instead of the visible matches; empty input gave no feedback on 'Extract'; and stale extraction results persisted after editing input"
+    },
+    {
+      "zh": "体验优化：提取文本框空态增加占位提示；表格下方计数改为报告匹配条数；复制 JSON 缩进跟随缩进设置",
+      "en": "UX: placeholder hint for empty extraction text; table footer now reports match count; copied JSON indentation follows the indent setting"
     }
   ]
 }
